@@ -68,7 +68,7 @@ func wait(t *testing.T, what string, f func() bool) {
 // Someone purges our LSP at the sequence number we hold: we take it over
 // with a higher one (for us and for simulated routers).
 func TestPurgeOfOwnLSPAtSameSeq(t *testing.T) {
-	for _, auth := range []Auth{{Type: "none"}, {"hmac-sha256", "k", 1}} {
+	for _, auth := range []Auth{{Type: "none"}, {Type: "hmac-sha256", Key: "k", KeyID: 1}} {
 		env := &fakeEnv{}
 		cfg := defaultConfig()
 		cfg.SystemID, cfg.HelloInterval, cfg.LSPAuth, cfg.HelloAuth = "0000.0000.0001", 1, auth, auth

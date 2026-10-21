@@ -577,3 +577,76 @@ func TestISISSegmentRouting(t *testing.T) {
 		}
 	}
 }
+
+func TestISISKeychainRollover(t *testing.T) {
+	var switchAt string
+	chain := func(withKey2 bool) string {
+		keys := `{"id":1,"type":"hmac-md5","key":"old","send_until":"` + switchAt + `"}`
+		if withKey2 {
+			keys += `,{"id":2,"type":"hmac-sha256","key":"new","send_from":"` + switchAt + `"}`
+		}
+		return `{"type":"keychain","keys":[` + keys + `]}`
+	}
+	for _, c := range []struct {
+		name     string
+		bHasKey2 bool
+	}{{"both have key 2", true}, {"b lacks key 2", false}} {
+		t.Run(c.name, func(t *testing.T) {
+			// RFC 3339 has whole seconds: switch 2-3 s from now.
+			switchAt = time.Now().Add(3 * time.Second).Truncate(time.Second).UTC().Format(time.RFC3339)
+			a, b, _, _ := ipPair(t)
+			for _, x := range []struct {
+				e  *core.Engine
+				id string
+				k2 bool
+			}{{a, "000a", true}, {b, "000b", c.bHasKey2}} {
+				cfg := fmt.Sprintf(`{"system_id":"0000.0000.%s","hello_interval":1,"hello_multiplier":2,"csnp_interval":1,"hello_auth":%s,"lsp_auth":%s}`, x.id, chain(x.k2), chain(x.k2))
+				if _, err := x.e.CreateProtocol(core.ProtocolSpec{Name: "isis", Type: "isis", Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			up := func(e *core.Engine) bool {
+				adj, _ := isisStatus(t, e)["adjacency"].(map[string]any)
+				return adj["state"] == "up"
+			}
+			eventually(t, "up on key 1", func() bool { return up(a) && up(b) && lspOf(isisStatus(t, b), "0000.0000.000a") != nil })
+			seq := num(lspOf(isisStatus(t, b), "0000.0000.000a"), "seq")
+			if st := isisStatus(t, a); !strings.Contains(st["hello_auth"].(string), "sending key 1") {
+				t.Fatalf("before: %v", st["hello_auth"])
+			}
+			time.Sleep(time.Until(mustTime(t, switchAt)) + 500*time.Millisecond)
+			if !strings.Contains(isisStatus(t, a)["hello_auth"].(string), "sending key 2") {
+				t.Fatalf("after: %v", isisStatus(t, a)["hello_auth"])
+			}
+			if c.bHasKey2 {
+				// Re-signed LSPs reach b (new sequence), no failures, still up.
+				eventually(t, "re-signed LSP at b", func() bool { return num(lspOf(isisStatus(t, b), "0000.0000.000a"), "seq") > seq })
+				time.Sleep(1500 * time.Millisecond)
+				cs, _ := isisStatus(t, b)["counters"].(map[string]any)
+				for k, v := range cs {
+					if strings.HasPrefix(k, "rx_auth_failures") && v.(float64) > 0 {
+						t.Fatalf("%s = %v", k, v)
+					}
+				}
+				if !up(a) || !up(b) {
+					t.Fatal("adjacency dropped during rollover")
+				}
+				return
+			}
+			// b can't verify key 2: failures, then the adjacency drops.
+			eventually(t, "b rejects key 2", func() bool {
+				cs, _ := isisStatus(t, b)["counters"].(map[string]any)
+				return num(cs, "rx_auth_failures_hello") > 0
+			})
+			eventually(t, "adjacency drops", func() bool { return !up(b) })
+		})
+	}
+}
+
+func mustTime(t *testing.T, s string) time.Time {
+	v, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
+}

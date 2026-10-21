@@ -15,6 +15,7 @@ import (
 	"math/rand"
 	"net/netip"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -168,6 +169,8 @@ type session struct {
 	adjTransitions int // LAN adjacency ups and downs
 
 	mts []uint16 // multi-topology: 0 plus the configured MTs (nil: single topology)
+
+	sendKeys map[string]int // keychain scope → key ID sending now (-1: none)
 
 	adjLabels map[string]map[string]uint32 // SR adjacency labels per originator
 	sr        srState                      // what we advertise, for status
@@ -340,6 +343,7 @@ func (s *session) tick(now time.Time) {
 	var out []pdu // sent after unlocking
 	add := func(dst pkt.MAC, b []byte, kind string) { out = append(out, pdu{dst, b, kind}) }
 	s.mu.Lock()
+	s.keyRolloverLocked(now)
 	flapping := now.Before(s.flapTill)
 	if s.lan != nil {
 		s.tickLANLocked(now, flapping, add)
@@ -1454,5 +1458,67 @@ func authType(a Auth) string {
 	if !a.enabled() {
 		return "none"
 	}
+	if a.Type == "keychain" {
+		now := time.Now()
+		send := "none"
+		if k, ok := a.sendKey(now); ok {
+			send = fmt.Sprintf("%d (%s)", k.ID, k.Type)
+		}
+		var acc []string
+		for _, k := range a.acceptKeys(now) {
+			acc = append(acc, fmt.Sprint(k.ID))
+		}
+		return fmt.Sprintf("keychain: sending key %s, accepting %s", send, strings.Join(acc, ", "))
+	}
 	return a.Type
+}
+
+// keyRolloverLocked notices keychain send-key changes. A new LSP key
+// re-signs (and so re-originates, with new sequence numbers) all our LSPs,
+// so no neighbor keeps copies signed with a retired key.
+func (s *session) keyRolloverLocked(now time.Time) {
+	for _, sc := range []struct {
+		name string
+		a    Auth
+	}{{"hello", s.cfg.HelloAuth}, {"lsp", s.cfg.LSPAuth}} {
+		if sc.a.Type != "keychain" {
+			continue
+		}
+		id := -1
+		if k, ok := sc.a.sendKey(now); ok {
+			id = int(k.ID)
+		}
+		if s.sendKeys == nil {
+			s.sendKeys = map[string]int{}
+		}
+		prev, seen := s.sendKeys[sc.name]
+		if seen && prev == id {
+			continue
+		}
+		s.sendKeys[sc.name] = id
+		if !seen {
+			continue
+		}
+		if sc.name == "lsp" {
+			for _, l := range s.lv {
+				l.dirty = true
+				for _, o := range l.orig {
+					for i := 0; i < o.frags; i++ {
+						o.force[byte(i)] = true
+					}
+				}
+			}
+			if s.lan != nil {
+				for _, ll := range s.lan {
+					ll.pnForce = true
+				}
+			}
+		}
+		msg := fmt.Sprintf("%s authentication now sends with key %d", sc.name, id)
+		if id < 0 {
+			msg = sc.name + " authentication has no valid send key: sending unauthenticated"
+		}
+		s.count("auth_key_rollovers")
+		go s.event("auth-key-rollover", msg)
+	}
 }

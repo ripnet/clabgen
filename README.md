@@ -172,6 +172,15 @@ key_id: …}`; SHA is RFC 5310, where `key_id` is the SR OS keychain entry); `ls
 SR OS the level key signs hellos too where an interface has no hello key,
 so match it with `hello_auth` on such interfaces.
 
+For rollover use a keychain; the key that started sending last is used,
+and any key inside its accept window is accepted:
+
+```yaml
+lsp_auth: {type: keychain, keys: [
+  {id: 1, type: hmac-sha256, key: old, send_until: "2026-11-01T00:00:00Z"},
+  {id: 3, type: hmac-sha256, key: new, send_from: "2026-11-01T00:00:00Z"}]}
+```
+
 Multi-topology: `topologies: [ipv6-unicast]` (also `ipv4-multicast`,
 `ipv6-multicast`) runs RFC 5120 MTs beside IPv4 unicast; IPv6 prefixes then
 go in MT 2. Simulated routers follow, with `loopback6_base` / `prefix6_base`
