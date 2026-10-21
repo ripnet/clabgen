@@ -3,8 +3,10 @@ import type { JsonObject } from "@bufbuild/protobuf";
 import { client, usePoll } from "../api";
 import { registerView, type Health } from "./registry";
 
-type Nbr = { id: string; metric: number; mt?: number };
-type Pfx = { prefix: string; metric: number; down?: boolean; mt?: number };
+type AdjSID = { label: number; neighbor?: string; ipv6?: boolean; backup?: boolean };
+type Nbr = { id: string; metric: number; mt?: number; adj_sids?: AdjSID[] };
+type Pfx = { prefix: string; metric: number; down?: boolean; mt?: number; sid?: { index?: number; label?: number; flags?: string } };
+type SRCap = { router_id: string; srgb?: { base: number; size: number }[]; mpls_ipv4: boolean; mpls_ipv6: boolean; algorithms?: number[] };
 const mtTag = (mt?: number) => (mt ? <span className="tag">{({ 2: "MT ipv6", 3: "MT mcast4", 4: "MT mcast6" } as Record<number, string>)[mt] ?? `MT ${mt}`}</span> : null);
 // LSDB rows in the status are summaries; the "lsp" action has the rest.
 type LSPRow = {
@@ -20,6 +22,7 @@ type LSPRow = {
   prefixes: number;
 };
 type LSPDetail = {
+  sr?: SRCap;
   topologies?: string[];
   areas?: string[];
   router_id?: string;
@@ -49,11 +52,23 @@ function LSPDetailRow({ agentId, name, row, nameOf }: { agentId?: string; name?:
           <div key={`${n.id}/${n.mt ?? 0}`} className="mono">
             {nameOf(n.id)} <span className="muted">metric {n.metric}</span>
             {mtTag(n.mt)}
+            {n.adj_sids?.map((a, i) => (
+              <span key={i} className="tag" title={a.neighbor ? `LAN-Adj-SID for ${nameOf(a.neighbor + ".00")}` : "Adj-SID"}>
+                {a.ipv6 ? "v6 " : ""}adj {a.label}
+                {a.neighbor ? ` → ${nameOf(a.neighbor + ".00").replace(/\.00$/, "")}` : ""}
+              </span>
+            ))}
           </div>
         ))}
         {!l.neighbors?.length && <div className="muted">none</div>}
         {l.router_id && <div className="mono muted">router ID {l.router_id}</div>}
         {l.topologies && <div className="mono muted">topologies: {l.topologies.join(", ")}</div>}
+        {l.sr && (
+          <div className="mono muted">
+            SR: SRGB {l.sr.srgb?.map((g) => `${g.base}–${g.base + g.size - 1}`).join(", ")} · MPLS {[l.sr.mpls_ipv4 && "v4", l.sr.mpls_ipv6 && "v6"].filter(Boolean).join("/")}
+            {" "}· router ID {l.sr.router_id}
+          </div>
+        )}
         {l.addresses && <div className="mono muted">{l.addresses.join(", ")}</div>}
       </div>
       <div>
@@ -64,6 +79,12 @@ function LSPDetailRow({ agentId, name, row, nameOf }: { agentId?: string; name?:
               {p.prefix} <span className="muted">{p.metric}</span>
               {p.down && <span className="tag">down</span>}
               {mtTag(p.mt)}
+              {p.sid && (
+                <span className="tag" title={`Prefix-SID flags ${p.sid.flags || "none"}`}>
+                  SID {p.sid.index ?? `label ${p.sid.label}`}
+                  {p.sid.flags ? ` ${p.sid.flags}` : ""}
+                </span>
+              )}
             </div>
           ))}
           {(l.prefixes?.length ?? 0) > 500 && <div className="muted">… {l.prefixes!.length - 500} more</div>}
@@ -87,6 +108,12 @@ type ISISStatus = {
   hello_auth?: string;
   lsp_auth?: string;
   topologies?: string[];
+  segment_routing?: {
+    srgb_base: number;
+    srgb_size: number;
+    node_sids: { prefix: string; index: number; label: number; flags?: string }[];
+    adj_sids: { neighbor: string; label: number; ipv6?: boolean; mt?: number; lan?: boolean }[];
+  };
   adjacency: {
     state: string;
     neighbor?: string;
@@ -241,6 +268,23 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
           <dt>topologies</dt>
           <dd className="mono">{(s.topologies ?? []).join(", ")}</dd>
         </div>
+        {s.segment_routing && (
+          <div className="kv-row kv-wide">
+            <dt>segment routing</dt>
+            <dd className="mono">
+              SRGB {s.segment_routing.srgb_base}–{s.segment_routing.srgb_base + s.segment_routing.srgb_size - 1}
+              {s.segment_routing.node_sids.map((n) => (
+                <div key={n.prefix}>
+                  {n.prefix} → index {n.index} (label {n.label}){n.flags ? ` ${n.flags}` : ""}
+                </div>
+              ))}
+              <div className="muted">
+                adj SIDs:{" "}
+                {s.segment_routing.adj_sids.map((a) => `${a.label}${a.ipv6 ? " v6" : ""} → ${hostOf(s, a.neighbor.slice(0, 14))}`).join(", ") || "none"}
+              </div>
+            </dd>
+          </div>
+        )}
         <div className="kv-row">
           <dt>authentication</dt>
           <dd className="mono">

@@ -169,6 +169,9 @@ type session struct {
 
 	mts []uint16 // multi-topology: 0 plus the configured MTs (nil: single topology)
 
+	adjLabels map[string]map[string]uint32 // SR adjacency labels per originator
+	sr        srState                      // what we advertise, for status
+
 	topo     *topology // simulated routers behind us (nil: none)
 	flapTill time.Time
 	flapMode string
@@ -884,12 +887,12 @@ func (s *session) originateLocked(l *level, now time.Time) {
 	if s.lan != nil {
 		// On a LAN we point at the pseudonode (once a DIS is up).
 		if ll := s.lan[l.n]; s.lanAdjUp(l.n) {
-			body.Neighbors = []ISReach{{ll.lanID, s.metric}}
+			body.Neighbors = []ISReach{{Neighbor: ll.lanID, Metric: s.metric}}
 		}
 	} else if s.adjUpAt(l.n) {
 		var nb NodeID
 		copy(nb[:], s.adj.sys[:])
-		body.Neighbors = []ISReach{{nb, s.metric}}
+		body.Neighbors = []ISReach{{Neighbor: nb, Metric: s.metric}}
 	}
 	// Connected subnets, then injected prefixes.
 	var pfx []IPReach
@@ -920,7 +923,26 @@ func (s *session) originateLocked(l *level, now time.Time) {
 	if s.topo != nil {
 		body.Neighbors = append(body.Neighbors, s.topo.attachedLocked(l.n)...)
 	}
+	var sids map[netip.Prefix]PrefixSID
+	if s.cfg.SegmentRouting.Enabled {
+		pfx, sids = srPrefixes(s.cfg.SegmentRouting.NodeSIDs, pfx)
+		body.SR = s.srCap(body.RouterID, len(v6g) > 0)
+	}
 	pfx = s.mtify(&body, pfx)
+	var lanNbrs []SysID
+	if s.lan != nil {
+		for _, a := range s.lan[l.n].adjs {
+			if a.state == stUp {
+				lanNbrs = append(lanNbrs, a.sys)
+			}
+		}
+		sort.Slice(lanNbrs, func(i, j int) bool { return bytes.Compare(lanNbrs[i][:], lanNbrs[j][:]) < 0 })
+	}
+	st := &srState{}
+	pfx = s.srDecorate("", &body, pfx, sids, lanNbrs, st)
+	if s.cfg.SegmentRouting.Enabled && (l.n == 2 || s.cfg.Level == "L1") {
+		s.sr = *st
+	}
 	s.originateSys(l, s.sys, body, pfx, isType, now)
 	if s.topo != nil {
 		s.topo.originateLocked(s, l, isType, now)
@@ -1134,6 +1156,9 @@ func (s *session) fitPrefixes(level int, isType byte, body lspBody, ps []IPReach
 			sz = 6
 		}
 		sz += (p.Prefix.Bits() + 7) / 8
+		if p.SID != nil {
+			sz += 1 + 8 // sub-TLV length + Prefix-SID sub-TLV
+		}
 		hdr := 0 // MT TLVs start with the 2-byte MT ID
 		if p.MT != 0 {
 			hdr = 2
@@ -1244,6 +1269,7 @@ type Status struct {
 	Flapping    bool              `json:"flapping,omitempty"`
 	Prefixes    int               `json:"advertised_prefixes"`
 	Topologies  []string          `json:"topologies"` // multi-topology (ipv4-unicast alone: single topology)
+	SR          *SRStatus         `json:"segment_routing,omitempty"`
 	HelloAuth   string            `json:"hello_auth"` // type only, never the key
 	LSPAuth     string            `json:"lsp_auth"`
 	Adjacency   AdjStatus         `json:"adjacency"`   // point-to-point (or, on a LAN, the first Up one)
@@ -1264,6 +1290,9 @@ func (s *session) Status() any {
 		LSDB: []LSPStatus{}, Counters: map[string]uint64{}, HelloAuth: authType(s.cfg.HelloAuth), LSPAuth: authType(s.cfg.LSPAuth), Topologies: mtNameList(s.mts)}
 	if len(s.mts) == 0 {
 		st.Topologies = []string{"ipv4-unicast (single topology)"}
+	}
+	if sr := s.cfg.SegmentRouting; sr.Enabled {
+		st.SR = &SRStatus{SRGBBase: sr.SRGBBase, SRGBSize: sr.SRGBSize, NodeSIDs: s.sr.NodeSIDs, AdjSIDs: s.sr.AdjSIDs}
 	}
 	for k, v := range s.counters {
 		st.Counters[k] = v

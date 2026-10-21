@@ -35,7 +35,75 @@ type Config struct {
 	// Interface subnets are advertised automatically.
 	Prefixes []Prefix `json:"prefixes,omitempty" jsonschema:"description=Extra prefixes to advertise (route injection)"`
 
+	SegmentRouting SegmentRouting `json:"segment_routing" jsonschema:"description=Segment routing (RFC 8667; MPLS): SRGB, node SIDs, adjacency SIDs"`
+
 	Topology Topology `json:"topology" jsonschema:"description=Simulated routers behind this one; their LSPs are originated here"`
+}
+
+// SegmentRouting configures SR-MPLS advertisements.
+type SegmentRouting struct {
+	Enabled    bool      `json:"enabled"`
+	SRGBBase   uint32    `json:"srgb_base" jsonschema:"minimum=16,maximum=1048575,description=First label of the SR global block"`
+	SRGBSize   uint32    `json:"srgb_size" jsonschema:"minimum=1,maximum=1048560"`
+	NodeSIDs   []NodeSID `json:"node_sids,omitempty" jsonschema:"description=Prefix-SIDs on our prefixes (a missing prefix is advertised); /32 and /128 get the node flag"`
+	AdjSIDBase uint32    `json:"adj_sid_base" jsonschema:"description=Local label for our first adjacency SID (the others count up); 0: no adjacency SIDs"`
+}
+
+type NodeSID struct {
+	Prefix       string `json:"prefix" jsonschema:"description=e.g. 192.0.2.50/32"`
+	Index        uint32 `json:"index" jsonschema:"description=Index into the SRGB"`
+	NoPHP        bool   `json:"no_php,omitempty" jsonschema:"description=Ask the penultimate hop not to pop (P flag)"`
+	ExplicitNull bool   `json:"explicit_null,omitempty" jsonschema:"description=Ask for explicit null (E flag)"`
+}
+
+func (s SegmentRouting) validate(t Topology) error {
+	if !s.Enabled {
+		return nil
+	}
+	if s.SRGBBase < 16 || s.SRGBSize == 0 || s.SRGBBase+s.SRGBSize > 1<<20 {
+		return errors.New("segment_routing: SRGB must lie within labels 16-1048575")
+	}
+	if s.AdjSIDBase != 0 && (s.AdjSIDBase < 16 || s.AdjSIDBase+1000 > 1<<20) {
+		return errors.New("segment_routing: adj_sid_base must leave room for labels below 1048576")
+	}
+	if s.AdjSIDBase != 0 && s.AdjSIDBase < s.SRGBBase+s.SRGBSize && s.AdjSIDBase+1000 > s.SRGBBase {
+		return errors.New("segment_routing: adjacency labels overlap the SRGB")
+	}
+	seen := map[uint32]bool{}
+	for _, n := range s.NodeSIDs {
+		if _, err := netip.ParsePrefix(n.Prefix); err != nil {
+			return fmt.Errorf("segment_routing: node SID prefix %q: %w", n.Prefix, err)
+		}
+		if n.Index >= s.SRGBSize {
+			return fmt.Errorf("segment_routing: index %d outside the SRGB (size %d)", n.Index, s.SRGBSize)
+		}
+		if seen[n.Index] {
+			return fmt.Errorf("segment_routing: index %d used twice", n.Index)
+		}
+		seen[n.Index] = true
+	}
+	if k := t.Kind; k != "" && k != "none" {
+		nodes, err := buildTopology(t, nil)
+		if err != nil {
+			return nil // reported by the topology check
+		}
+		for _, base := range []*uint32{t.NodeSIDBase, t.NodeSID6Base} {
+			if base == nil {
+				continue
+			}
+			for i := range nodes.nodes {
+				idx := *base + uint32(i)
+				if idx >= s.SRGBSize {
+					return fmt.Errorf("segment_routing: simulated node SID index %d outside the SRGB", idx)
+				}
+				if seen[idx] {
+					return fmt.Errorf("segment_routing: simulated node SID index %d collides with another SID", idx)
+				}
+				seen[idx] = true
+			}
+		}
+	}
+	return nil
 }
 
 // Topology describes an emulated network of routers attached to us.
@@ -47,13 +115,15 @@ type Topology struct {
 	Attach []string `json:"attach,omitempty" jsonschema:"description=Nodes linked to us (names like r1-1 for grids or r1). Default: the first node"`
 	Metric uint32   `json:"metric,omitempty" jsonschema:"description=Metric of every link. Default 10"`
 
-	SystemIDBase    string `json:"system_id_base,omitempty" jsonschema:"description=System ID of the first node; the others count up. Default 0000.1000.0001"`
-	HostnamePrefix  string `json:"hostname_prefix,omitempty" jsonschema:"description=Default sim-"`
-	LoopbackBase    string `json:"loopback_base,omitempty" jsonschema:"description=Loopback of the first node (e.g. 10.255.0.1/32); the others count up"`
-	Loopback6Base   string `json:"loopback6_base,omitempty" jsonschema:"description=IPv6 loopback of the first node (e.g. 2001:db8:ff::1/128)"`
-	PrefixBase      string `json:"prefix_base,omitempty" jsonschema:"description=First prefix (e.g. 10.200.0.0/24); each node gets prefixes_per_node consecutive ones"`
-	Prefix6Base     string `json:"prefix6_base,omitempty" jsonschema:"description=First IPv6 prefix (e.g. 2001:db8:200::/64); prefixes_per_node per node too"`
-	PrefixesPerNode int    `json:"prefixes_per_node,omitempty" jsonschema:"minimum=0"`
+	SystemIDBase    string  `json:"system_id_base,omitempty" jsonschema:"description=System ID of the first node; the others count up. Default 0000.1000.0001"`
+	HostnamePrefix  string  `json:"hostname_prefix,omitempty" jsonschema:"description=Default sim-"`
+	LoopbackBase    string  `json:"loopback_base,omitempty" jsonschema:"description=Loopback of the first node (e.g. 10.255.0.1/32); the others count up"`
+	Loopback6Base   string  `json:"loopback6_base,omitempty" jsonschema:"description=IPv6 loopback of the first node (e.g. 2001:db8:ff::1/128)"`
+	PrefixBase      string  `json:"prefix_base,omitempty" jsonschema:"description=First prefix (e.g. 10.200.0.0/24); each node gets prefixes_per_node consecutive ones"`
+	Prefix6Base     string  `json:"prefix6_base,omitempty" jsonschema:"description=First IPv6 prefix (e.g. 2001:db8:200::/64); prefixes_per_node per node too"`
+	PrefixesPerNode int     `json:"prefixes_per_node,omitempty" jsonschema:"minimum=0"`
+	NodeSIDBase     *uint32 `json:"node_sid_base,omitempty" jsonschema:"description=With segment routing: node SID index of the first node's IPv4 loopback; the others count up"`
+	NodeSID6Base    *uint32 `json:"node_sid6_base,omitempty" jsonschema:"description=Same for IPv6 loopbacks"`
 
 	Custom []SimNode `json:"custom,omitempty" jsonschema:"description=Nodes for kind custom"`
 }
@@ -78,7 +148,7 @@ type Prefix struct {
 
 func defaultConfig() *Config {
 	return &Config{Areas: []string{"49.0001"}, Level: "L2", Circuit: "point-to-point", Priority: 64, Metric: 10,
-		HelloAuth: Auth{Type: "none"}, LSPAuth: Auth{Type: "none"}, SNPAuth: true,
+		HelloAuth: Auth{Type: "none"}, LSPAuth: Auth{Type: "none"}, SNPAuth: true, SegmentRouting: SegmentRouting{SRGBBase: 16000, SRGBSize: 8000, AdjSIDBase: 24000},
 		HelloInterval: 3, HelloMultiplier: 3, CSNPInterval: 10, LSPLifetime: 1200, LSPRefresh: 900, LSPMTU: 1492}
 }
 
@@ -151,6 +221,9 @@ func (c *Config) Validate() error {
 		if _, err := buildTopology(c.Topology, nil); err != nil {
 			return fmt.Errorf("topology: %w", err)
 		}
+	}
+	if err := c.SegmentRouting.validate(c.Topology); err != nil {
+		return err
 	}
 	return nil
 }

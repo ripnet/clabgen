@@ -288,12 +288,12 @@ func (s *session) pseudonodeLocked(l *level, isType byte, now time.Time) {
 	var nbrs []ISReach
 	var me NodeID
 	copy(me[:], s.sys[:])
-	nbrs = append(nbrs, ISReach{me, 0})
+	nbrs = append(nbrs, ISReach{Neighbor: me})
 	for _, a := range ll.adjs {
 		if a.state == stUp {
 			var nb NodeID
 			copy(nb[:], a.sys[:])
-			nbrs = append(nbrs, ISReach{nb, 0})
+			nbrs = append(nbrs, ISReach{Neighbor: nb})
 		}
 	}
 	sort.Slice(nbrs, func(i, j int) bool { return bytes.Compare(nbrs[i].Neighbor[:], nbrs[j].Neighbor[:]) < 0 })

@@ -501,3 +501,79 @@ func TestISISMultiTopology(t *testing.T) {
 		return adj["state"] == "up" && fmt.Sprint(adj["topologies"]) == "[ipv4-unicast]"
 	})
 }
+
+func TestISISSegmentRouting(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	mk := func(e *core.Engine, cfg string) {
+		t.Helper()
+		if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "isis", Type: "isis", Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(a, `{"system_id":"0000.0000.000a","hello_interval":1,"csnp_interval":1,
+		"segment_routing":{"enabled":true,"srgb_base":16000,"srgb_size":8000,"adj_sid_base":24000,"node_sids":[{"prefix":"192.0.2.10/32","index":5}]},
+		"topology":{"kind":"line","nodes":2,"loopback_base":"10.255.0.1/32","node_sid_base":100}}`)
+	mk(b, `{"system_id":"0000.0000.000b","hello_interval":1,"csnp_interval":1}`)
+	eventually(t, "SR LSPs at b", func() bool {
+		l := lspOf(isisStatus(t, b), "0000.0000.000a")
+		return l != nil && l["sr"] != nil && num(isisStatus(t, b), "lsdb_total") == 4
+	})
+	st := isisStatus(t, b)
+	la := lspOf(st, "0000.0000.000a")
+	sr := la["sr"].(map[string]any)
+	if g := sr["srgb"].([]any)[0].(map[string]any); num(g, "base") != 16000 || num(g, "size") != 8000 || sr["router_id"] != "10.0.0.1" {
+		t.Fatalf("a's SR capability %v", sr)
+	}
+	sid := func(l map[string]any, prefix string) map[string]any {
+		for _, x := range l["prefixes"].([]any) {
+			if m := x.(map[string]any); m["prefix"] == prefix {
+				s, _ := m["sid"].(map[string]any)
+				return s
+			}
+		}
+		return nil
+	}
+	if s := sid(la, "192.0.2.10/32"); s == nil || num(s, "index") != 5 || s["flags"] != "N" {
+		t.Fatalf("a's node SID %v", s)
+	}
+	adj := func(l map[string]any, nbr string) []any {
+		for _, x := range l["neighbors"].([]any) {
+			if m := x.(map[string]any); m["id"] == nbr {
+				a, _ := m["adj_sids"].([]any)
+				return a
+			}
+		}
+		return nil
+	}
+	// a's adjacencies: b and r1 (the attachment), labels from 24000; IPv6
+	// too since a has IPv6 in a single topology.
+	if x := adj(la, "0000.0000.000b.00"); len(x) != 2 || num(x[0].(map[string]any), "label") < 24000 {
+		t.Fatalf("a → b adj SIDs %v", x)
+	}
+	if x := adj(la, "0000.1000.0001.00"); len(x) == 0 {
+		t.Fatal("no adj SID toward the simulated router")
+	}
+	r2 := lspOf(st, "0000.1000.0002")
+	if s := sid(r2, "10.255.0.2/32"); s == nil || num(s, "index") != 101 {
+		t.Fatalf("r2 node SID %v", s)
+	}
+	if x := adj(r2, "0000.1000.0001.00"); len(x) != 1 || num(x[0].(map[string]any), "label") != 24000 {
+		t.Fatalf("r2's own label space %v", x)
+	}
+	// Status summarises what a advertises.
+	ss, _ := isisStatus(t, a)["segment_routing"].(map[string]any)
+	if ss == nil || len(ss["node_sids"].([]any)) != 1 || num(ss["node_sids"].([]any)[0].(map[string]any), "label") != 16005 {
+		t.Fatalf("SR status %v", ss)
+	}
+	// Invalid SR configs are rejected.
+	for _, bad := range []string{
+		`{"segment_routing":{"enabled":true,"srgb_base":16000,"srgb_size":10,"node_sids":[{"prefix":"192.0.2.1/32","index":10}]}}`,
+		`{"segment_routing":{"enabled":true,"srgb_base":16000,"srgb_size":8000,"adj_sid_base":20000}}`,
+		`{"segment_routing":{"enabled":true,"srgb_base":16000,"srgb_size":100,"adj_sid_base":24000},"topology":{"kind":"line","nodes":5,"loopback_base":"10.9.0.1/32","node_sid_base":98}}`,
+	} {
+		if _, err := a.CreateProtocol(core.ProtocolSpec{Name: "x", Type: "isis", Device: "d", Config: json.RawMessage(bad)}); err == nil {
+			a.DeleteProtocol("x")
+			t.Errorf("accepted %s", bad)
+		}
+	}
+}

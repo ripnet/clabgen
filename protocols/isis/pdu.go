@@ -574,11 +574,13 @@ type lspBody struct {
 	// IS reachability per non-zero MT (TLV 222).
 	MTs         []uint16
 	MTNeighbors map[uint16][]ISReach
+	SR          *SRCap // Router Capability TLV with SR capabilities
 }
 
 type ISReach struct {
 	Neighbor NodeID
 	Metric   uint32 // 24 bits
+	AdjSIDs  []AdjSID
 }
 
 type IPReach struct {
@@ -586,6 +588,7 @@ type IPReach struct {
 	Metric uint32
 	Down   bool   // up/down bit (leaked from L2 to L1)
 	MT     uint16 // 0: standard TLVs 135/236; else TLV 235/237 for that MT
+	SID    *PrefixSID
 }
 
 // EncodeLSP builds one LSP fragment. The checksum is computed.
@@ -630,6 +633,9 @@ func EncodeLSP(level int, id LSPID, seq uint32, lifetime uint16, isType byte, bo
 	if len(body.MTs) > 0 {
 		w.add(TLVMultiTopology, mtTLV(body.MTs, body.Overload))
 	}
+	if body.SR != nil {
+		w.add(TLVRouterCapab, body.SR.tlv())
+	}
 	var items [][]byte
 	for _, a := range body.V4Addrs {
 		x := a.As4()
@@ -644,9 +650,7 @@ func EncodeLSP(level int, id LSPID, seq uint32, lifetime uint16, isType byte, bo
 	w.addItems(TLVIPv6Addresses, items)
 	items = nil
 	for _, n := range body.Neighbors {
-		it := append([]byte{}, n.Neighbor[:]...)
-		it = append(it, byte(n.Metric>>16), byte(n.Metric>>8), byte(n.Metric), 0)
-		items = append(items, it)
+		items = append(items, isItem(n))
 	}
 	w.addItems(TLVExtISReach, items)
 	var mtIDs []uint16
@@ -657,9 +661,7 @@ func EncodeLSP(level int, id LSPID, seq uint32, lifetime uint16, isType byte, bo
 	for _, mt := range mtIDs {
 		items = nil
 		for _, n := range body.MTNeighbors[mt] {
-			it := append([]byte{}, n.Neighbor[:]...)
-			it = append(it, byte(n.Metric>>16), byte(n.Metric>>8), byte(n.Metric), 0)
-			items = append(items, it)
+			items = append(items, isItem(n))
 		}
 		w.addMTItems(TLVMTISReach, mt, items)
 	}
@@ -668,27 +670,43 @@ func EncodeLSP(level int, id LSPID, seq uint32, lifetime uint16, isType byte, bo
 	for _, p := range body.Prefixes {
 		bits := p.Prefix.Bits()
 		addr := p.Prefix.Masked().Addr().AsSlice()[:(bits+7)/8]
+		var sub []byte
+		if p.SID != nil {
+			sub = p.SID.subTLV()
+		}
 		if p.Prefix.Addr().Is4() {
 			ctl := byte(bits)
 			if p.Down {
 				ctl |= 0x80
 			}
-			it := binary.BigEndian.AppendUint32(nil, p.Metric)
+			if sub != nil {
+				ctl |= 0x40 // sub-TLVs present
+			}
+			it := append(append(binary.BigEndian.AppendUint32(nil, p.Metric), ctl), addr...)
+			if sub != nil {
+				it = append(append(it, byte(len(sub))), sub...)
+			}
 			if p.MT != 0 {
-				mt4[p.MT] = append(mt4[p.MT], append(append(it, ctl), addr...))
+				mt4[p.MT] = append(mt4[p.MT], it)
 			} else {
-				v4 = append(v4, append(append(it, ctl), addr...))
+				v4 = append(v4, it)
 			}
 		} else {
 			fl := byte(0)
 			if p.Down {
 				fl |= 0x80
 			}
-			it := binary.BigEndian.AppendUint32(nil, p.Metric)
+			if sub != nil {
+				fl |= 0x20 // sub-TLVs present
+			}
+			it := append(append(binary.BigEndian.AppendUint32(nil, p.Metric), fl, byte(bits)), addr...)
+			if sub != nil {
+				it = append(append(it, byte(len(sub))), sub...)
+			}
 			if p.MT != 0 {
-				mt6[p.MT] = append(mt6[p.MT], append(append(it, fl, byte(bits)), addr...))
+				mt6[p.MT] = append(mt6[p.MT], it)
 			} else {
-				v6 = append(v6, append(append(it, fl, byte(bits)), addr...))
+				v6 = append(v6, it)
 			}
 		}
 	}
@@ -719,28 +737,31 @@ func lspFitsMTU(n, mtu int) bool { return n+3 <= mtu }
 
 // LSPInfo is the decoded content of an LSP, for status.
 type LSPInfo struct {
-	Hostname   string    `json:"hostname,omitempty"`
-	Topologies []string  `json:"topologies,omitempty"` // TLV 229 (MT 0 alone when absent)
-	Areas      []string  `json:"areas,omitempty"`
-	Overload   bool      `json:"overload,omitempty"`
-	Attached   bool      `json:"attached,omitempty"`
-	RouterID   string    `json:"router_id,omitempty"`
-	Addresses  []string  `json:"addresses,omitempty"`
-	Neighbors  []NbrInfo `json:"neighbors,omitempty"`
-	Prefixes   []PfxInfo `json:"prefixes,omitempty"`
+	SR         *SRCapInfo `json:"sr,omitempty"` // Router Capability TLV, SR part
+	Hostname   string     `json:"hostname,omitempty"`
+	Topologies []string   `json:"topologies,omitempty"` // TLV 229 (MT 0 alone when absent)
+	Areas      []string   `json:"areas,omitempty"`
+	Overload   bool       `json:"overload,omitempty"`
+	Attached   bool       `json:"attached,omitempty"`
+	RouterID   string     `json:"router_id,omitempty"`
+	Addresses  []string   `json:"addresses,omitempty"`
+	Neighbors  []NbrInfo  `json:"neighbors,omitempty"`
+	Prefixes   []PfxInfo  `json:"prefixes,omitempty"`
 }
 
 type NbrInfo struct {
-	ID     string `json:"id"`
-	Metric uint32 `json:"metric"`
-	MT     uint16 `json:"mt,omitempty"`
+	ID      string       `json:"id"`
+	Metric  uint32       `json:"metric"`
+	MT      uint16       `json:"mt,omitempty"`
+	AdjSIDs []AdjSIDInfo `json:"adj_sids,omitempty"`
 }
 
 type PfxInfo struct {
-	Prefix string `json:"prefix"`
-	Metric uint32 `json:"metric"`
-	Down   bool   `json:"down,omitempty"`
-	MT     uint16 `json:"mt,omitempty"`
+	Prefix string   `json:"prefix"`
+	Metric uint32   `json:"metric"`
+	Down   bool     `json:"down,omitempty"`
+	MT     uint16   `json:"mt,omitempty"`
+	SID    *SIDInfo `json:"sid,omitempty"`
 }
 
 // Info decodes the TLVs operators care about.
@@ -755,6 +776,9 @@ func (l *LSP) Info() LSPInfo {
 			in.Areas = append(in.Areas, AreaString(v[1:1+v[0]]))
 			v = v[1+v[0]:]
 		}
+	}
+	if v, ok := l.TLVs.First(TLVRouterCapab); ok {
+		in.SR = parseRouterCap(v)
 	}
 	if v, ok := l.TLVs.First(TLVTERouterID); ok && len(v) == 4 {
 		in.RouterID = netip.AddrFrom4([4]byte(v)).String()
@@ -787,7 +811,7 @@ func (l *LSP) Info() LSPInfo {
 			if len(v) < 11+sl {
 				break
 			}
-			in.Neighbors = append(in.Neighbors, NbrInfo{ID: NodeID(v[:7]).String(), Metric: uint32(v[7])<<16 | uint32(v[8])<<8 | uint32(v[9]), MT: mt})
+			in.Neighbors = append(in.Neighbors, NbrInfo{ID: NodeID(v[:7]).String(), Metric: uint32(v[7])<<16 | uint32(v[8])<<8 | uint32(v[9]), MT: mt, AdjSIDs: parseAdjSIDs(v[11 : 11+sl])})
 			v = v[11+sl:]
 		}
 	}
@@ -818,11 +842,14 @@ func (l *LSP) Info() LSPInfo {
 			var a [4]byte
 			copy(a[:], v[5:5+n])
 			p := PfxInfo{Prefix: netip.PrefixFrom(netip.AddrFrom4(a), bits).String(), Metric: binary.BigEndian.Uint32(v), Down: ctl&0x80 != 0, MT: mt}
-			in.Prefixes = append(in.Prefixes, p)
 			off := 5 + n
 			if ctl&0x40 != 0 && len(v) > off {
+				if end := off + 1 + int(v[off]); end <= len(v) {
+					p.SID = parsePrefixSID(v[off+1 : end])
+				}
 				off += 1 + int(v[off])
 			}
+			in.Prefixes = append(in.Prefixes, p)
 			if off > len(v) {
 				break
 			}
@@ -860,11 +887,15 @@ func (l *LSP) Info() LSPInfo {
 			}
 			var a [16]byte
 			copy(a[:], v[6:6+n])
-			in.Prefixes = append(in.Prefixes, PfxInfo{Prefix: netip.PrefixFrom(netip.AddrFrom16(a), bits).String(), Metric: binary.BigEndian.Uint32(v), Down: fl&0x80 != 0, MT: mt})
+			p := PfxInfo{Prefix: netip.PrefixFrom(netip.AddrFrom16(a), bits).String(), Metric: binary.BigEndian.Uint32(v), Down: fl&0x80 != 0, MT: mt}
 			off := 6 + n
 			if fl&0x20 != 0 && len(v) > off {
+				if end := off + 1 + int(v[off]); end <= len(v) {
+					p.SID = parsePrefixSID(v[off+1 : end])
+				}
 				off += 1 + int(v[off])
 			}
+			in.Prefixes = append(in.Prefixes, p)
 			if off > len(v) {
 				break
 			}

@@ -66,3 +66,9 @@
 /configure system security keychains keychain "isis-hello" bidirectional entry 2 algorithm hmac-sha-1 authentication-key "clabgen-sha1" begin-time 2026-01-01T00:00:00Z
 /configure router "Base" isis 0 level 2 authentication-keychain "isis-l2"
 /configure router "Base" isis 0 interface "isis-p2p" hello-authentication-keychain "isis-hello"
+/configure router "Base" mpls-labels sr-labels start 20000 end 27999
+/configure router "Base" isis 0 advertise-router-capability area
+/configure router "Base" isis 0 segment-routing admin-state enable
+/configure router "Base" isis 0 segment-routing prefix-sid-range global
+/configure router "Base" isis 0 interface "system" ipv4-node-sid index 1
+/configure router "Base" isis 0 interface "system" ipv6-node-sid index 2

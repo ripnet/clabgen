@@ -29,6 +29,7 @@ type simNode struct {
 	links     map[string]uint32 // neighbor name → metric
 	down      bool
 	overload  bool
+	index     int // position in the topology (for generated SIDs)
 }
 
 type topology struct {
@@ -85,7 +86,7 @@ func buildTopology(c Topology, us *SysID) (*topology, error) {
 		if t.bySys[sys] != nil || (us != nil && sys == *us) {
 			return nil, fmt.Errorf("node %s: system ID %s is already used", name, sys)
 		}
-		n := &simNode{name: name, sys: sys, links: map[string]uint32{}}
+		n := &simNode{name: name, sys: sys, links: map[string]uint32{}, index: len(t.nodes)}
 		t.nodes = append(t.nodes, n)
 		t.byName[name], t.bySys[sys] = n, n
 		return n, nil
@@ -287,7 +288,7 @@ func (t *topology) attachedLocked(level int) []ISReach {
 		}
 		var id NodeID
 		copy(id[:], n.sys[:])
-		out = append(out, ISReach{id, t.metric(usName, n.name, m)})
+		out = append(out, ISReach{Neighbor: id, Metric: t.metric(usName, n.name, m)})
 	}
 	return out
 }
@@ -343,9 +344,23 @@ func (t *topology) originateLocked(s *session, l *level, isType byte, now time.T
 			} else {
 				copy(id[:], t.byName[x].sys[:])
 			}
-			body.Neighbors = append(body.Neighbors, ISReach{id, t.metric(n.name, x, n.links[x])})
+			body.Neighbors = append(body.Neighbors, ISReach{Neighbor: id, Metric: t.metric(n.name, x, n.links[x])})
+		}
+		var sids map[netip.Prefix]PrefixSID
+		if s.cfg.SegmentRouting.Enabled {
+			sids = map[netip.Prefix]PrefixSID{}
+			for _, x := range []struct {
+				lb   netip.Prefix
+				base *uint32
+			}{{n.loopback, s.cfg.Topology.NodeSIDBase}, {n.loopback6, s.cfg.Topology.NodeSID6Base}} {
+				if x.lb.IsValid() && x.base != nil {
+					sids[x.lb.Masked()] = PrefixSID{Index: *x.base + uint32(n.index), Flags: PSIDNode}
+				}
+			}
+			body.SR = s.srCap(body.RouterID, n.loopback6.IsValid())
 		}
 		pfx = s.mtify(&body, pfx)
+		pfx = s.srDecorate(n.name, &body, pfx, sids, nil, nil)
 		s.originateSys(l, n.sys, body, pfx, isType, now)
 	}
 }

@@ -177,6 +177,12 @@ Multi-topology: `topologies: [ipv6-unicast]` (also `ipv4-multicast`,
 go in MT 2. Simulated routers follow, with `loopback6_base` / `prefix6_base`
 for IPv6 addressing.
 
+Segment routing (SR-MPLS): `segment_routing: {enabled: true, srgb_base:
+16000, srgb_size: 8000, adj_sid_base: 24000, node_sids: [{prefix:
+192.0.2.50/32, index: 50}]}` advertises the Router Capability, Prefix-SIDs and
+Adj-SIDs; the topology's `node_sid_base` / `node_sid6_base` give the
+simulated routers node SIDs, so the real routers build SR tunnels across them.
+
 Kinds are `grid`, `ring`, `line`, `full` and `custom` (named nodes with
 links and prefixes). `topology-link a=r1-1 b=r1-2 up=false` (or `metric=…`)
 and `topology-node node=r2-2 up=false` (or `overload=true`) fail parts of

@@ -69,7 +69,7 @@ func TestLANHello(t *testing.T) {
 func TestLSP(t *testing.T) {
 	body := lspBody{Areas: [][]byte{area}, Hostname: "gen1", RouterID: netip.MustParseAddr("192.0.2.1"),
 		V4Addrs: []netip.Addr{netip.MustParseAddr("10.0.0.1")}, Protocols: []byte{NLPIDIPv4, NLPIDIPv6},
-		Neighbors: []ISReach{{NodeID{0, 0, 0, 0, 0, 2, 0}, 10}},
+		Neighbors: []ISReach{{Neighbor: NodeID{0, 0, 0, 0, 0, 2, 0}, Metric: 10}},
 		Prefixes: []IPReach{{Prefix: netip.MustParsePrefix("10.0.0.0/30"), Metric: 10, Down: false}, {Prefix: netip.MustParsePrefix("198.51.100.0/24"), Metric: 20, Down: true},
 			{Prefix: netip.MustParsePrefix("2001:db8::/48"), Metric: 30, Down: false}, {Prefix: netip.MustParsePrefix("0.0.0.0/0"), Metric: 1, Down: false}},
 		Overload: true}
@@ -189,7 +189,7 @@ func TestNestedSchemaOrder(t *testing.T) {
 }
 
 func TestMultiTopologyLSP(t *testing.T) {
-	nb := []ISReach{{NodeID{0, 0, 0, 0, 0, 2, 0}, 10}}
+	nb := []ISReach{{Neighbor: NodeID{0, 0, 0, 0, 0, 2, 0}, Metric: 10}}
 	body := lspBody{MTs: []uint16{MTIPv4Unicast, MTIPv6Unicast, MTIPv4Multicast}, Overload: true,
 		Neighbors: nb, MTNeighbors: map[uint16][]ISReach{MTIPv6Unicast: nb, MTIPv4Multicast: nb},
 		Prefixes: []IPReach{{Prefix: netip.MustParsePrefix("10.0.0.0/24"), Metric: 10},
@@ -270,5 +270,63 @@ func TestCommonMTs(t *testing.T) {
 	}
 	if m, ok := (&session{}).commonMTs(&PDU{HasMT: true, MTs: []uint16{0, 2}}); !ok || len(m) != 1 {
 		t.Fatalf("single topology vs MT: %v", m)
+	}
+}
+
+func TestSegmentRoutingTLVs(t *testing.T) {
+	nb := SysID{0, 0, 0, 0, 0, 7}
+	body := lspBody{RouterID: netip.MustParseAddr("192.0.2.1"),
+		SR: &SRCap{RouterID: netip.MustParseAddr("192.0.2.1"), SRGBBase: 16000, SRGBSize: 8000, IPv6: true},
+		Neighbors: []ISReach{
+			{Neighbor: NodeID{0, 0, 0, 0, 0, 2, 0}, Metric: 10, AdjSIDs: []AdjSID{{Label: 24000}, {Label: 24001, Flags: ASIDAddrFamily}}},
+			{Neighbor: NodeID{0, 0, 0, 0, 0, 3, 1}, Metric: 10, AdjSIDs: []AdjSID{{Label: 24002, Neighbor: &nb}}},
+		},
+		Prefixes: []IPReach{
+			{Prefix: netip.MustParsePrefix("192.0.2.1/32"), SID: &PrefixSID{Index: 1, Flags: PSIDNode}},
+			{Prefix: netip.MustParsePrefix("2001:db8::1/128"), SID: &PrefixSID{Index: 101, Flags: PSIDNode | PSIDNoPHP}},
+			{Prefix: netip.MustParsePrefix("10.0.0.0/24"), Metric: 10},
+		}}
+	p, err := Decode(frame(EncodeLSP(2, MakeLSPID(sysA, 0, 0), 1, 1200, lspTypeL1L2, body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := p.LSP.Info()
+	if in.SR == nil || in.SR.RouterID != "192.0.2.1" || len(in.SR.SRGB) != 1 || in.SR.SRGB[0] != (SRGBInfo{16000, 8000}) || !in.SR.MPLSIPv4 || !in.SR.MPLSIPv6 || len(in.SR.Algorithms) != 1 {
+		t.Fatalf("router capability %+v", in.SR)
+	}
+	if a := in.Neighbors[0].AdjSIDs; len(a) != 2 || a[0].Label != 24000 || a[0].IPv6 || a[1].Label != 24001 || !a[1].IPv6 {
+		t.Fatalf("adj SIDs %+v", a)
+	}
+	if a := in.Neighbors[1].AdjSIDs; len(a) != 1 || a[0].Label != 24002 || a[0].Neighbor != "0000.0000.0007" {
+		t.Fatalf("LAN adj SID %+v", a)
+	}
+	byP := map[string]PfxInfo{}
+	for _, x := range in.Prefixes {
+		byP[x.Prefix] = x
+	}
+	if s := byP["192.0.2.1/32"].SID; s == nil || s.Index != 1 || s.Flags != "N" {
+		t.Fatalf("v4 prefix SID %+v", s)
+	}
+	if s := byP["2001:db8::1/128"].SID; s == nil || s.Index != 101 || s.Flags != "NP" {
+		t.Fatalf("v6 prefix SID %+v", s)
+	}
+	if x, ok := byP["10.0.0.0/24"]; !ok || x.SID != nil || x.Metric != 10 {
+		t.Fatalf("plain prefix after a SID one: %+v", x)
+	}
+}
+
+// Prefixes with SIDs: the fragment-size estimate still matches.
+func TestSIDPrefixesFit(t *testing.T) {
+	s := &session{cfg: *defaultConfig()}
+	var ps []IPReach
+	for i := 0; i < 300; i++ {
+		ps = append(ps, IPReach{Prefix: netip.PrefixFrom(netip.AddrFrom4([4]byte{10, 255, byte(i >> 8), byte(i)}), 32), SID: &PrefixSID{Index: uint32(i), Flags: PSIDNode}})
+	}
+	n := s.fitPrefixes(2, lspTypeL1L2, lspBody{}, ps, true)
+	if raw := EncodeLSP(2, MakeLSPID(sysA, 0, 0), 1, 1200, lspTypeL1L2, lspBody{Prefixes: ps[:n]}); len(raw)+3 > s.cfg.LSPMTU {
+		t.Fatalf("%d prefixes → %d bytes", n, len(raw))
+	}
+	if raw := EncodeLSP(2, MakeLSPID(sysA, 0, 0), 1, 1200, lspTypeL1L2, lspBody{Prefixes: ps[:n+1]}); len(raw)+3 <= s.cfg.LSPMTU {
+		t.Fatalf("estimate too low: %d+1 prefixes still fit", n)
 	}
 }
