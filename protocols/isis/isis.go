@@ -296,10 +296,11 @@ func (s *session) helloLocked() []byte {
 	}
 	padTo := 0
 	if s.cfg.HelloPadding {
-		padTo = 1497 // 1500 − LLC; the port MTU would be better but ports are ≥ 1500
+		// 1500 − LLC (ports are ≥ 1500), leaving room for authentication.
+		padTo = 1497 - s.cfg.HelloAuth.tlvLen()
 	}
 	hold := uint16(s.cfg.HelloInterval * s.cfg.HelloMultiplier)
-	return EncodeP2PHello(s.cfg.circuitType(), s.sys, hold, 1, s.areas, a4, a6, tw, padTo)
+	return s.cfg.HelloAuth.sign(EncodeP2PHello(s.cfg.circuitType(), s.sys, hold, 1, s.areas, a4, a6, tw, padTo))
 }
 
 // ---- main loop ----
@@ -635,10 +636,10 @@ func (s *session) rxLSP(p *PDU) {
 			lv.dirty = true
 		} else {
 			// A fragment we no longer originate: purge it.
-			lv.db[l.ID] = &dbEntry{lsp: mustLSP(purgeRaw(l.Level, l.ID, l.Seq, l.Flags&3)), rxAt: now, own: true, srm: true, purgeAt: now.Add(60 * time.Second)}
+			lv.db[l.ID] = &dbEntry{lsp: mustLSP(s.signLSP(purgeRaw(l.Level, l.ID, l.Seq, l.Flags&3))), rxAt: now, own: true, srm: true, purgeAt: now.Add(60 * time.Second)}
 		}
 		if s.lan == nil {
-			out = append(out, EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}}))
+			out = append(out, s.signSNP(EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}})))
 		}
 	case cmp > 0:
 		raw := append([]byte{}, l.Raw...)
@@ -653,7 +654,7 @@ func (s *session) rxLSP(p *PDU) {
 		s.count("lsdb_updates")
 		// Acknowledge (p2p: PSNP; on a LAN the DIS's CSNPs do).
 		if s.lan == nil {
-			out = append(out, EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}}))
+			out = append(out, s.signSNP(EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}})))
 		}
 	case cmp == 0:
 		if e != nil {
@@ -665,7 +666,7 @@ func (s *session) rxLSP(p *PDU) {
 			}
 		}
 		if s.lan == nil {
-			out = append(out, EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}}))
+			out = append(out, s.signSNP(EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}})))
 		}
 	default:
 		// Ours is newer: send it.
@@ -743,7 +744,7 @@ func (s *session) rxSNP(p *PDU) {
 		if s.lan != nil {
 			dst = s.lanDst(sn.Level)
 		}
-		s.sendTo(dst, EncodePSNP(sn.Level, s.nodeID(), reqs), "psnp")
+		s.sendTo(dst, s.signSNP(EncodePSNP(sn.Level, s.nodeID(), reqs)), "psnp")
 	}
 }
 
@@ -757,6 +758,27 @@ func (s *session) HandleRx(f *pkt.Frame) {
 			s.mu.Lock()
 			s.count("rx_errors")
 			s.mu.Unlock()
+		}
+		return
+	}
+	// Authentication: hellos with the hello key; LSPs (and SNPs, with
+	// snp_auth) with the area/domain key.
+	var kind string
+	switch {
+	case p.P2P != nil || p.LAN != nil:
+		kind, err = "hello", s.cfg.HelloAuth.verify(p.Raw)
+	case p.LSP != nil:
+		kind, err = "lsp", s.cfg.LSPAuth.verify(p.Raw)
+	case p.SNP != nil && s.cfg.SNPAuth:
+		kind, err = "snp", s.cfg.LSPAuth.verify(p.Raw)
+	}
+	if err != nil {
+		s.mu.Lock()
+		s.count("rx_auth_failures_" + kind)
+		first := s.counters["rx_auth_failures_"+kind] == 1
+		s.mu.Unlock()
+		if first {
+			go s.event("auth-failure", fmt.Sprintf("%s from %s: %v", kind, f.Src, err))
 		}
 		return
 	}
@@ -817,7 +839,7 @@ func (s *session) csnpsLocked(l *level, now time.Time) [][]byte {
 		if j < len(ids) {
 			end = ids[j-1]
 		}
-		out = append(out, EncodeCSNP(l.n, s.nodeID(), start, end, es))
+		out = append(out, s.signSNP(EncodeCSNP(l.n, s.nodeID(), start, end, es)))
 		if j < len(ids) {
 			start = ids[j]
 		}
@@ -970,14 +992,14 @@ func (s *session) originateSys(l *level, sys SysID, body lspBody, pfx []IPReach,
 		id := MakeLSPID(sys, 0, byte(i))
 		old := l.db[id]
 		seq := o.seq[byte(i)]
-		raw := EncodeLSP(l.n, id, seq, life, isType, b)
+		raw := s.signLSP(EncodeLSP(l.n, id, seq, life, isType, b))
 		// Bump the sequence when the content changed, to refresh, or when a
 		// neighbor showed us a newer copy (which raised o.seq).
 		if old == nil || !old.own || !old.purgeAt.IsZero() || !sameContent(old.lsp.Raw, raw) || refresh || seq == 0 || old.lsp.Seq != seq || o.force[byte(i)] {
 			delete(o.force, byte(i))
 			seq++
 			o.seq[byte(i)] = seq
-			l.db[id] = &dbEntry{lsp: mustLSP(EncodeLSP(l.n, id, seq, life, isType, b)), rxAt: now, life: life, own: true, srm: s.adjUpAt(l.n)}
+			l.db[id] = &dbEntry{lsp: mustLSP(s.signLSP(EncodeLSP(l.n, id, seq, life, isType, b))), rxAt: now, life: life, own: true, srm: s.adjUpAt(l.n)}
 		}
 	}
 	s.purgeFrags(l, sys, o, len(frags), isType, now)
@@ -998,7 +1020,7 @@ func (s *session) purgeFrags(l *level, sys SysID, o *origin, from int, isType by
 		if e := l.db[id]; e != nil && e.own && e.purgeAt.IsZero() {
 			seq := o.seq[byte(i)] + 1
 			o.seq[byte(i)] = seq
-			l.db[id] = &dbEntry{lsp: mustLSP(purgeRaw(l.n, id, seq, isType)), rxAt: now, own: true, srm: true, purgeAt: now.Add(60 * time.Second)}
+			l.db[id] = &dbEntry{lsp: mustLSP(s.signLSP(purgeRaw(l.n, id, seq, isType))), rxAt: now, own: true, srm: true, purgeAt: now.Add(60 * time.Second)}
 		}
 	}
 }
@@ -1016,7 +1038,7 @@ func sameContent(a, b []byte) bool {
 // doesn't have to re-encode.
 func (s *session) fitPrefixes(level int, isType byte, body lspBody, ps []IPReach, first bool) int {
 	body.Prefixes = nil
-	budget := s.cfg.LSPMTU - len(llc) - len(EncodeLSP(level, LSPID{}, 1, 1, isType, body))
+	budget := s.cfg.LSPMTU - len(llc) - s.cfg.LSPAuth.tlvLen() - len(EncodeLSP(level, LSPID{}, 1, 1, isType, body))
 	var open4, open6, used int // bytes in the current v4 / v6 TLV
 	for i, p := range ps {
 		sz, open := 5, &open4
@@ -1039,6 +1061,17 @@ func (s *session) fitPrefixes(level int, isType byte, body lspBody, ps []IPReach
 		*open += sz
 	}
 	return len(ps)
+}
+
+// signLSP adds LSP authentication (area/domain password) if configured.
+func (s *session) signLSP(raw []byte) []byte { return s.cfg.LSPAuth.sign(raw) }
+
+// signSNP authenticates a CSNP/PSNP with the LSP key when snp_auth is on.
+func (s *session) signSNP(raw []byte) []byte {
+	if !s.cfg.SNPAuth {
+		return raw
+	}
+	return s.cfg.LSPAuth.sign(raw)
 }
 
 // purgeRaw builds a purge: header only, lifetime 0, checksum 0.
@@ -1117,6 +1150,8 @@ type Status struct {
 	Overload    bool              `json:"overload"`
 	Flapping    bool              `json:"flapping,omitempty"`
 	Prefixes    int               `json:"advertised_prefixes"`
+	HelloAuth   string            `json:"hello_auth"` // type only, never the key
+	LSPAuth     string            `json:"lsp_auth"`
 	Adjacency   AdjStatus         `json:"adjacency"`   // point-to-point (or, on a LAN, the first Up one)
 	Adjacencies []AdjStatus       `json:"adjacencies"` // all neighbors
 	LAN         []LANStatus       `json:"lan,omitempty"`
@@ -1132,7 +1167,7 @@ func (s *session) Status() any {
 	defer s.mu.Unlock()
 	st := Status{SystemID: s.sys.String(), Hostname: s.host, Level: s.cfg.Level, Circuit: s.cfg.Circuit,
 		Areas: s.cfg.Areas, Metric: s.metric, Overload: s.overload, Flapping: now.Before(s.flapTill), Prefixes: len(s.prefixes),
-		LSDB: []LSPStatus{}, Counters: map[string]uint64{}}
+		LSDB: []LSPStatus{}, Counters: map[string]uint64{}, HelloAuth: authType(s.cfg.HelloAuth), LSPAuth: authType(s.cfg.LSPAuth)}
 	for k, v := range s.counters {
 		st.Counters[k] = v
 	}
@@ -1286,4 +1321,11 @@ func (s *session) Action(_ context.Context, name string, args any) (any, error) 
 		return map[string]any{"cleared": true}, nil
 	}
 	return nil, fmt.Errorf("unknown action %q", name)
+}
+
+func authType(a Auth) string {
+	if !a.enabled() {
+		return "none"
+	}
+	return a.Type
 }

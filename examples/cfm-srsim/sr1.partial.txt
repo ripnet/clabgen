@@ -59,3 +59,5 @@
 /configure router "Base" interface "isis-lan" ipv4 primary address 10.0.60.1 prefix-length 24
 /configure router "Base" interface "isis-lan" ipv6 address 2001:db8:60::1 prefix-length 64
 /configure router "Base" isis 0 interface "isis-lan" interface-type broadcast
+/configure router "Base" isis 0 level 2 authentication-key "clabgen-l2" authentication-type message-digest
+/configure router "Base" isis 0 interface "isis-p2p" hello-authentication-key "clabgen-hello" hello-authentication-type message-digest

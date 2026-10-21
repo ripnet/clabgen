@@ -73,6 +73,9 @@ protocols:
     type: isis
     device: i500
     config: {system_id: 0000.0000.0050, hostname: clabgen, level: L2,
+             # HMAC-MD5 as on the SR (level 2 domain key; hello key on isis-p2p).
+             hello_auth: {type: hmac-md5, key: clabgen-hello},
+             lsp_auth: {type: hmac-md5, key: clabgen-l2},
              prefixes: [{prefix: 198.18.0.0/24, count: 10, metric: 20}],
              # A 3×3 grid of simulated routers behind us, attached at r1-1.
              topology: {kind: grid, rows: 3, cols: 3, loopback_base: 10.255.0.1/32,
@@ -86,9 +89,12 @@ protocols:
   - name: isis-lan-a
     type: isis
     device: l501a
-    config: {system_id: 0000.0000.0061, hostname: lan-a, level: L2, circuit: broadcast}
+    config: {system_id: 0000.0000.0061, hostname: lan-a, level: L2, circuit: broadcast,
+             # SR OS also signs hellos with the level key where the interface has none.
+             hello_auth: {type: hmac-md5, key: clabgen-l2}, lsp_auth: {type: hmac-md5, key: clabgen-l2}}
   - name: isis-lan-b
     type: isis
     device: l501b
     config: {system_id: 0000.0000.0062, hostname: lan-b, level: L2, circuit: broadcast, priority: 100,
+             hello_auth: {type: hmac-md5, key: clabgen-l2}, lsp_auth: {type: hmac-md5, key: clabgen-l2},
              prefixes: [{prefix: 198.19.0.0/24, count: 5}]}

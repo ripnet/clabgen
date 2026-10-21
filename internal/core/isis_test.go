@@ -392,3 +392,60 @@ func TestISISTopology(t *testing.T) {
 	}
 	t.Fatalf("not taken over: b has %v, a has %v", lspOf(isisStatus(t, b), sim(1))["seq"], lspOf(isisStatus(t, a), sim(1))["seq"])
 }
+
+func TestISISAuth(t *testing.T) {
+	cases := []struct {
+		name       string
+		a, b       string
+		adj, synch bool
+		failure    string // counter at b
+	}{
+		{"md5 both", `"hello_auth":{"type":"hmac-md5","key":"k1"},"lsp_auth":{"type":"hmac-md5","key":"k2"}`,
+			`"hello_auth":{"type":"hmac-md5","key":"k1"},"lsp_auth":{"type":"hmac-md5","key":"k2"}`, true, true, ""},
+		{"password both", `"hello_auth":{"type":"password","key":"p"},"lsp_auth":{"type":"password","key":"q"}`,
+			`"hello_auth":{"type":"password","key":"p"},"lsp_auth":{"type":"password","key":"q"}`, true, true, ""},
+		{"hello key mismatch", `"hello_auth":{"type":"hmac-md5","key":"k1"}`, `"hello_auth":{"type":"hmac-md5","key":"other"}`, false, false, "rx_auth_failures_hello"},
+		{"lsp key mismatch", `"lsp_auth":{"type":"hmac-md5","key":"k2"}`, `"lsp_auth":{"type":"hmac-md5","key":"nope"}`, true, false, "rx_auth_failures_lsp"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a, b, _, _ := ipPair(t)
+			for _, x := range []struct {
+				e   *core.Engine
+				id  string
+				cfg string
+			}{{a, "000a", c.a}, {b, "000b", c.b}} {
+				cfg := fmt.Sprintf(`{"system_id":"0000.0000.%s","hello_interval":1,"csnp_interval":1,%s}`, x.id, x.cfg)
+				if _, err := x.e.CreateProtocol(core.ProtocolSpec{Name: "isis", Type: "isis", Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			up := func(e *core.Engine) bool {
+				adj, _ := isisStatus(t, e)["adjacency"].(map[string]any)
+				return adj["state"] == "up"
+			}
+			if c.adj {
+				eventually(t, "adjacency up", func() bool { return up(a) && up(b) })
+			}
+			if c.synch {
+				eventually(t, "synced", func() bool { return lspOf(isisStatus(t, b), "0000.0000.000a") != nil })
+			}
+			if c.failure != "" {
+				eventually(t, "failures counted", func() bool {
+					cs, _ := isisStatus(t, b)["counters"].(map[string]any)
+					return num(cs, c.failure) > 0
+				})
+				time.Sleep(1500 * time.Millisecond)
+				if !c.adj && (up(a) || up(b)) {
+					t.Fatal("adjacency up despite hello auth mismatch")
+				}
+				if !c.synch && lspOf(isisStatus(t, b), "0000.0000.000a") != nil {
+					t.Fatal("LSP accepted despite auth mismatch")
+				}
+			}
+			if st := isisStatus(t, b); c.name == "md5 both" && (st["hello_auth"] != "hmac-md5" || st["lsp_auth"] != "hmac-md5") {
+				t.Fatalf("status auth %v %v", st["hello_auth"], st["lsp_auth"])
+			}
+		})
+	}
+}

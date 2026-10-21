@@ -25,6 +25,10 @@ type Config struct {
 	LSPRefresh      int  `json:"lsp_refresh" jsonschema:"minimum=1,maximum=65535,description=Seconds between refreshes of our LSPs (below the lifetime)"`
 	LSPMTU          int  `json:"lsp_mtu" jsonschema:"minimum=512,maximum=9190,description=Largest LSP we originate; more prefixes go in further fragments"`
 
+	HelloAuth Auth `json:"hello_auth" jsonschema:"description=Authentication of hellos on the interface"`
+	LSPAuth   Auth `json:"lsp_auth" jsonschema:"description=Area (L1) / domain (L2) authentication of LSPs (and CSNPs/PSNPs with snp_auth)"`
+	SNPAuth   bool `json:"snp_auth" jsonschema:"description=Also authenticate CSNPs and PSNPs with the LSP key"`
+
 	Overload bool `json:"overload,omitempty" jsonschema:"description=Set the overload bit"`
 	// Interface subnets are advertised automatically.
 	Prefixes []Prefix `json:"prefixes,omitempty" jsonschema:"description=Extra prefixes to advertise (route injection)"`
@@ -70,6 +74,7 @@ type Prefix struct {
 
 func defaultConfig() *Config {
 	return &Config{Areas: []string{"49.0001"}, Level: "L2", Circuit: "point-to-point", Priority: 64, Metric: 10,
+		HelloAuth: Auth{Type: "none"}, LSPAuth: Auth{Type: "none"}, SNPAuth: true,
 		HelloInterval: 3, HelloMultiplier: 3, CSNPInterval: 10, LSPLifetime: 1200, LSPRefresh: 900, LSPMTU: 1492}
 }
 
@@ -110,6 +115,12 @@ func (c *Config) Validate() error {
 	}
 	if c.LSPMTU < 512 || c.LSPMTU > 9190 {
 		return errors.New("lsp_mtu must be 512-9190")
+	}
+	if err := c.HelloAuth.validate("hello_auth"); err != nil {
+		return err
+	}
+	if err := c.LSPAuth.validate("lsp_auth"); err != nil {
+		return err
 	}
 	if len(c.Hostname) > 255 {
 		return errors.New("hostname too long")

@@ -81,9 +81,9 @@ func (s *session) lanHelloLocked(n int, flapping bool) []byte {
 	}
 	padTo := 0
 	if s.cfg.HelloPadding {
-		padTo = 1497
+		padTo = 1497 - s.cfg.HelloAuth.tlvLen()
 	}
-	return EncodeLANHello(n, s.cfg.circuitType(), s.sys, uint16(hold), s.cfg.Priority, ll.lanID, s.areas, a4, a6, nbrs, padTo)
+	return s.cfg.HelloAuth.sign(EncodeLANHello(n, s.cfg.circuitType(), s.sys, uint16(hold), s.cfg.Priority, ll.lanID, s.areas, a4, a6, nbrs, padTo))
 }
 
 // tickLANLocked sends due hellos and expires LAN adjacencies.
@@ -274,7 +274,7 @@ func (s *session) pseudonodeLocked(l *level, isType byte, now time.Time) {
 	if !ll.isDIS || !s.lanAdjUp(l.n) {
 		if old != nil && old.own && old.purgeAt.IsZero() {
 			ll.pnSeq++
-			l.db[id] = &dbEntry{lsp: mustLSP(purgeRaw(l.n, id, ll.pnSeq, isType)), rxAt: now, own: true, srm: true, purgeAt: now.Add(60 * time.Second)}
+			l.db[id] = &dbEntry{lsp: mustLSP(s.signLSP(purgeRaw(l.n, id, ll.pnSeq, isType))), rxAt: now, own: true, srm: true, purgeAt: now.Add(60 * time.Second)}
 		}
 		return
 	}
@@ -292,10 +292,10 @@ func (s *session) pseudonodeLocked(l *level, isType byte, now time.Time) {
 	sort.Slice(nbrs, func(i, j int) bool { return bytes.Compare(nbrs[i].Neighbor[:], nbrs[j].Neighbor[:]) < 0 })
 	life := uint16(s.cfg.LSPLifetime)
 	body := lspBody{Neighbors: nbrs}
-	raw := EncodeLSP(l.n, id, ll.pnSeq, life, isType, body)
+	raw := s.signLSP(EncodeLSP(l.n, id, ll.pnSeq, life, isType, body))
 	if old == nil || !old.own || !sameContent(old.lsp.Raw, raw) || now.After(l.refreshAt) || ll.pnSeq == 0 || old.lsp.Seq != ll.pnSeq || !old.purgeAt.IsZero() {
 		ll.pnSeq++
-		raw = EncodeLSP(l.n, id, ll.pnSeq, life, isType, body)
+		raw = s.signLSP(EncodeLSP(l.n, id, ll.pnSeq, life, isType, body))
 		l.db[id] = &dbEntry{lsp: mustLSP(raw), rxAt: now, life: life, own: true, srm: true}
 	}
 }

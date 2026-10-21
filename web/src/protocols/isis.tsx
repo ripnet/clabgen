@@ -79,6 +79,8 @@ type ISISStatus = {
   overload: boolean;
   flapping?: boolean;
   advertised_prefixes: number;
+  hello_auth?: string;
+  lsp_auth?: string;
   adjacency: {
     state: string;
     neighbor?: string;
@@ -226,6 +228,13 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
           <dt>metric · overload</dt>
           <dd className="mono">
             {s.metric} · {s.overload ? <span className="warn-text">set</span> : "clear"}
+          </dd>
+        </div>
+        <div className="kv-row">
+          <dt>authentication</dt>
+          <dd className="mono">
+            hellos {s.hello_auth ?? "none"} · LSPs {s.lsp_auth ?? "none"}
+            {Object.entries(s.counters ?? {}).some(([k, v]) => k.startsWith("rx_auth_failures") && v > 0) && <span className="warn-text"> · failures</span>}
           </dd>
         </div>
         <div className="kv-row">

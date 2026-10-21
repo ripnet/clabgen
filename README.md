@@ -166,6 +166,11 @@ routers whose LSPs it originates, so the real routers run SPF over them.
                         loopback_base: 10.255.0.1/32, prefix_base: 10.200.0.0/24, prefixes_per_node: 5}}
 ```
 
+Authentication: `hello_auth` and `lsp_auth` (`{type: password | hmac-md5,
+key: …}`); `lsp_auth` also covers CSNPs/PSNPs unless `snp_auth: false`. On
+SR OS the level key signs hellos too where an interface has no hello key,
+so match it with `hello_auth` on such interfaces.
+
 Kinds are `grid`, `ring`, `line`, `full` and `custom` (named nodes with
 links and prefixes). `topology-link a=r1-1 b=r1-2 up=false` (or `metric=…`)
 and `topology-node node=r2-2 up=false` (or `overload=true`) fail parts of
