@@ -3,34 +3,55 @@ package isis
 import (
 	"crypto/hmac"
 	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash"
 )
 
-// Authentication (TLV 10): cleartext passwords (ISO 10589) and HMAC-MD5
-// (RFC 5304). Hellos use one key; LSPs, CSNPs and PSNPs (the area or
+// Authentication (TLV 10): cleartext passwords (ISO 10589), HMAC-MD5
+// (RFC 5304) and HMAC-SHA with key IDs (RFC 5310 generic cryptographic
+// authentication). Hellos use one key; LSPs, CSNPs and PSNPs (the area or
 // domain password) another.
 
 const (
 	authPassword byte = 1
+	authGeneric  byte = 3 // RFC 5310
 	authHMACMD5  byte = 54
 	md5Len            = 16
 )
 
-// Auth configures one authentication scope.
-type Auth struct {
-	Type string `json:"type" jsonschema:"enum=none,enum=password,enum=hmac-md5"`
-	Key  string `json:"key,omitempty" jsonschema:"description=Password or HMAC key"`
+// RFC 5310 algorithms.
+var shaAlgs = map[string]func() hash.Hash{
+	"hmac-sha1": sha1.New, "hmac-sha224": sha256.New224, "hmac-sha256": sha256.New,
+	"hmac-sha384": sha512.New384, "hmac-sha512": sha512.New,
 }
 
-func (a Auth) enabled() bool { return a.Type == "password" || a.Type == "hmac-md5" }
+// apad fills the authentication data while the digest is computed (RFC 5310 3.3).
+var apad = []byte{0x87, 0x8f, 0xe1, 0xf3}
+
+// Auth configures one authentication scope.
+type Auth struct {
+	Type  string `json:"type" jsonschema:"enum=none,enum=password,enum=hmac-md5,enum=hmac-sha1,enum=hmac-sha224,enum=hmac-sha256,enum=hmac-sha384,enum=hmac-sha512"`
+	Key   string `json:"key,omitempty" jsonschema:"description=Password or HMAC key"`
+	KeyID uint16 `json:"key_id,omitempty" jsonschema:"description=Key ID for HMAC-SHA (RFC 5310; on SR OS the keychain entry number)"`
+}
+
+func (a Auth) sha() func() hash.Hash { return shaAlgs[a.Type] }
+
+func (a Auth) enabled() bool { return a.Type == "password" || a.Type == "hmac-md5" || a.sha() != nil }
+
+// shaLen is the digest length of an RFC 5310 algorithm.
+func (a Auth) shaLen() int { return a.sha()().Size() }
 
 func (a Auth) validate(scope string) error {
 	switch a.Type {
 	case "", "none":
 		return nil
-	case "password", "hmac-md5":
+	case "password", "hmac-md5", "hmac-sha1", "hmac-sha224", "hmac-sha256", "hmac-sha384", "hmac-sha512":
 		if a.Key == "" {
 			return fmt.Errorf("%s: %s needs a key", scope, a.Type)
 		}
@@ -49,6 +70,9 @@ func (a Auth) tlvLen() int {
 		return 3 + len(a.Key)
 	case "hmac-md5":
 		return 3 + md5Len
+	}
+	if a.sha() != nil {
+		return 2 + 3 + a.shaLen() // type, key ID, digest
 	}
 	return 0
 }
@@ -78,6 +102,11 @@ func (a Auth) sign(pdu []byte) []byte {
 		v = append([]byte{authPassword}, a.Key...)
 	case "hmac-md5":
 		v = append([]byte{authHMACMD5}, make([]byte, md5Len)...)
+	default:
+		v = []byte{authGeneric, byte(a.KeyID >> 8), byte(a.KeyID)}
+		for len(v) < 3+a.shaLen() {
+			v = append(v, apad...)
+		}
 	}
 	out := make([]byte, 0, len(pdu)+2+len(v))
 	out = append(out, pdu[:hl]...)
@@ -93,13 +122,17 @@ func (a Auth) sign(pdu []byte) []byte {
 		purge = life == 0
 		out[24], out[25] = 0, 0
 	}
-	if a.Type == "hmac-md5" {
+	if a.Type != "password" {
 		if lsp {
 			out[10], out[11] = 0, 0
 		}
-		m := hmac.New(md5.New, []byte(a.Key))
-		m.Write(out)
-		copy(out[hl+3:], m.Sum(nil))
+		h, at := md5.New, hl+3 // digest offset in the PDU
+		if a.sha() != nil {
+			h, at = a.sha(), hl+5
+		}
+		m := hmac.New(h, []byte(a.Key))
+		m.Write(out) // MD5: digest zeroed; SHA: Apad in its place
+		copy(out[at:], m.Sum(nil))
 		if lsp {
 			binary.BigEndian.PutUint16(out[10:], life)
 		}
@@ -113,6 +146,7 @@ func (a Auth) sign(pdu []byte) []byte {
 var (
 	errNoAuth  = errors.New("missing authentication")
 	errBadAuth = errors.New("authentication failed")
+	errKeyID   = errors.New("unknown key ID")
 )
 
 // verify checks a received PDU (without LLC) against the scope. A scope
@@ -163,6 +197,27 @@ func (a Auth) verify(raw []byte) error {
 			return errBadAuth
 		}
 		return nil
+	}
+	if a.sha() != nil {
+		n := a.shaLen()
+		if len(v) != 3+n || v[0] != authGeneric {
+			return errBadAuth
+		}
+		if binary.BigEndian.Uint16(v[1:]) != a.KeyID {
+			return errKeyID
+		}
+		c := append([]byte{}, raw...)
+		for i := 0; i < n; i++ {
+			c[off+5+i] = apad[i%4]
+		}
+		if isLSPType(typ) {
+			c[10], c[11], c[24], c[25] = 0, 0, 0, 0
+		}
+		m := hmac.New(a.sha(), []byte(a.Key))
+		m.Write(c)
+		if !hmac.Equal(m.Sum(nil), v[3:]) {
+			return errBadAuth
+		}
 	}
 	return nil
 }

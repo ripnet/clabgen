@@ -166,8 +166,9 @@ routers whose LSPs it originates, so the real routers run SPF over them.
                         loopback_base: 10.255.0.1/32, prefix_base: 10.200.0.0/24, prefixes_per_node: 5}}
 ```
 
-Authentication: `hello_auth` and `lsp_auth` (`{type: password | hmac-md5,
-key: …}`); `lsp_auth` also covers CSNPs/PSNPs unless `snp_auth: false`. On
+Authentication: `hello_auth` and `lsp_auth` (`{type: password | hmac-md5 |
+hmac-sha1 | hmac-sha224 | hmac-sha256 | hmac-sha384 | hmac-sha512, key: …,
+key_id: …}`; SHA is RFC 5310, where `key_id` is the SR OS keychain entry); `lsp_auth` also covers CSNPs/PSNPs unless `snp_auth: false`. On
 SR OS the level key signs hellos too where an interface has no hello key,
 so match it with `hello_auth` on such interfaces.
 

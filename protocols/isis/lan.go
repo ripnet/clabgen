@@ -39,6 +39,7 @@ type lanLevel struct {
 	disMAC    pkt.MAC
 	lanID     NodeID // current LAN ID (ours if DIS)
 	pnSeq     uint32
+	pnForce   bool // re-originate the pseudonode even if unchanged
 	nextHello time.Time
 	elections int
 }
@@ -293,7 +294,8 @@ func (s *session) pseudonodeLocked(l *level, isType byte, now time.Time) {
 	life := uint16(s.cfg.LSPLifetime)
 	body := lspBody{Neighbors: nbrs}
 	raw := s.signLSP(EncodeLSP(l.n, id, ll.pnSeq, life, isType, body))
-	if old == nil || !old.own || !sameContent(old.lsp.Raw, raw) || now.After(l.refreshAt) || ll.pnSeq == 0 || old.lsp.Seq != ll.pnSeq || !old.purgeAt.IsZero() {
+	if old == nil || !old.own || !sameContent(old.lsp.Raw, raw) || now.After(l.refreshAt) || ll.pnSeq == 0 || old.lsp.Seq != ll.pnSeq || !old.purgeAt.IsZero() || ll.pnForce {
+		ll.pnForce = false
 		ll.pnSeq++
 		raw = s.signLSP(EncodeLSP(l.n, id, ll.pnSeq, life, isType, body))
 		l.db[id] = &dbEntry{lsp: mustLSP(raw), rxAt: now, life: life, own: true, srm: true}

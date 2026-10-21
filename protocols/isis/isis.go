@@ -623,17 +623,13 @@ func (s *session) rxLSP(p *PDU) {
 			break
 		}
 		frag := l.ID[7]
+		// Re-originate past its sequence number, even when it equals ours
+		// (someone purged our current copy).
 		if o := lv.orig[l.ID.Node().Sys()]; l.ID[6] == 0 && o != nil && int(frag) < o.frags {
-			if l.Seq >= o.seq[frag] {
-				o.seq[frag] = l.Seq
-			}
-			lv.dirty = true
+			s.bumpOwnLocked(lv, l.ID, l.Seq)
 		} else if s.lan != nil && l.ID[6] == pnID && frag == 0 && s.lan[l.Level].isDIS {
-			// Our pseudonode from before a restart: take it over.
-			if ll := s.lan[l.Level]; l.Seq >= ll.pnSeq {
-				ll.pnSeq = l.Seq
-			}
-			lv.dirty = true
+			// Our pseudonode (purged, or from before a restart).
+			s.bumpOwnLocked(lv, l.ID, l.Seq)
 		} else {
 			// A fragment we no longer originate: purge it.
 			lv.db[l.ID] = &dbEntry{lsp: mustLSP(s.signLSP(purgeRaw(l.Level, l.ID, l.Seq, l.Flags&3))), rxAt: now, own: true, srm: true, purgeAt: now.Add(60 * time.Second)}
@@ -718,9 +714,10 @@ func (s *session) rxSNP(p *PDU) {
 			case 1:
 				if s.originates(x.ID.Node().Sys()) {
 					// Neighbor has a newer copy of an LSP we originate.
-					if o, f := lv.orig[x.ID.Node().Sys()], x.ID[7]; x.ID[6] == 0 && o != nil && int(f) < o.frags && x.Seq >= o.seq[f] {
-						o.seq[f] = x.Seq
-						lv.dirty = true
+					if o, f := lv.orig[x.ID.Node().Sys()], x.ID[7]; x.ID[6] == 0 && o != nil && int(f) < o.frags {
+						s.bumpOwnLocked(lv, x.ID, x.Seq)
+					} else if s.lan != nil && x.ID[6] == pnID && s.lan[sn.Level].isDIS {
+						s.bumpOwnLocked(lv, x.ID, x.Seq)
 					}
 				} else {
 					reqs = append(reqs, LSPEntry{x.Lifetime, x.ID, 0, 0})
@@ -931,6 +928,7 @@ func (s *session) bumpOwnLocked(l *level, id LSPID, seq uint32) {
 	} else if s.lan != nil && id[6] == pnID {
 		if ll := s.lan[l.n]; ll.pnSeq <= seq {
 			ll.pnSeq = seq
+			ll.pnForce = true
 		}
 	}
 	l.dirty = true

@@ -59,5 +59,9 @@
 /configure router "Base" interface "isis-lan" ipv4 primary address 10.0.60.1 prefix-length 24
 /configure router "Base" interface "isis-lan" ipv6 address 2001:db8:60::1 prefix-length 64
 /configure router "Base" isis 0 interface "isis-lan" interface-type broadcast
-/configure router "Base" isis 0 level 2 authentication-key "clabgen-l2" authentication-type message-digest
-/configure router "Base" isis 0 interface "isis-p2p" hello-authentication-key "clabgen-hello" hello-authentication-type message-digest
+/configure system security keychains keychain "isis-l2" admin-state enable
+/configure system security keychains keychain "isis-l2" bidirectional entry 1 algorithm hmac-sha-256 authentication-key "clabgen-sha256" begin-time 2026-01-01T00:00:00Z
+/configure system security keychains keychain "isis-hello" admin-state enable
+/configure system security keychains keychain "isis-hello" bidirectional entry 2 algorithm hmac-sha-1 authentication-key "clabgen-sha1" begin-time 2026-01-01T00:00:00Z
+/configure router "Base" isis 0 level 2 authentication-keychain "isis-l2"
+/configure router "Base" isis 0 interface "isis-p2p" hello-authentication-keychain "isis-hello"
