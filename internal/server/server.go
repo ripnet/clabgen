@@ -290,7 +290,7 @@ func protocolPB(v core.ProtocolView) (*v1.Protocol, error) {
 
 func (s *Server) ListProtocols(ctx context.Context, r *connect.Request[v1.ListProtocolsRequest]) (*connect.Response[v1.ListProtocolsResponse], error) {
 	out := &v1.ListProtocolsResponse{}
-	for _, v := range s.eng.Protocols(r.Msg.WithStatus) {
+	for _, v := range s.eng.ProtocolList(r.Msg.WithStatus, r.Msg.Brief) {
 		p, err := protocolPB(v)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, err)

@@ -561,21 +561,29 @@ func (e *Engine) GetProtocol(name string) (ProtocolView, error) {
 	if !ok {
 		return ProtocolView{}, fmt.Errorf("protocol %s: %w", name, ErrNotFound)
 	}
-	return e.view(in, true), nil
+	return e.view(in, true, false), nil
 }
 
-func (e *Engine) view(in *instance, withStatus bool) ProtocolView {
+func (e *Engine) view(in *instance, withStatus, brief bool) ProtocolView {
 	e.mu.RLock()
 	v := ProtocolView{ProtocolSpec: in.spec, State: in.state, Error: in.err}
 	sess := in.sess
 	e.mu.RUnlock()
 	if withStatus && sess != nil {
-		v.Status = sess.Status()
+		if b, ok := sess.(protocol.Briefer); ok && brief {
+			v.Status = b.Brief()
+		} else {
+			v.Status = sess.Status()
+		}
 	}
 	return v
 }
 
-func (e *Engine) Protocols(withStatus bool) []ProtocolView {
+func (e *Engine) Protocols(withStatus bool) []ProtocolView { return e.ProtocolList(withStatus, false) }
+
+// ProtocolList lists all instances; with brief, sessions that offer a
+// compact status (protocol.Briefer) report that instead.
+func (e *Engine) ProtocolList(withStatus, brief bool) []ProtocolView {
 	e.mu.RLock()
 	list := make([]*instance, 0, len(e.insts))
 	for _, in := range e.insts {
@@ -584,7 +592,7 @@ func (e *Engine) Protocols(withStatus bool) []ProtocolView {
 	e.mu.RUnlock()
 	out := make([]ProtocolView, 0, len(list))
 	for _, in := range list {
-		out = append(out, e.view(in, withStatus))
+		out = append(out, e.view(in, withStatus, brief))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out

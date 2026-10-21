@@ -62,7 +62,7 @@ export function useFlowIndex(): Map<string, { agentId: string; agent: string; na
   const p = usePoll(
     async () => {
       const m = new Map<string, { agentId: string; agent: string; name: string }>();
-      const res = await Promise.allSettled(agents.map((a) => client(a.id).listProtocols({ withStatus: true }, { timeoutMs: 3000 })));
+      const res = await Promise.allSettled(agents.map((a) => client(a.id).listProtocols({ withStatus: true, brief: true }, { timeoutMs: 3000 })));
       res.forEach((r, i) => {
         if (r.status !== "fulfilled") return;
         for (const pr of r.value.protocols) {

@@ -98,6 +98,11 @@ type Type interface {
 	Start(env Env, cfg any) (Session, error)
 }
 
+// Briefer may be implemented by a Session whose Status is large (e.g. an
+// LSDB). Brief returns a compact status for lists that poll many
+// protocols; detail views still use Status.
+type Briefer interface{ Brief() any }
+
 // Categorized may be implemented by a Type to group it in UIs. Types
 // without it are in CategoryProtocol.
 type Categorized interface{ Category() string }

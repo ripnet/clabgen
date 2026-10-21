@@ -1912,7 +1912,10 @@ func (x *Protocol) GetStatus() *structpb.Struct {
 type ListProtocolsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Include each instance's live status.
-	WithStatus    bool `protobuf:"varint,1,opt,name=with_status,json=withStatus,proto3" json:"with_status,omitempty"`
+	WithStatus bool `protobuf:"varint,1,opt,name=with_status,json=withStatus,proto3" json:"with_status,omitempty"`
+	// With with_status: compact statuses where a protocol offers one (e.g.
+	// IS-IS without its LSDB rows), for lists that poll often.
+	Brief         bool `protobuf:"varint,2,opt,name=brief,proto3" json:"brief,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1950,6 +1953,13 @@ func (*ListProtocolsRequest) Descriptor() ([]byte, []int) {
 func (x *ListProtocolsRequest) GetWithStatus() bool {
 	if x != nil {
 		return x.WithStatus
+	}
+	return false
+}
+
+func (x *ListProtocolsRequest) GetBrief() bool {
+	if x != nil {
+		return x.Brief
 	}
 	return false
 }
@@ -2868,10 +2878,11 @@ const file_clabgen_v1_agent_proto_rawDesc = "" +
 	"\x06config\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x06config\x12\x14\n" +
 	"\x05state\x18\x05 \x01(\tR\x05state\x12\x14\n" +
 	"\x05error\x18\x06 \x01(\tR\x05error\x12/\n" +
-	"\x06status\x18\a \x01(\v2\x17.google.protobuf.StructR\x06status\"7\n" +
+	"\x06status\x18\a \x01(\v2\x17.google.protobuf.StructR\x06status\"M\n" +
 	"\x14ListProtocolsRequest\x12\x1f\n" +
 	"\vwith_status\x18\x01 \x01(\bR\n" +
-	"withStatus\"K\n" +
+	"withStatus\x12\x14\n" +
+	"\x05brief\x18\x02 \x01(\bR\x05brief\"K\n" +
 	"\x15ListProtocolsResponse\x122\n" +
 	"\tprotocols\x18\x01 \x03(\v2\x14.clabgen.v1.ProtocolR\tprotocols\"(\n" +
 	"\x12GetProtocolRequest\x12\x12\n" +

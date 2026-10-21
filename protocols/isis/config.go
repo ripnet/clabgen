@@ -28,6 +28,38 @@ type Config struct {
 	Overload bool `json:"overload,omitempty" jsonschema:"description=Set the overload bit"`
 	// Interface subnets are advertised automatically.
 	Prefixes []Prefix `json:"prefixes,omitempty" jsonschema:"description=Extra prefixes to advertise (route injection)"`
+
+	Topology Topology `json:"topology" jsonschema:"description=Simulated routers behind this one; their LSPs are originated here"`
+}
+
+// Topology describes an emulated network of routers attached to us.
+type Topology struct {
+	Kind   string   `json:"kind" jsonschema:"enum=none,enum=grid,enum=ring,enum=line,enum=full,enum=custom,description=grid: rows × cols; ring/line/full (mesh): nodes; custom: nodes with links"`
+	Rows   int      `json:"rows,omitempty" jsonschema:"minimum=1,description=grid rows"`
+	Cols   int      `json:"cols,omitempty" jsonschema:"minimum=1,description=grid columns"`
+	Nodes  int      `json:"nodes,omitempty" jsonschema:"minimum=1,description=Node count for ring / line / full"`
+	Attach []string `json:"attach,omitempty" jsonschema:"description=Nodes linked to us (names like r1-1 for grids or r1). Default: the first node"`
+	Metric uint32   `json:"metric,omitempty" jsonschema:"description=Metric of every link. Default 10"`
+
+	SystemIDBase    string `json:"system_id_base,omitempty" jsonschema:"description=System ID of the first node; the others count up. Default 0000.1000.0001"`
+	HostnamePrefix  string `json:"hostname_prefix,omitempty" jsonschema:"description=Default sim-"`
+	LoopbackBase    string `json:"loopback_base,omitempty" jsonschema:"description=Loopback of the first node (e.g. 10.255.0.1/32); the others count up"`
+	PrefixBase      string `json:"prefix_base,omitempty" jsonschema:"description=First prefix (e.g. 10.200.0.0/24); each node gets prefixes_per_node consecutive ones"`
+	PrefixesPerNode int    `json:"prefixes_per_node,omitempty" jsonschema:"minimum=0"`
+
+	Custom []SimNode `json:"custom,omitempty" jsonschema:"description=Nodes for kind custom"`
+}
+
+type SimNode struct {
+	Name     string    `json:"name"`
+	SystemID string    `json:"system_id,omitempty"`
+	Links    []SimLink `json:"links,omitempty" jsonschema:"description=Links to other nodes (by name; us for this router). Links are two-way"`
+	Prefixes []Prefix  `json:"prefixes,omitempty"`
+}
+
+type SimLink struct {
+	To     string `json:"to"`
+	Metric uint32 `json:"metric,omitempty" jsonschema:"description=Default: the topology metric"`
 }
 
 type Prefix struct {
@@ -92,6 +124,11 @@ func (c *Config) Validate() error {
 	}
 	if total > 100000 {
 		return fmt.Errorf("%d prefixes: at most 100000", total)
+	}
+	if c.Topology.Kind != "" && c.Topology.Kind != "none" {
+		if _, err := buildTopology(c.Topology, nil); err != nil {
+			return fmt.Errorf("topology: %w", err)
+		}
 	}
 	return nil
 }

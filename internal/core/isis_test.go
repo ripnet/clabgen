@@ -17,9 +17,26 @@ import (
 	_ "github.com/ripnet/clabgen/protocols/isis"
 )
 
+// isisStatus returns the status with each LSDB row merged with its full
+// content (the status itself only has summaries).
 func isisStatus(t *testing.T, e *core.Engine) map[string]any {
 	t.Helper()
-	return flowStatus(t, e, "isis")
+	st := flowStatus(t, e, "isis")
+	rows, _ := st["lsdb"].([]any)
+	for _, r := range rows {
+		m := r.(map[string]any)
+		d, err := e.RunAction(context.Background(), "isis", "lsp", json.RawMessage(fmt.Sprintf(`{"id":%q,"level":%v}`, m["lsp_id"], m["level"])))
+		if err != nil {
+			continue // removed meanwhile
+		}
+		b, _ := json.Marshal(d)
+		var dm map[string]any
+		json.Unmarshal(b, &dm)
+		for k, v := range dm {
+			m[k] = v
+		}
+	}
+	return st
 }
 
 func lsdb(st map[string]any) []map[string]any {
@@ -299,4 +316,79 @@ func TestISISLAN(t *testing.T) {
 		l := lspOf(isisStatus(t, b), "0000.0000.0001")
 		return l != nil && strings.Join(lspNeighbors(l), ",") == "0000.0000.0002.01"
 	})
+}
+
+func TestISISTopology(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	mk := func(e *core.Engine, cfg string) {
+		t.Helper()
+		if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "isis", Type: "isis", Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	topo := `"topology":{"kind":"grid","rows":3,"cols":3,"loopback_base":"10.255.0.1/32","prefix_base":"10.200.0.0/24","prefixes_per_node":2}`
+	mk(a, `{"system_id":"0000.0000.000a","hello_interval":1,"csnp_interval":1,`+topo+`}`)
+	mk(b, `{"system_id":"0000.0000.000b","hello_interval":1,"csnp_interval":1}`)
+	sim := func(i int) string { return fmt.Sprintf("0000.1000.%04x", i) } // r1-1 = 1, r2-2 = 5, r3-3 = 9
+	eventually(t, "simulated LSPs at b", func() bool { return num(isisStatus(t, b), "lsdb_total") == 11 })
+	st := isisStatus(t, b)
+	if nb := strings.Join(lspNeighbors(lspOf(st, sim(5))), ","); nb != sim(2)+".00,"+sim(4)+".00,"+sim(6)+".00,"+sim(8)+".00" {
+		t.Fatalf("r2-2 neighbors %s", nb)
+	}
+	if nb := lspNeighbors(lspOf(st, sim(1))); len(nb) != 3 || nb[0] != "0000.0000.000a.00" {
+		t.Fatalf("r1-1 neighbors %v", nb)
+	}
+	if nb := lspNeighbors(lspOf(st, "0000.0000.000a")); len(nb) != 2 { // b and r1-1
+		t.Fatalf("a neighbors %v", nb)
+	}
+	if p := prefixes(lspOf(st, sim(9))); !p["10.255.0.9/32"] || !p["10.200.16.0/24"] || !p["10.200.17.0/24"] {
+		t.Fatalf("r3-3 prefixes %v", p)
+	}
+	if lspOf(st, sim(5))["hostname"] != "sim-r2-2" {
+		t.Fatal("hostname")
+	}
+
+	// Link r1-1 — r1-2 down: both LSPs drop it.
+	act(t, a, "topology-link", `{"a":"r1-1","b":"r1-2","up":false}`)
+	eventually(t, "link down flooded", func() bool {
+		st := isisStatus(t, b)
+		return len(lspNeighbors(lspOf(st, sim(1)))) == 2 && len(lspNeighbors(lspOf(st, sim(2)))) == 2
+	})
+	// Metric change on the attachment.
+	act(t, a, "topology-link", `{"a":"us","b":"r1-1","up":true,"metric":99}`)
+	eventually(t, "metric flooded", func() bool {
+		nb, _ := lspOf(isisStatus(t, b), "0000.0000.000a")["neighbors"].([]any)
+		for _, x := range nb {
+			if m := x.(map[string]any); m["id"] == sim(1)+".00" && num(m, "metric") == 99 {
+				return true
+			}
+		}
+		return false
+	})
+	// Node r3-3 down: purged at b; up again: back.
+	act(t, a, "topology-node", `{"node":"r3-3","up":false}`)
+	eventually(t, "node purged", func() bool { l := lspOf(isisStatus(t, b), sim(9)); return l != nil && num(l, "lifetime") == 0 })
+	act(t, a, "topology-node", `{"node":"r3-3","up":true,"overload":true}`)
+	eventually(t, "node back, overloaded", func() bool {
+		l := lspOf(isisStatus(t, b), sim(9))
+		return l != nil && num(l, "lifetime") > 0 && l["overload"] == true
+	})
+	if tp, _ := isisStatus(t, a)["topology"].(map[string]any); tp == nil || num(tp, "nodes") != 9 || len(tp["down_links"].([]any)) != 1 {
+		t.Fatalf("topology status %v", tp)
+	}
+	// Restart a: b still holds the simulated LSPs; a takes them over.
+	// r1-1 changed (link down, metric), so b holds a newer copy than a
+	// fresh start produces.
+	seq := num(lspOf(isisStatus(t, b), sim(1)), "seq")
+	a.DeleteProtocol("isis")
+	mk(a, `{"system_id":"0000.0000.000a","hello_interval":1,"csnp_interval":1,`+topo+`}`)
+	for i := 0; i < 50; i++ {
+		time.Sleep(100 * time.Millisecond)
+		l := lspOf(isisStatus(t, b), sim(1))
+		if l != nil && num(l, "seq") > seq && len(lspNeighbors(l)) == 3 {
+			t.Logf("taken over after %d ms (seq %v → %v)", i*100, seq, num(l, "seq"))
+			return
+		}
+	}
+	t.Fatalf("not taken over: b has %v, a has %v", lspOf(isisStatus(t, b), sim(1))["seq"], lspOf(isisStatus(t, a), sim(1))["seq"])
 }

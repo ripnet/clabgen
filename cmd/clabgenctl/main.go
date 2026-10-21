@@ -577,8 +577,7 @@ func summary(p *v1.Protocol) string {
 		} else if adj["state"] != "down" {
 			out += " nbr=" + nbr
 		}
-		db, _ := m["lsdb"].([]any)
-		out += fmt.Sprintf(" lsdb=%d prefixes=%v", len(db), m["advertised_prefixes"])
+		out += fmt.Sprintf(" lsdb=%v prefixes=%v", m["lsdb_total"], m["advertised_prefixes"])
 		if m["overload"] == true {
 			out += " overload"
 		}
@@ -613,7 +612,7 @@ func protocolsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, cancel := ctx()
 			defer cancel()
-			r, err := client().ListProtocols(c, connect.NewRequest(&v1.ListProtocolsRequest{WithStatus: true}))
+			r, err := client().ListProtocols(c, connect.NewRequest(&v1.ListProtocolsRequest{WithStatus: true, Brief: true}))
 			if err != nil {
 				return err
 			}

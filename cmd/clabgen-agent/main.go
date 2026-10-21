@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"regexp"
@@ -42,6 +43,7 @@ func main() {
 	scenario := flag.String("scenario", envOr("CLABGEN_SCENARIO", ""), "YAML scenario to apply at startup (env CLABGEN_SCENARIO)")
 	logLevel := flag.String("log-level", "info", "debug, info, warn or error")
 	showVersion := flag.Bool("version", false, "print version and exit")
+	profile := flag.Bool("pprof", envOr("CLABGEN_PPROF", "") != "", "serve Go profiling at /debug/pprof/ on the API port (env CLABGEN_PPROF)")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version.Version)
@@ -108,6 +110,12 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle(path, h)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprintln(w, "ok") })
+	if *profile {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	}
 	mux.Handle("/", webui.Handler(reg, webui.Options{AllowManual: true}))
 	srv := &http.Server{Addr: *listen, Handler: h2c.NewHandler(mux, &http2.Server{}), ReadHeaderTimeout: 10 * time.Second}
 	go func() {

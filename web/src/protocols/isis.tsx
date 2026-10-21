@@ -1,9 +1,11 @@
 import { Fragment, useState } from "react";
 import type { JsonObject } from "@bufbuild/protobuf";
+import { client, usePoll } from "../api";
 import { registerView, type Health } from "./registry";
 
 type Nbr = { id: string; metric: number };
 type Pfx = { prefix: string; metric: number; down?: boolean };
+// LSDB rows in the status are summaries; the "lsp" action has the rest.
 type LSPRow = {
   level: number;
   lsp_id: string;
@@ -13,12 +15,58 @@ type LSPRow = {
   own?: boolean;
   hostname?: string;
   overload?: boolean;
+  neighbors: number;
+  prefixes: number;
+};
+type LSPDetail = {
   areas?: string[];
   router_id?: string;
   addresses?: string[];
   neighbors?: Nbr[];
   prefixes?: Pfx[];
 };
+
+function LSPDetailRow({ agentId, name, row, nameOf }: { agentId?: string; name?: string; row: LSPRow; nameOf: (id: string) => string }) {
+  const d = usePoll(
+    async () => {
+      if (!agentId || !name) return undefined;
+      const r = await client(agentId).runProtocolAction({ name, action: "lsp", args: { id: row.lsp_id, level: row.level } });
+      return r.result as unknown as LSPDetail;
+    },
+    [agentId, name, row.lsp_id, row.level],
+    3000,
+  );
+  const l = d.data;
+  if (d.error) return <div className="error-text">{d.error}</div>;
+  if (!l) return <div className="muted">Loading…</div>;
+  return (
+    <div className="lsp-grid">
+      <div>
+        <div className="field-label">neighbors</div>
+        {(l.neighbors ?? []).map((n) => (
+          <div key={n.id} className="mono">
+            {nameOf(n.id)} <span className="muted">metric {n.metric}</span>
+          </div>
+        ))}
+        {!l.neighbors?.length && <div className="muted">none</div>}
+        {l.router_id && <div className="mono muted">router ID {l.router_id}</div>}
+        {l.addresses && <div className="mono muted">{l.addresses.join(", ")}</div>}
+      </div>
+      <div>
+        <div className="field-label">prefixes ({l.prefixes?.length ?? 0})</div>
+        <div className="pfx-list mono">
+          {(l.prefixes ?? []).slice(0, 500).map((p) => (
+            <div key={p.prefix}>
+              {p.prefix} <span className="muted">{p.metric}</span>
+              {p.down && <span className="tag">down</span>}
+            </div>
+          ))}
+          {(l.prefixes?.length ?? 0) > 500 && <div className="muted">… {l.prefixes!.length - 500} more</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
 type Adj = ISISStatus["adjacency"];
 type LANRow = { level: number; we_are_dis: boolean; dis: string; lan_id: string; priority: number; elections: number };
 type ISISStatus = {
@@ -49,6 +97,17 @@ type ISISStatus = {
   adjacencies?: ISISStatus["adjacency"][];
   lan?: LANRow[];
   lsdb: LSPRow[];
+  lsdb_total?: number;
+  topology?: {
+    kind: string;
+    nodes: number;
+    links: number;
+    prefixes: number;
+    attached: string[];
+    down_nodes?: string[];
+    down_links?: string[];
+    overloaded?: string[];
+  };
   counters: Record<string, number>;
 };
 
@@ -137,7 +196,7 @@ function namer(rows: LSPRow[]) {
   };
 }
 
-function Status({ status }: { status: JsonObject }) {
+function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?: string; name?: string }) {
   const s = as(status);
   const a = s.adjacency;
   const [open, setOpen] = useState<string>();
@@ -196,7 +255,30 @@ function Status({ status }: { status: JsonObject }) {
         </>
       )}
 
+      {s.topology && (
+        <>
+          <h4>Emulated topology</h4>
+          <div className="flow-path mono small-note">
+            {s.topology.kind} · {s.topology.nodes} routers · {s.topology.links} links · {s.topology.prefixes} prefixes · attached to us: {s.topology.attached.join(", ") || "none"}
+          </div>
+          {(s.topology.down_nodes?.length || s.topology.down_links?.length || s.topology.overloaded?.length) ? (
+            <div className="warn-box">
+              {s.topology.down_nodes?.length ? <div>routers down: {s.topology.down_nodes.join(", ")}</div> : null}
+              {s.topology.down_links?.length ? <div>links down: {s.topology.down_links.join(", ")}</div> : null}
+              {s.topology.overloaded?.length ? <div>overloaded: {s.topology.overloaded.join(", ")}</div> : null}
+            </div>
+          ) : (
+            <div className="muted small-note">All simulated routers and links are up. Use the topology-link and topology-node actions to fail them.</div>
+          )}
+        </>
+      )}
+
       <h4>Link-state database</h4>
+      {s.lsdb_total !== undefined && s.lsdb_total > s.lsdb.length && (
+        <div className="muted small-note">
+          Showing {s.lsdb.length} of {s.lsdb_total} LSPs.
+        </div>
+      )}
       <div className="table-wrap">
         <table className="table dense hover">
           <thead>
@@ -227,38 +309,14 @@ function Status({ status }: { status: JsonObject }) {
                     <td className="num mono">{`0x${l.seq.toString(16)}`}</td>
                     <td className="num mono">{purged ? "purged" : `${l.lifetime} s`}</td>
                     <td className="mono">{l.checksum}</td>
-                    <td className="num mono">{l.neighbors?.length ?? 0}</td>
-                    <td className="num mono">{l.prefixes?.length ?? 0}</td>
+                    <td className="num mono">{l.neighbors}</td>
+                    <td className="num mono">{l.prefixes}</td>
                     <td>{l.overload && <span className="pill pill-warn">OL</span>}</td>
                   </tr>
                   {open === key && (
                     <tr className="lsp-detail">
                       <td colSpan={8}>
-                        <div className="lsp-grid">
-                          <div>
-                            <div className="field-label">neighbors</div>
-                            {(l.neighbors ?? []).map((n) => (
-                              <div key={n.id} className="mono">
-                                {name(n.id)} <span className="muted">metric {n.metric}</span>
-                              </div>
-                            ))}
-                            {!l.neighbors?.length && <div className="muted">none</div>}
-                            {l.router_id && <div className="mono muted">router ID {l.router_id}</div>}
-                            {l.addresses && <div className="mono muted">{l.addresses.join(", ")}</div>}
-                          </div>
-                          <div>
-                            <div className="field-label">prefixes ({l.prefixes?.length ?? 0})</div>
-                            <div className="pfx-list mono">
-                              {(l.prefixes ?? []).slice(0, 500).map((p) => (
-                                <div key={p.prefix}>
-                                  {p.prefix} <span className="muted">{p.metric}</span>
-                                  {p.down && <span className="tag">down</span>}
-                                </div>
-                              ))}
-                              {(l.prefixes?.length ?? 0) > 500 && <div className="muted">… {l.prefixes!.length - 500} more</div>}
-                            </div>
-                          </div>
-                        </div>
+                        <LSPDetailRow agentId={agentId} name={inst} row={l} nameOf={name} />
                       </td>
                     </tr>
                   )}

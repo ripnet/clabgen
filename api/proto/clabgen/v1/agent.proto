@@ -208,6 +208,9 @@ message Protocol {
 message ListProtocolsRequest {
   // Include each instance's live status.
   bool with_status = 1;
+  // With with_status: compact statuses where a protocol offers one (e.g.
+  // IS-IS without its LSDB rows), for lists that poll often.
+  bool brief = 2;
 }
 message ListProtocolsResponse { repeated Protocol protocols = 1; }
 message GetProtocolRequest { string name = 1; }

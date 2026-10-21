@@ -23,7 +23,7 @@ export function Overview() {
       if (document.visibilityState !== "visible") return;
       for (const a of agents) {
         const c = client(a.id);
-        Promise.all([c.listProtocols({ withStatus: true }, { timeoutMs: 4000 }), c.listPorts({}, { timeoutMs: 4000 })]).then(
+        Promise.all([c.listProtocols({ withStatus: true, brief: true }, { timeoutMs: 4000 }), c.listPorts({}, { timeoutMs: 4000 })]).then(
           ([p, ports]) => !cancelled && setSnap((m) => ({ ...m, [a.id]: { protocols: p.protocols, ports: ports.ports } })),
           (e) => !cancelled && setSnap((m) => ({ ...m, [a.id]: { error: errorText(e) } })),
         );

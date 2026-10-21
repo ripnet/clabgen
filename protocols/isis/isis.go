@@ -41,6 +41,9 @@ func (isisType) Actions() []protocol.Action {
 		{Name: "advertise", Description: "Advertise more prefixes (until withdrawn or restarted)", NewArgs: func() any { return &PrefixArgs{} }},
 		{Name: "withdraw", Description: "Stop advertising prefixes (injected or from config)", NewArgs: func() any { return &PrefixArgs{} }},
 		{Name: "flap", Description: "Bring the adjacency down for a while, then let it come back", NewArgs: func() any { return &FlapArgs{Seconds: 10, Mode: "reset"} }},
+		{Name: "topology-link", Description: "Take a simulated link down or up, or change its metric", NewArgs: func() any { return &TopoLinkArgs{} }},
+		{Name: "topology-node", Description: "Take a simulated router down or up, or set its overload bit", NewArgs: func() any { return &TopoNodeArgs{} }},
+		{Name: "lsp", Description: "Show one LSP's full content (neighbors, prefixes, addresses)", NewArgs: func() any { return &LSPArgs{} }},
 		{Name: "clear", Description: "Reset counters"},
 	}
 }
@@ -115,6 +118,16 @@ type dbEntry struct {
 	srm     bool      // send to the neighbor
 	srmAt   time.Time // last sent (for retransmission)
 	purgeAt time.Time // zero-age entries are removed after ZeroAgeLifetime
+	info    *LSPInfo  // decoded content, cached for status
+}
+
+// infoLocked returns the entry's decoded content (cached).
+func (e *dbEntry) infoLocked() *LSPInfo {
+	if e.info == nil {
+		in := e.lsp.Info()
+		e.info = &in
+	}
+	return e.info
 }
 
 func (e *dbEntry) remaining(now time.Time) uint16 {
@@ -128,9 +141,8 @@ func (e *dbEntry) remaining(now time.Time) uint16 {
 type level struct {
 	n  int
 	db map[LSPID]*dbEntry
-	// our fragments: number → seq
-	ownSeq    map[byte]uint32
-	ownFrags  int
+	// LSPs we originate, per system: us and any simulated routers.
+	orig      map[SysID]*origin
 	lastCSNP  time.Time
 	dirty     bool // regenerate our LSPs
 	refreshAt time.Time
@@ -153,11 +165,13 @@ type session struct {
 	lv       map[int]*level
 
 	adjTransitions int // LAN adjacency ups and downs
-	flapTill       time.Time
-	flapMode       string
-	nextHelo       time.Time
-	counters       map[string]uint64
-	events         []string
+
+	topo     *topology // simulated routers behind us (nil: none)
+	flapTill time.Time
+	flapMode string
+	nextHelo time.Time
+	counters map[string]uint64
+	events   []string
 
 	stop chan struct{}
 	done chan struct{}
@@ -189,9 +203,16 @@ func (isisType) Start(env protocol.Env, c any) (protocol.Session, error) {
 		}
 	}
 	for _, n := range cfg.levels() {
-		s.lv[n] = &level{n: n, db: map[LSPID]*dbEntry{}, ownSeq: map[byte]uint32{}, dirty: true}
+		s.lv[n] = &level{n: n, db: map[LSPID]*dbEntry{}, orig: map[SysID]*origin{}, dirty: true}
 	}
 	s.adj.state = stDown
+	if k := cfg.Topology.Kind; k != "" && k != "none" {
+		t, err := buildTopology(cfg.Topology, &s.sys)
+		if err != nil {
+			return nil, fmt.Errorf("topology: %w", err)
+		}
+		s.topo = t
+	}
 	if cfg.Circuit == "broadcast" {
 		s.lan = map[int]*lanLevel{}
 		for _, n := range cfg.levels() {
@@ -588,7 +609,7 @@ func (s *session) rxLSP(p *PDU) {
 		return
 	}
 	e := lv.db[l.ID]
-	own := l.ID.Node().Sys() == s.sys
+	own := s.originates(l.ID.Node().Sys())
 	cmp := 1
 	if e != nil {
 		cmp = newer(l.Seq, l.Lifetime, l.Checksum, e, now)
@@ -601,9 +622,9 @@ func (s *session) rxLSP(p *PDU) {
 			break
 		}
 		frag := l.ID[7]
-		if l.ID[6] == 0 && int(frag) < lv.ownFrags {
-			if l.Seq >= lv.ownSeq[frag] {
-				lv.ownSeq[frag] = l.Seq
+		if o := lv.orig[l.ID.Node().Sys()]; l.ID[6] == 0 && o != nil && int(frag) < o.frags {
+			if l.Seq >= o.seq[frag] {
+				o.seq[frag] = l.Seq
 			}
 			lv.dirty = true
 		} else if s.lan != nil && l.ID[6] == pnID && frag == 0 && s.lan[l.Level].isDIS {
@@ -637,6 +658,11 @@ func (s *session) rxLSP(p *PDU) {
 	case cmp == 0:
 		if e != nil {
 			e.srm = false
+			if own && e.own && l.Lifetime != 0 && l.Checksum != e.lsp.Checksum {
+				// Same sequence, different content: a copy from before a
+				// restart. Move past it (ISO 10589 7.3.16.1).
+				s.bumpOwnLocked(lv, l.ID, l.Seq)
+			}
 		}
 		if s.lan == nil {
 			out = append(out, EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}}))
@@ -685,11 +711,14 @@ func (s *session) rxSNP(p *PDU) {
 			switch newer(x.Seq, x.Lifetime, x.Checksum, e, now) {
 			case 0:
 				e.srm = false // acknowledged / in sync
+				if e.own && x.Lifetime != 0 && x.Checksum != e.lsp.Checksum && s.originates(x.ID.Node().Sys()) {
+					s.bumpOwnLocked(lv, x.ID, x.Seq)
+				}
 			case 1:
-				if x.ID.Node().Sys() == s.sys {
-					// Neighbor has a newer copy of our LSP than we do.
-					if f := x.ID[7]; x.ID[6] == 0 && int(f) < lv.ownFrags && x.Seq >= lv.ownSeq[f] {
-						lv.ownSeq[f] = x.Seq
+				if s.originates(x.ID.Node().Sys()) {
+					// Neighbor has a newer copy of an LSP we originate.
+					if o, f := lv.orig[x.ID.Node().Sys()], x.ID[7]; x.ID[6] == 0 && o != nil && int(f) < o.frags && x.Seq >= o.seq[f] {
+						o.seq[f] = x.Seq
 						lv.dirty = true
 					}
 				} else {
@@ -853,15 +882,72 @@ func (s *session) originateLocked(l *level, now time.Time) {
 	for _, k := range keys {
 		pfx = append(pfx, s.prefixes[k])
 	}
-	isType := lspTypeL1L2
-	if l.n == 1 {
-		isType = lspTypeL1
-		if s.cfg.Level == "L1L2" {
-			isType = lspTypeL1L2
+	isType := s.isType(l.n)
+	if s.topo != nil {
+		body.Neighbors = append(body.Neighbors, s.topo.attachedLocked(l.n)...)
+	}
+	s.originateSys(l, s.sys, body, pfx, isType, now)
+	if s.topo != nil {
+		s.topo.originateLocked(s, l, isType, now)
+	}
+	if s.lan != nil {
+		s.pseudonodeLocked(l, isType, now)
+	}
+	if now.After(l.refreshAt) || l.refreshAt.IsZero() {
+		l.refreshAt = now.Add(time.Duration(s.cfg.LSPRefresh) * time.Second)
+	}
+	l.dirty = false
+}
+
+// bumpOwnLocked makes our next copy of id go past seq.
+func (s *session) bumpOwnLocked(l *level, id LSPID, seq uint32) {
+	if id[6] == 0 {
+		if o := l.orig[id.Node().Sys()]; o != nil && o.seq[id[7]] <= seq {
+			o.seq[id[7]] = seq
+			o.force[id[7]] = true
+		}
+	} else if s.lan != nil && id[6] == pnID {
+		if ll := s.lan[l.n]; ll.pnSeq <= seq {
+			ll.pnSeq = seq
 		}
 	}
+	l.dirty = true
+}
+
+func (s *session) isType(n int) byte {
+	if n == 1 && s.cfg.Level != "L1L2" {
+		return lspTypeL1
+	}
+	return lspTypeL1L2
+}
+
+// originates reports whether we originate LSPs for sys (us or a
+// simulated router).
+func (s *session) originates(sys SysID) bool {
+	if sys == s.sys {
+		return true
+	}
+	return s.topo != nil && s.topo.bySys[sys] != nil
+}
+
+// origin tracks the LSP fragments we originate for one system.
+type origin struct {
+	seq   map[byte]uint32
+	force map[byte]bool // re-originate even if unchanged
+	frags int
+}
+
+// originateSys (re)builds the LSP fragments of one system we originate:
+// body goes in fragment 0 with as many prefixes as fit; the rest follow in
+// further fragments. Sequence numbers only change with content (or on
+// refresh); fragments no longer needed are purged.
+func (s *session) originateSys(l *level, sys SysID, body lspBody, pfx []IPReach, isType byte, now time.Time) {
+	o := l.orig[sys]
+	if o == nil {
+		o = &origin{seq: map[byte]uint32{}, force: map[byte]bool{}}
+		l.orig[sys] = o
+	}
 	life := uint16(s.cfg.LSPLifetime)
-	// Fragment 0 carries everything but the prefixes that don't fit.
 	var frags [][]IPReach
 	rest := pfx
 	first := body
@@ -874,52 +960,47 @@ func (s *session) originateLocked(l *level, now time.Time) {
 		}
 		first = lspBody{}
 	}
-	built := map[LSPID][]byte{}
+	refresh := now.After(l.refreshAt)
 	for i, fp := range frags {
 		b := lspBody{Prefixes: fp}
 		if i == 0 {
 			b = body
 			b.Prefixes = fp
 		}
-		id := MakeLSPID(s.sys, 0, byte(i))
+		id := MakeLSPID(sys, 0, byte(i))
 		old := l.db[id]
-		seq := l.ownSeq[byte(i)]
+		seq := o.seq[byte(i)]
 		raw := EncodeLSP(l.n, id, seq, life, isType, b)
-		// Only bump the sequence when the content changed (or to refresh).
-		// (or when a neighbor showed us a newer copy, which raised ownSeq).
-		if old == nil || !old.own || !sameContent(old.lsp.Raw, raw) || now.After(l.refreshAt) || seq == 0 || old.lsp.Seq != seq {
+		// Bump the sequence when the content changed, to refresh, or when a
+		// neighbor showed us a newer copy (which raised o.seq).
+		if old == nil || !old.own || !old.purgeAt.IsZero() || !sameContent(old.lsp.Raw, raw) || refresh || seq == 0 || old.lsp.Seq != seq || o.force[byte(i)] {
+			delete(o.force, byte(i))
 			seq++
-			l.ownSeq[byte(i)] = seq
-			raw = EncodeLSP(l.n, id, seq, life, isType, b)
-		} else {
-			raw = old.lsp.Raw
+			o.seq[byte(i)] = seq
+			l.db[id] = &dbEntry{lsp: mustLSP(EncodeLSP(l.n, id, seq, life, isType, b)), rxAt: now, life: life, own: true, srm: s.adjUpAt(l.n)}
 		}
-		built[id] = raw
 	}
-	// Purge fragments we no longer need.
-	for i := len(frags); i < l.ownFrags; i++ {
-		id := MakeLSPID(s.sys, 0, byte(i))
+	s.purgeFrags(l, sys, o, len(frags), isType, now)
+	o.frags = len(frags)
+}
+
+// withdrawSys purges every fragment of a system we stop originating.
+func (s *session) withdrawSys(l *level, sys SysID, isType byte, now time.Time) {
+	if o := l.orig[sys]; o != nil {
+		s.purgeFrags(l, sys, o, 0, isType, now)
+		o.frags = 0
+	}
+}
+
+func (s *session) purgeFrags(l *level, sys SysID, o *origin, from int, isType byte, now time.Time) {
+	for i := from; i < o.frags; i++ {
+		id := MakeLSPID(sys, 0, byte(i))
 		if e := l.db[id]; e != nil && e.own && e.purgeAt.IsZero() {
-			seq := l.ownSeq[byte(i)] + 1
-			l.ownSeq[byte(i)] = seq
+			seq := o.seq[byte(i)] + 1
+			o.seq[byte(i)] = seq
 			l.db[id] = &dbEntry{lsp: mustLSP(purgeRaw(l.n, id, seq, isType)), rxAt: now, own: true, srm: true, purgeAt: now.Add(60 * time.Second)}
 		}
 	}
-	l.ownFrags = len(frags)
-	for id, raw := range built {
-		old := l.db[id]
-		if old != nil && old.own && bytes.Equal(old.lsp.Raw, raw) {
-			continue
-		}
-		l.db[id] = &dbEntry{lsp: mustLSP(raw), rxAt: now, life: life, own: true, srm: s.adjUpAt(l.n)}
-	}
-	if s.lan != nil {
-		s.pseudonodeLocked(l, isType, now)
-	}
-	if now.After(l.refreshAt) || l.refreshAt.IsZero() {
-		l.refreshAt = now.Add(time.Duration(s.cfg.LSPRefresh) * time.Second)
-	}
-	l.dirty = false
 }
 
 // sameContent compares two LSPs ignoring lifetime, sequence and checksum.
@@ -995,7 +1076,23 @@ type AdjStatus struct {
 	DIS         bool     `json:"dis,omitempty"`      // LAN: this neighbor is the DIS
 }
 
+// LSPStatus summarises one LSDB entry. Statuses are polled often, so they
+// carry counts; the "lsp" action returns an LSP's full content.
 type LSPStatus struct {
+	Level     int    `json:"level"`
+	ID        string `json:"lsp_id"`
+	Seq       uint32 `json:"seq"`
+	Lifetime  uint16 `json:"lifetime"`
+	Checksum  string `json:"checksum"`
+	Own       bool   `json:"own,omitempty"`
+	Hostname  string `json:"hostname,omitempty"`
+	Overload  bool   `json:"overload,omitempty"`
+	Neighbors int    `json:"neighbors"`
+	Prefixes  int    `json:"prefixes"`
+}
+
+// LSPDetail is an LSP's full content (the "lsp" action).
+type LSPDetail struct {
 	Level    int    `json:"level"`
 	ID       string `json:"lsp_id"`
 	Seq      uint32 `json:"seq"`
@@ -1003,6 +1100,11 @@ type LSPStatus struct {
 	Checksum string `json:"checksum"`
 	Own      bool   `json:"own,omitempty"`
 	LSPInfo
+}
+
+type LSPArgs struct {
+	ID    string `json:"id" jsonschema:"description=LSP ID like 0000.0000.0001.00-00 (or hostname.00-00)"`
+	Level int    `json:"level,omitempty" jsonschema:"description=1 or 2; default: the first level that has it"`
 }
 
 type Status struct {
@@ -1019,6 +1121,8 @@ type Status struct {
 	Adjacencies []AdjStatus       `json:"adjacencies"` // all neighbors
 	LAN         []LANStatus       `json:"lan,omitempty"`
 	LSDB        []LSPStatus       `json:"lsdb"`
+	LSDBTotal   int               `json:"lsdb_total"` // entries; lsdb lists at most maxStatusLSPs
+	Topology    *TopoStatus       `json:"topology,omitempty"`
 	Counters    map[string]uint64 `json:"counters"`
 }
 
@@ -1040,13 +1144,20 @@ func (s *session) Status() any {
 			e := l.db[id]
 			ls := LSPStatus{Level: n, ID: id.String(), Seq: e.lsp.Seq, Lifetime: e.remaining(now), Checksum: fmt.Sprintf("%#04x", e.lsp.Checksum), Own: e.own}
 			if e.purgeAt.IsZero() || e.remaining(now) > 0 {
-				ls.LSPInfo = e.lsp.Info()
+				in := e.infoLocked()
+				ls.Hostname, ls.Overload, ls.Neighbors, ls.Prefixes = in.Hostname, in.Overload, len(in.Neighbors), len(in.Prefixes)
 				if ls.Hostname != "" {
 					names[id.Node().Sys()] = ls.Hostname
 				}
 			}
-			st.LSDB = append(st.LSDB, ls)
+			st.LSDBTotal++
+			if len(st.LSDB) < maxStatusLSPs {
+				st.LSDB = append(st.LSDB, ls)
+			}
 		}
+	}
+	if s.topo != nil {
+		st.Topology = s.topo.status()
 	}
 	if s.lan != nil {
 		st.Adjacencies, st.LAN = s.lanStatusLocked(now)
@@ -1083,6 +1194,43 @@ func (s *session) Status() any {
 	}
 	return st
 }
+
+func (s *session) lspDetailLocked(a *LSPArgs) (any, error) {
+	now := time.Now()
+	for _, n := range s.sortedLevels() {
+		if a.Level != 0 && a.Level != n {
+			continue
+		}
+		l := s.lv[n]
+		for _, id := range sortedIDs(l.db) {
+			e := l.db[id]
+			name := id.String()
+			if in := e.infoLocked(); in.Hostname != "" {
+				name = in.Hostname + id.String()[14:]
+			}
+			if a.ID != id.String() && a.ID != name {
+				continue
+			}
+			d := LSPDetail{Level: n, ID: id.String(), Seq: e.lsp.Seq, Lifetime: e.remaining(now), Checksum: fmt.Sprintf("%#04x", e.lsp.Checksum), Own: e.own}
+			if e.purgeAt.IsZero() || e.remaining(now) > 0 {
+				d.LSPInfo = *e.infoLocked()
+			}
+			return d, nil
+		}
+	}
+	return nil, fmt.Errorf("no LSP %q", a.ID)
+}
+
+// Brief is the status without the LSDB rows (protocol.Briefer).
+func (s *session) Brief() any {
+	st := s.Status().(Status)
+	st.LSDB = []LSPStatus{}
+	return st
+}
+
+// maxStatusLSPs caps the LSDB listed in the status (large emulated
+// topologies would make it huge); lsdb_total has the full count.
+const maxStatusLSPs = 500
 
 // ---- actions ----
 
@@ -1127,6 +1275,12 @@ func (s *session) Action(_ context.Context, name string, args any) (any, error) 
 		s.nextHelo = now
 		s.adjDownLocked(now, "flap action")
 		return map[string]any{"down_until": s.flapTill.Format(time.RFC3339)}, nil
+	case "lsp":
+		return s.lspDetailLocked(args.(*LSPArgs))
+	case "topology-link":
+		return s.topoLinkLocked(args.(*TopoLinkArgs))
+	case "topology-node":
+		return s.topoNodeLocked(args.(*TopoNodeArgs))
 	case "clear":
 		s.counters = map[string]uint64{}
 		return map[string]any{"cleared": true}, nil

@@ -157,6 +157,20 @@ An IS-IS router on a device (point-to-point to the SR in
 prefixes='[{"prefix":"203.0.113.0/24"}]'` and `… withdraw …` change it at
 runtime; a flow routed over the adjacency measures the resulting outage.
 
+A `topology` makes the router emulate a network behind it: simulated
+routers whose LSPs it originates, so the real routers run SPF over them.
+
+```yaml
+    config: {system_id: 0000.0000.0050, level: L2,
+             topology: {kind: grid, rows: 10, cols: 10, attach: [r1-1],
+                        loopback_base: 10.255.0.1/32, prefix_base: 10.200.0.0/24, prefixes_per_node: 5}}
+```
+
+Kinds are `grid`, `ring`, `line`, `full` and `custom` (named nodes with
+links and prefixes). `topology-link a=r1-1 b=r1-2 up=false` (or `metric=…`)
+and `topology-node node=r2-2 up=false` (or `overload=true`) fail parts of
+it at runtime; `lsp id=sim-r2-2.00-00` shows one LSP.
+
 Mount the file in the topology and set `CLABGEN_SCENARIO`. See
 `examples/*/*.clab.yml`.
 

@@ -66,13 +66,17 @@ protocols:
     device: v400
     config: {destination: 10.0.4.1, dst_port: 9, rate: 1}
   # IS-IS with the SR on eth3 VLAN 500 (level 2, area 49.0001). It
-  # advertises i500's addresses (incl. the 192.0.2.50/32 loopback) and
-  # injects 10 prefixes; ping-isis is routed by the SR over that adjacency.
+  # advertises i500's addresses (incl. the 192.0.2.50/32 loopback), injects
+  # 10 prefixes and emulates a 3×3 grid of routers behind it; ping-isis is
+  # routed by the SR over that adjacency.
   - name: isis
     type: isis
     device: i500
     config: {system_id: 0000.0000.0050, hostname: clabgen, level: L2,
-             prefixes: [{prefix: 198.18.0.0/24, count: 10, metric: 20}]}
+             prefixes: [{prefix: 198.18.0.0/24, count: 10, metric: 20}],
+             # A 3×3 grid of simulated routers behind us, attached at r1-1.
+             topology: {kind: grid, rows: 3, cols: 3, loopback_base: 10.255.0.1/32,
+                        prefix_base: 10.200.0.0/24, prefixes_per_node: 2}}
   - name: ping-isis
     type: icmp
     device: v400

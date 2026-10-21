@@ -188,7 +188,7 @@ func (s *session) rxLANHello(f *pkt.Frame, p *PDU) {
 	if next != a.state {
 		prev := a.state
 		a.state, a.since = next, now
-		ll.nextHello = now // tell it we hear it, quickly
+		ll.nextHello = now         // tell it we hear it, quickly
 		s.lv[h.Level].dirty = true // our LSP and (as DIS) the pseudonode change
 		if next == stUp {
 			s.adjTransitions++
