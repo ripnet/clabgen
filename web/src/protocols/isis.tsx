@@ -3,8 +3,9 @@ import type { JsonObject } from "@bufbuild/protobuf";
 import { client, usePoll } from "../api";
 import { registerView, type Health } from "./registry";
 
-type Nbr = { id: string; metric: number };
-type Pfx = { prefix: string; metric: number; down?: boolean };
+type Nbr = { id: string; metric: number; mt?: number };
+type Pfx = { prefix: string; metric: number; down?: boolean; mt?: number };
+const mtTag = (mt?: number) => (mt ? <span className="tag">{({ 2: "MT ipv6", 3: "MT mcast4", 4: "MT mcast6" } as Record<number, string>)[mt] ?? `MT ${mt}`}</span> : null);
 // LSDB rows in the status are summaries; the "lsp" action has the rest.
 type LSPRow = {
   level: number;
@@ -19,6 +20,7 @@ type LSPRow = {
   prefixes: number;
 };
 type LSPDetail = {
+  topologies?: string[];
   areas?: string[];
   router_id?: string;
   addresses?: string[];
@@ -44,21 +46,24 @@ function LSPDetailRow({ agentId, name, row, nameOf }: { agentId?: string; name?:
       <div>
         <div className="field-label">neighbors</div>
         {(l.neighbors ?? []).map((n) => (
-          <div key={n.id} className="mono">
+          <div key={`${n.id}/${n.mt ?? 0}`} className="mono">
             {nameOf(n.id)} <span className="muted">metric {n.metric}</span>
+            {mtTag(n.mt)}
           </div>
         ))}
         {!l.neighbors?.length && <div className="muted">none</div>}
         {l.router_id && <div className="mono muted">router ID {l.router_id}</div>}
+        {l.topologies && <div className="mono muted">topologies: {l.topologies.join(", ")}</div>}
         {l.addresses && <div className="mono muted">{l.addresses.join(", ")}</div>}
       </div>
       <div>
         <div className="field-label">prefixes ({l.prefixes?.length ?? 0})</div>
         <div className="pfx-list mono">
           {(l.prefixes ?? []).slice(0, 500).map((p) => (
-            <div key={p.prefix}>
+            <div key={`${p.prefix}/${p.mt ?? 0}`}>
               {p.prefix} <span className="muted">{p.metric}</span>
               {p.down && <span className="tag">down</span>}
+              {mtTag(p.mt)}
             </div>
           ))}
           {(l.prefixes?.length ?? 0) > 500 && <div className="muted">… {l.prefixes!.length - 500} more</div>}
@@ -81,6 +86,7 @@ type ISISStatus = {
   advertised_prefixes: number;
   hello_auth?: string;
   lsp_auth?: string;
+  topologies?: string[];
   adjacency: {
     state: string;
     neighbor?: string;
@@ -95,6 +101,7 @@ type ISISStatus = {
     transitions: number;
     priority?: number;
     dis?: boolean;
+    topologies?: string[];
   };
   adjacencies?: ISISStatus["adjacency"][];
   lan?: LANRow[];
@@ -231,6 +238,10 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
           </dd>
         </div>
         <div className="kv-row">
+          <dt>topologies</dt>
+          <dd className="mono">{(s.topologies ?? []).join(", ")}</dd>
+        </div>
+        <div className="kv-row">
           <dt>authentication</dt>
           <dd className="mono">
             hellos {s.hello_auth ?? "none"} · LSPs {s.lsp_auth ?? "none"}
@@ -252,6 +263,7 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
         <div className="flow-path mono">
           <span className={pill}>{a.state}</span> {a.neighbor ? `${a.hostname ? a.hostname + " · " : ""}${a.neighbor}` : "no neighbor"}
           {a.levels && <span className="muted"> · L{a.levels.join("/L")}</span>}
+          {a.topologies && <span className="muted"> · {a.topologies.join(", ")}</span>}
         </div>
         <div className="muted">
           {a.hold_remaining_s !== undefined && `hold ${Math.max(0, a.hold_remaining_s).toFixed(0)} s · `}

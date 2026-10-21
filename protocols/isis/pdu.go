@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"sort"
 	"strings"
 
 	"github.com/ripnet/clabgen/internal/pkt"
@@ -46,6 +47,7 @@ const (
 	TLVRouterCapab   uint8 = 242
 	TLVMTISReach     uint8 = 222
 	TLVMultiTopology uint8 = 229
+	TLVMTIPReach     uint8 = 235
 	TLVMTIPv6Reach   uint8 = 237
 	NLPIDIPv4        byte  = 0xcc
 	NLPIDIPv6        byte  = 0x8e
@@ -55,6 +57,26 @@ const (
 	maxLSPLifetime         = 1200
 	irpd             byte  = 0x83
 )
+
+// Multi-topology IDs (RFC 5120).
+const (
+	MTIPv4Unicast   uint16 = 0
+	MTIPv6Unicast   uint16 = 2
+	MTIPv4Multicast uint16 = 3
+	MTIPv6Multicast uint16 = 4
+	mtOverload      uint16 = 0x8000 // O bit in TLV 229
+	mtAttached      uint16 = 0x4000 // A bit
+)
+
+var mtNames = map[uint16]string{MTIPv4Unicast: "ipv4-unicast", MTIPv6Unicast: "ipv6-unicast", MTIPv4Multicast: "ipv4-multicast", MTIPv6Multicast: "ipv6-multicast"}
+
+// MTName names an MT ID.
+func MTName(id uint16) string {
+	if n, ok := mtNames[id]; ok {
+		return n
+	}
+	return fmt.Sprintf("mt-%d", id)
+}
 
 // Multicast destinations.
 var (
@@ -158,6 +180,49 @@ func (w *tlvBuf) add(t uint8, v []byte) {
 	w.b = append(w.b, v...)
 }
 
+// addMTItems is addItems for MT TLVs, whose values start with the MT ID.
+func (w *tlvBuf) addMTItems(t uint8, mt uint16, items [][]byte) {
+	hdr := []byte{byte(mt >> 8 & 0x0f), byte(mt)}
+	cur := append([]byte{}, hdr...)
+	for _, it := range items {
+		if len(cur)+len(it) > 255 {
+			w.add(t, cur)
+			cur = append([]byte{}, hdr...)
+		}
+		cur = append(cur, it...)
+	}
+	if len(cur) > 2 {
+		w.add(t, cur)
+	}
+}
+
+// mtTLV is TLV 229's value.
+func mtTLV(mts []uint16, overload bool) []byte {
+	var v []byte
+	for _, m := range mts {
+		x := m & 0x0fff
+		if overload {
+			x |= mtOverload
+		}
+		v = binary.BigEndian.AppendUint16(v, x)
+	}
+	return v
+}
+
+// parseMTs decodes TLV 229 values.
+func parseMTs(vs [][]byte) (ids []uint16, overloaded []uint16) {
+	for _, v := range vs {
+		for ; len(v) >= 2; v = v[2:] {
+			x := binary.BigEndian.Uint16(v)
+			ids = append(ids, x&0x0fff)
+			if x&mtOverload != 0 {
+				overloaded = append(overloaded, x&0x0fff)
+			}
+		}
+	}
+	return
+}
+
 // addItems packs items into as few TLVs of type t as fit (255 bytes each).
 func (w *tlvBuf) addItems(t uint8, items [][]byte) {
 	var cur []byte
@@ -192,6 +257,10 @@ type PDU struct {
 	Raw   []byte // the PDU without LLC
 	TLVs  TLVs
 	Areas [][]byte
+	// MTs from TLV 229 (hellos); HasMT is false without the TLV, which
+	// means MT 0 only.
+	MTs   []uint16
+	HasMT bool
 }
 
 var ErrNotISIS = errors.New("not IS-IS")
@@ -232,6 +301,10 @@ func Decode(b []byte) (*PDU, error) {
 		return nil, err
 	}
 	p.TLVs = tl
+	if vs := tl.All(TLVMultiTopology); len(vs) > 0 {
+		p.MTs, _ = parseMTs(vs)
+		p.HasMT = true
+	}
 	for _, v := range tl.All(TLVAreaAddresses) {
 		for len(v) > 0 && int(v[0]) < len(v) {
 			p.Areas = append(p.Areas, v[1:1+v[0]])
@@ -329,7 +402,7 @@ type LANHello struct {
 }
 
 // helloTLVs are the TLVs every hello carries.
-func helloTLVs(w *tlvBuf, areas [][]byte, v4, v6 []netip.Addr) {
+func helloTLVs(w *tlvBuf, areas [][]byte, v4, v6 []netip.Addr, mts []uint16) {
 	var a []byte
 	for _, x := range areas {
 		a = append(a, byte(len(x)))
@@ -363,6 +436,9 @@ func helloTLVs(w *tlvBuf, areas [][]byte, v4, v6 []netip.Addr) {
 		}
 		w.add(TLVIPv6Addresses, b[:min(len(b), 240)])
 	}
+	if len(mts) > 0 {
+		w.add(TLVMultiTopology, mtTLV(mts, false))
+	}
 }
 
 // pad adds padding TLVs until the PDU is size bytes (hello padding).
@@ -376,14 +452,14 @@ func pad(w *tlvBuf, have, size int) {
 func setLen(b []byte, off int) { binary.BigEndian.PutUint16(b[off:], uint16(len(b))) }
 
 // EncodeP2PHello builds a point-to-point IIH.
-func EncodeP2PHello(circuit uint8, src SysID, hold uint16, localCircuit uint8, areas [][]byte, v4, v6 []netip.Addr, tw ThreeWay, padTo int) []byte {
+func EncodeP2PHello(circuit uint8, src SysID, hold uint16, localCircuit uint8, areas [][]byte, v4, v6 []netip.Addr, mts []uint16, tw ThreeWay, padTo int) []byte {
 	b := header(PDUP2PHello, 20)
 	b = append(b, circuit)
 	b = append(b, src[:]...)
 	b = binary.BigEndian.AppendUint16(b, hold)
 	b = append(b, 0, 0, localCircuit)
 	var w tlvBuf
-	helloTLVs(&w, areas, v4, v6)
+	helloTLVs(&w, areas, v4, v6, mts)
 	a := []byte{tw.State}
 	a = binary.BigEndian.AppendUint32(a, tw.ExtCircuit)
 	if tw.HasNeighbor {
@@ -400,7 +476,7 @@ func EncodeP2PHello(circuit uint8, src SysID, hold uint16, localCircuit uint8, a
 }
 
 // EncodeLANHello builds a LAN IIH for level 1 or 2.
-func EncodeLANHello(level int, circuit uint8, src SysID, hold uint16, prio uint8, lanID NodeID, areas [][]byte, v4, v6 []netip.Addr, neighbors []pkt.MAC, padTo int) []byte {
+func EncodeLANHello(level int, circuit uint8, src SysID, hold uint16, prio uint8, lanID NodeID, areas [][]byte, v4, v6 []netip.Addr, mts []uint16, neighbors []pkt.MAC, padTo int) []byte {
 	typ := PDULANHelloL1
 	if level == 2 {
 		typ = PDULANHelloL2
@@ -412,7 +488,7 @@ func EncodeLANHello(level int, circuit uint8, src SysID, hold uint16, prio uint8
 	b = append(b, 0, 0, prio&0x7f)
 	b = append(b, lanID[:]...)
 	var w tlvBuf
-	helloTLVs(&w, areas, v4, v6)
+	helloTLVs(&w, areas, v4, v6, mts)
 	var items [][]byte
 	for _, m := range neighbors {
 		items = append(items, append([]byte{}, m[:]...))
@@ -490,10 +566,14 @@ type lspBody struct {
 	V4Addrs   []netip.Addr
 	V6Addrs   []netip.Addr
 	Protocols []byte
-	Neighbors []ISReach
+	Neighbors []ISReach // MT 0 (TLV 22)
 	Prefixes  []IPReach
 	Overload  bool
 	Attached  bool
+	// Multi-topology: the MTs we take part in (TLV 229, fragment 0) and
+	// IS reachability per non-zero MT (TLV 222).
+	MTs         []uint16
+	MTNeighbors map[uint16][]ISReach
 }
 
 type ISReach struct {
@@ -504,7 +584,8 @@ type ISReach struct {
 type IPReach struct {
 	Prefix netip.Prefix
 	Metric uint32
-	Down   bool // up/down bit (leaked from L2 to L1)
+	Down   bool   // up/down bit (leaked from L2 to L1)
+	MT     uint16 // 0: standard TLVs 135/236; else TLV 235/237 for that MT
 }
 
 // EncodeLSP builds one LSP fragment. The checksum is computed.
@@ -546,6 +627,9 @@ func EncodeLSP(level int, id LSPID, seq uint32, lifetime uint16, isType byte, bo
 		r := body.RouterID.As4()
 		w.add(TLVTERouterID, r[:])
 	}
+	if len(body.MTs) > 0 {
+		w.add(TLVMultiTopology, mtTLV(body.MTs, body.Overload))
+	}
 	var items [][]byte
 	for _, a := range body.V4Addrs {
 		x := a.As4()
@@ -565,7 +649,22 @@ func EncodeLSP(level int, id LSPID, seq uint32, lifetime uint16, isType byte, bo
 		items = append(items, it)
 	}
 	w.addItems(TLVExtISReach, items)
+	var mtIDs []uint16
+	for mt := range body.MTNeighbors {
+		mtIDs = append(mtIDs, mt)
+	}
+	sort.Slice(mtIDs, func(i, j int) bool { return mtIDs[i] < mtIDs[j] })
+	for _, mt := range mtIDs {
+		items = nil
+		for _, n := range body.MTNeighbors[mt] {
+			it := append([]byte{}, n.Neighbor[:]...)
+			it = append(it, byte(n.Metric>>16), byte(n.Metric>>8), byte(n.Metric), 0)
+			items = append(items, it)
+		}
+		w.addMTItems(TLVMTISReach, mt, items)
+	}
 	var v4, v6 [][]byte
+	mt4, mt6 := map[uint16][][]byte{}, map[uint16][][]byte{}
 	for _, p := range body.Prefixes {
 		bits := p.Prefix.Bits()
 		addr := p.Prefix.Masked().Addr().AsSlice()[:(bits+7)/8]
@@ -575,18 +674,39 @@ func EncodeLSP(level int, id LSPID, seq uint32, lifetime uint16, isType byte, bo
 				ctl |= 0x80
 			}
 			it := binary.BigEndian.AppendUint32(nil, p.Metric)
-			v4 = append(v4, append(append(it, ctl), addr...))
+			if p.MT != 0 {
+				mt4[p.MT] = append(mt4[p.MT], append(append(it, ctl), addr...))
+			} else {
+				v4 = append(v4, append(append(it, ctl), addr...))
+			}
 		} else {
 			fl := byte(0)
 			if p.Down {
 				fl |= 0x80
 			}
 			it := binary.BigEndian.AppendUint32(nil, p.Metric)
-			v6 = append(v6, append(append(it, fl, byte(bits)), addr...))
+			if p.MT != 0 {
+				mt6[p.MT] = append(mt6[p.MT], append(append(it, fl, byte(bits)), addr...))
+			} else {
+				v6 = append(v6, append(append(it, fl, byte(bits)), addr...))
+			}
 		}
 	}
 	w.addItems(TLVExtIPReach, v4)
 	w.addItems(TLVIPv6Reach, v6)
+	for _, m := range []struct {
+		t  uint8
+		by map[uint16][][]byte
+	}{{TLVMTIPReach, mt4}, {TLVMTIPv6Reach, mt6}} {
+		ids := make([]uint16, 0, len(m.by))
+		for id := range m.by {
+			ids = append(ids, id)
+		}
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+		for _, id := range ids {
+			w.addMTItems(m.t, id, m.by[id])
+		}
+	}
 	b = append(b, w.b...)
 	setLen(b, 8)
 	cs := Fletcher(b[12:], 24-12)
@@ -599,25 +719,28 @@ func lspFitsMTU(n, mtu int) bool { return n+3 <= mtu }
 
 // LSPInfo is the decoded content of an LSP, for status.
 type LSPInfo struct {
-	Hostname  string    `json:"hostname,omitempty"`
-	Areas     []string  `json:"areas,omitempty"`
-	Overload  bool      `json:"overload,omitempty"`
-	Attached  bool      `json:"attached,omitempty"`
-	RouterID  string    `json:"router_id,omitempty"`
-	Addresses []string  `json:"addresses,omitempty"`
-	Neighbors []NbrInfo `json:"neighbors,omitempty"`
-	Prefixes  []PfxInfo `json:"prefixes,omitempty"`
+	Hostname   string    `json:"hostname,omitempty"`
+	Topologies []string  `json:"topologies,omitempty"` // TLV 229 (MT 0 alone when absent)
+	Areas      []string  `json:"areas,omitempty"`
+	Overload   bool      `json:"overload,omitempty"`
+	Attached   bool      `json:"attached,omitempty"`
+	RouterID   string    `json:"router_id,omitempty"`
+	Addresses  []string  `json:"addresses,omitempty"`
+	Neighbors  []NbrInfo `json:"neighbors,omitempty"`
+	Prefixes   []PfxInfo `json:"prefixes,omitempty"`
 }
 
 type NbrInfo struct {
 	ID     string `json:"id"`
 	Metric uint32 `json:"metric"`
+	MT     uint16 `json:"mt,omitempty"`
 }
 
 type PfxInfo struct {
 	Prefix string `json:"prefix"`
 	Metric uint32 `json:"metric"`
 	Down   bool   `json:"down,omitempty"`
+	MT     uint16 `json:"mt,omitempty"`
 }
 
 // Info decodes the TLVs operators care about.
@@ -646,14 +769,34 @@ func (l *LSP) Info() LSPInfo {
 			in.Addresses = append(in.Addresses, netip.AddrFrom16([16]byte(v[:16])).String())
 		}
 	}
-	for _, v := range l.TLVs.All(TLVExtISReach) {
+	if vs := l.TLVs.All(TLVMultiTopology); len(vs) > 0 {
+		ids, ol := parseMTs(vs)
+		for _, id := range ids {
+			n := MTName(id)
+			for _, o := range ol {
+				if o == id {
+					n += " (overload)"
+				}
+			}
+			in.Topologies = append(in.Topologies, n)
+		}
+	}
+	isReach := func(v []byte, mt uint16) {
 		for len(v) >= 11 {
 			sl := int(v[10])
 			if len(v) < 11+sl {
 				break
 			}
-			in.Neighbors = append(in.Neighbors, NbrInfo{ID: NodeID(v[:7]).String(), Metric: uint32(v[7])<<16 | uint32(v[8])<<8 | uint32(v[9])})
+			in.Neighbors = append(in.Neighbors, NbrInfo{ID: NodeID(v[:7]).String(), Metric: uint32(v[7])<<16 | uint32(v[8])<<8 | uint32(v[9]), MT: mt})
 			v = v[11+sl:]
+		}
+	}
+	for _, v := range l.TLVs.All(TLVExtISReach) {
+		isReach(v, 0)
+	}
+	for _, v := range l.TLVs.All(TLVMTISReach) {
+		if len(v) >= 2 {
+			isReach(v[2:], binary.BigEndian.Uint16(v)&0x0fff)
 		}
 	}
 	for _, v := range l.TLVs.All(TLVISNeighbors) {
@@ -664,7 +807,7 @@ func (l *LSP) Info() LSPInfo {
 			in.Neighbors = append(in.Neighbors, NbrInfo{ID: NodeID(v[4:11]).String(), Metric: uint32(v[0] & 0x3f)})
 		}
 	}
-	for _, v := range l.TLVs.All(TLVExtIPReach) {
+	ip4 := func(v []byte, mt uint16) {
 		for len(v) >= 5 {
 			ctl := v[4]
 			bits := int(ctl & 0x3f)
@@ -674,7 +817,7 @@ func (l *LSP) Info() LSPInfo {
 			}
 			var a [4]byte
 			copy(a[:], v[5:5+n])
-			p := PfxInfo{Prefix: netip.PrefixFrom(netip.AddrFrom4(a), bits).String(), Metric: binary.BigEndian.Uint32(v), Down: ctl&0x80 != 0}
+			p := PfxInfo{Prefix: netip.PrefixFrom(netip.AddrFrom4(a), bits).String(), Metric: binary.BigEndian.Uint32(v), Down: ctl&0x80 != 0, MT: mt}
 			in.Prefixes = append(in.Prefixes, p)
 			off := 5 + n
 			if ctl&0x40 != 0 && len(v) > off {
@@ -684,6 +827,14 @@ func (l *LSP) Info() LSPInfo {
 				break
 			}
 			v = v[off:]
+		}
+	}
+	for _, v := range l.TLVs.All(TLVExtIPReach) {
+		ip4(v, 0)
+	}
+	for _, v := range l.TLVs.All(TLVMTIPReach) {
+		if len(v) >= 2 {
+			ip4(v[2:], binary.BigEndian.Uint16(v)&0x0fff)
 		}
 	}
 	for _, t := range []uint8{TLVIPIntReach, TLVIPExtReach} {
@@ -700,7 +851,7 @@ func (l *LSP) Info() LSPInfo {
 			}
 		}
 	}
-	for _, v := range l.TLVs.All(TLVIPv6Reach) {
+	ip6 := func(v []byte, mt uint16) {
 		for len(v) >= 6 {
 			fl, bits := v[4], int(v[5])
 			n := (bits + 7) / 8
@@ -709,7 +860,7 @@ func (l *LSP) Info() LSPInfo {
 			}
 			var a [16]byte
 			copy(a[:], v[6:6+n])
-			in.Prefixes = append(in.Prefixes, PfxInfo{Prefix: netip.PrefixFrom(netip.AddrFrom16(a), bits).String(), Metric: binary.BigEndian.Uint32(v), Down: fl&0x80 != 0})
+			in.Prefixes = append(in.Prefixes, PfxInfo{Prefix: netip.PrefixFrom(netip.AddrFrom16(a), bits).String(), Metric: binary.BigEndian.Uint32(v), Down: fl&0x80 != 0, MT: mt})
 			off := 6 + n
 			if fl&0x20 != 0 && len(v) > off {
 				off += 1 + int(v[off])
@@ -718,6 +869,14 @@ func (l *LSP) Info() LSPInfo {
 				break
 			}
 			v = v[off:]
+		}
+	}
+	for _, v := range l.TLVs.All(TLVIPv6Reach) {
+		ip6(v, 0)
+	}
+	for _, v := range l.TLVs.All(TLVMTIPv6Reach) {
+		if len(v) >= 2 {
+			ip6(v[2:], binary.BigEndian.Uint16(v)&0x0fff)
 		}
 	}
 	return in

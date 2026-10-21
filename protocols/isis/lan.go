@@ -30,6 +30,7 @@ type lanAdj struct {
 	areas     []string
 	addrs     []string
 	hostname  string
+	mts       []uint16
 }
 
 type lanLevel struct {
@@ -84,7 +85,7 @@ func (s *session) lanHelloLocked(n int, flapping bool) []byte {
 	if s.cfg.HelloPadding {
 		padTo = 1497 - s.cfg.HelloAuth.tlvLen()
 	}
-	return s.cfg.HelloAuth.sign(EncodeLANHello(n, s.cfg.circuitType(), s.sys, uint16(hold), s.cfg.Priority, ll.lanID, s.areas, a4, a6, nbrs, padTo))
+	return s.cfg.HelloAuth.sign(EncodeLANHello(n, s.cfg.circuitType(), s.sys, uint16(hold), s.cfg.Priority, ll.lanID, s.areas, a4, a6, s.mts, nbrs, padTo))
 }
 
 // tickLANLocked sends due hellos and expires LAN adjacencies.
@@ -151,6 +152,11 @@ func (s *session) rxLANHello(f *pkt.Frame, p *PDU) {
 			return
 		}
 	}
+	mts, ok := s.commonMTs(p)
+	if !ok {
+		s.count("rx_hello_mt_mismatch")
+		return
+	}
 	a := ll.adjs[f.Src]
 	if a == nil {
 		if len(ll.adjs) >= 256 {
@@ -159,7 +165,7 @@ func (s *session) rxLANHello(f *pkt.Frame, p *PDU) {
 		a = &lanAdj{mac: f.Src, state: stInitializing, since: now}
 		ll.adjs[f.Src] = a
 	}
-	a.sys, a.priority, a.lanID = h.Source, h.Priority, h.LANID
+	a.sys, a.priority, a.lanID, a.mts = h.Source, h.Priority, h.LANID, mts
 	a.hold, a.lastHello = time.Duration(h.Hold)*time.Second, now
 	a.areas, a.addrs = nil, nil
 	for _, x := range p.Areas {
@@ -333,7 +339,7 @@ func (s *session) lanStatusLocked(now time.Time) ([]AdjStatus, []LANStatus) {
 			a := ll.adjs[m]
 			adjs = append(adjs, AdjStatus{State: a.state, Neighbor: a.sys.String(), MAC: m.String(), Levels: []int{n},
 				HoldS: (a.hold - now.Sub(a.lastHello)).Seconds(), Since: a.since.Format(time.RFC3339), Areas: a.areas, Addresses: a.addrs,
-				Priority: a.priority, DIS: ll.disMAC == m && !ll.isDIS})
+				Priority: a.priority, DIS: ll.disMAC == m && !ll.isDIS, Topologies: mtNameList(a.mts)})
 		}
 	}
 	return adjs, lans

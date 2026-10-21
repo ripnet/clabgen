@@ -449,3 +449,55 @@ func TestISISAuth(t *testing.T) {
 		})
 	}
 }
+
+func TestISISMultiTopology(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	mk := func(e *core.Engine, cfg string) {
+		t.Helper()
+		if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "isis", Type: "isis", Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(a, `{"system_id":"0000.0000.000a","hello_interval":1,"csnp_interval":1,"topologies":["ipv6-unicast"],
+		"topology":{"kind":"line","nodes":2,"loopback6_base":"2001:db8:ff::1/128","prefix6_base":"2001:db8:200::/64","prefixes_per_node":1}}`)
+	mk(b, `{"system_id":"0000.0000.000b","hello_interval":1,"csnp_interval":1,"topologies":["ipv6-unicast"]}`)
+	eventually(t, "MT LSPs at b", func() bool { return num(isisStatus(t, b), "lsdb_total") == 4 })
+	st := isisStatus(t, b)
+	if adj := st["adjacency"].(map[string]any); fmt.Sprint(adj["topologies"]) != "[ipv4-unicast ipv6-unicast]" {
+		t.Fatalf("adjacency topologies %v", adj["topologies"])
+	}
+	la := lspOf(st, "0000.0000.000a")
+	if fmt.Sprint(la["topologies"]) != "[ipv4-unicast ipv6-unicast]" {
+		t.Fatalf("a's topologies %v", la["topologies"])
+	}
+	mt2 := func(l map[string]any) (nbrs, v6 int) {
+		for _, x := range l["neighbors"].([]any) {
+			if num(x.(map[string]any), "mt") == 2 {
+				nbrs++
+			}
+		}
+		for _, x := range l["prefixes"].([]any) {
+			m := x.(map[string]any)
+			if num(m, "mt") == 2 {
+				v6++
+			} else if strings.Contains(m["prefix"].(string), ":") {
+				t.Fatalf("IPv6 prefix outside MT 2: %v", m)
+			}
+		}
+		return
+	}
+	if n, v := mt2(la); n != 2 || v != 1 { // b and r1; 2001:db8::/64
+		t.Fatalf("a: %d MT-2 neighbors, %d MT-2 prefixes", n, v)
+	}
+	if n, v := mt2(lspOf(st, "0000.1000.0002")); n != 1 || v != 2 { // r1; loopback + 1 prefix
+		t.Fatalf("r2: %d MT-2 neighbors, %d MT-2 prefixes", n, v)
+	}
+
+	// A single-topology router still peers (over MT 0) with an MT one.
+	b.DeleteProtocol("isis")
+	mk(b, `{"system_id":"0000.0000.000b","hello_interval":1,"csnp_interval":1}`)
+	eventually(t, "MT 0 adjacency", func() bool {
+		adj, _ := isisStatus(t, a)["adjacency"].(map[string]any)
+		return adj["state"] == "up" && fmt.Sprint(adj["topologies"]) == "[ipv4-unicast]"
+	})
+}

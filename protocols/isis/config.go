@@ -17,6 +17,8 @@ type Config struct {
 	Priority uint8    `json:"priority" jsonschema:"minimum=0,maximum=127,description=DIS election priority (broadcast circuits)"`
 	Metric   uint32   `json:"metric" jsonschema:"minimum=1,maximum=16777214,description=Wide metric toward the neighbor"`
 
+	Topologies []string `json:"topologies,omitempty" jsonschema:"description=Multi-topology (RFC 5120) besides IPv4 unicast: ipv6-unicast / ipv4-multicast / ipv6-multicast. Empty: single topology"`
+
 	HelloInterval   int  `json:"hello_interval" jsonschema:"minimum=1,maximum=20000,description=Seconds"`
 	HelloMultiplier int  `json:"hello_multiplier" jsonschema:"minimum=2,maximum=100,description=Hold time = interval × multiplier"`
 	HelloPadding    bool `json:"hello_padding,omitempty" jsonschema:"description=Pad hellos to the port MTU (detects MTU mismatches)"`
@@ -48,7 +50,9 @@ type Topology struct {
 	SystemIDBase    string `json:"system_id_base,omitempty" jsonschema:"description=System ID of the first node; the others count up. Default 0000.1000.0001"`
 	HostnamePrefix  string `json:"hostname_prefix,omitempty" jsonschema:"description=Default sim-"`
 	LoopbackBase    string `json:"loopback_base,omitempty" jsonschema:"description=Loopback of the first node (e.g. 10.255.0.1/32); the others count up"`
+	Loopback6Base   string `json:"loopback6_base,omitempty" jsonschema:"description=IPv6 loopback of the first node (e.g. 2001:db8:ff::1/128)"`
 	PrefixBase      string `json:"prefix_base,omitempty" jsonschema:"description=First prefix (e.g. 10.200.0.0/24); each node gets prefixes_per_node consecutive ones"`
+	Prefix6Base     string `json:"prefix6_base,omitempty" jsonschema:"description=First IPv6 prefix (e.g. 2001:db8:200::/64); prefixes_per_node per node too"`
 	PrefixesPerNode int    `json:"prefixes_per_node,omitempty" jsonschema:"minimum=0"`
 
 	Custom []SimNode `json:"custom,omitempty" jsonschema:"description=Nodes for kind custom"`
@@ -97,6 +101,13 @@ func (c *Config) Validate() error {
 	}
 	if c.Circuit != "point-to-point" && c.Circuit != "broadcast" {
 		return fmt.Errorf("invalid circuit %q", c.Circuit)
+	}
+	seenMT := map[string]bool{}
+	for _, t := range c.Topologies {
+		if _, ok := mtIDs[t]; !ok || seenMT[t] {
+			return fmt.Errorf("invalid or repeated topology %q (ipv6-unicast, ipv4-multicast, ipv6-multicast)", t)
+		}
+		seenMT[t] = true
 	}
 	if c.Priority > 127 {
 		return errors.New("priority must be 0-127")

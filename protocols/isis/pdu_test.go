@@ -2,6 +2,7 @@ package isis
 
 import (
 	"encoding/hex"
+	"fmt"
 	"net/netip"
 	"os"
 	"strings"
@@ -37,7 +38,7 @@ func TestIDs(t *testing.T) {
 func TestP2PHello(t *testing.T) {
 	v4 := []netip.Addr{netip.MustParseAddr("10.0.0.1")}
 	v6 := []netip.Addr{netip.MustParseAddr("fe80::1")}
-	b := EncodeP2PHello(circuitL2, sysA, 30, 1, [][]byte{area}, v4, v6,
+	b := EncodeP2PHello(circuitL2, sysA, 30, 1, [][]byte{area}, v4, v6, nil,
 		ThreeWay{State: AdjInitializing, ExtCircuit: 7, NeighborSys: sysB, HasNeighbor: true, NeighborExtCircuit: 9}, 1497)
 	if len(b) != 1497 {
 		t.Fatalf("padded to %d", len(b))
@@ -58,7 +59,7 @@ func TestP2PHello(t *testing.T) {
 
 func TestLANHello(t *testing.T) {
 	lan := NodeID{0, 0, 0, 0, 0, 1, 3}
-	b := EncodeLANHello(1, circuitL1, sysA, 9, 64, lan, [][]byte{area}, nil, nil, []pkt.MAC{{2, 0, 0, 0, 0, 2}}, 0)
+	b := EncodeLANHello(1, circuitL1, sysA, 9, 64, lan, [][]byte{area}, nil, nil, nil, []pkt.MAC{{2, 0, 0, 0, 0, 2}}, 0)
 	p, err := Decode(frame(b))
 	if err != nil || p.LAN == nil || p.LAN.Level != 1 || p.LAN.Priority != 64 || p.LAN.LANID != lan || len(p.LAN.Neighbors) != 1 {
 		t.Fatalf("%+v %v", p, err)
@@ -69,8 +70,8 @@ func TestLSP(t *testing.T) {
 	body := lspBody{Areas: [][]byte{area}, Hostname: "gen1", RouterID: netip.MustParseAddr("192.0.2.1"),
 		V4Addrs: []netip.Addr{netip.MustParseAddr("10.0.0.1")}, Protocols: []byte{NLPIDIPv4, NLPIDIPv6},
 		Neighbors: []ISReach{{NodeID{0, 0, 0, 0, 0, 2, 0}, 10}},
-		Prefixes: []IPReach{{netip.MustParsePrefix("10.0.0.0/30"), 10, false}, {netip.MustParsePrefix("198.51.100.0/24"), 20, true},
-			{netip.MustParsePrefix("2001:db8::/48"), 30, false}, {netip.MustParsePrefix("0.0.0.0/0"), 1, false}},
+		Prefixes: []IPReach{{Prefix: netip.MustParsePrefix("10.0.0.0/30"), Metric: 10, Down: false}, {Prefix: netip.MustParsePrefix("198.51.100.0/24"), Metric: 20, Down: true},
+			{Prefix: netip.MustParsePrefix("2001:db8::/48"), Metric: 30, Down: false}, {Prefix: netip.MustParsePrefix("0.0.0.0/0"), Metric: 1, Down: false}},
 		Overload: true}
 	id := MakeLSPID(sysA, 0, 0)
 	b := EncodeLSP(2, id, 5, 1200, lspTypeL1L2, body)
@@ -184,5 +185,90 @@ func TestNestedSchemaOrder(t *testing.T) {
 	s := protocol.Schema(&PrefixArgs{})
 	if !strings.Contains(s, `"x-order":["prefix","metric","count"]`) {
 		t.Fatalf("nested order missing: %s", s)
+	}
+}
+
+func TestMultiTopologyLSP(t *testing.T) {
+	nb := []ISReach{{NodeID{0, 0, 0, 0, 0, 2, 0}, 10}}
+	body := lspBody{MTs: []uint16{MTIPv4Unicast, MTIPv6Unicast, MTIPv4Multicast}, Overload: true,
+		Neighbors: nb, MTNeighbors: map[uint16][]ISReach{MTIPv6Unicast: nb, MTIPv4Multicast: nb},
+		Prefixes: []IPReach{{Prefix: netip.MustParsePrefix("10.0.0.0/24"), Metric: 10},
+			{Prefix: netip.MustParsePrefix("10.0.0.0/24"), Metric: 10, MT: MTIPv4Multicast},
+			{Prefix: netip.MustParsePrefix("2001:db8::/64"), Metric: 10, MT: MTIPv6Unicast}}}
+	p, err := Decode(frame(EncodeLSP(2, MakeLSPID(sysA, 0, 0), 1, 1200, lspTypeL1L2, body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := p.LSP.Info()
+	if strings.Join(in.Topologies, ",") != "ipv4-unicast (overload),ipv6-unicast (overload),ipv4-multicast (overload)" {
+		t.Fatalf("topologies %v", in.Topologies)
+	}
+	mts := map[uint16]int{}
+	for _, n := range in.Neighbors {
+		mts[n.MT]++
+	}
+	if mts[0] != 1 || mts[2] != 1 || mts[3] != 1 {
+		t.Fatalf("neighbors %+v", in.Neighbors)
+	}
+	got := map[string]bool{}
+	for _, x := range in.Prefixes {
+		got[fmt.Sprintf("%s@%d", x.Prefix, x.MT)] = true
+	}
+	if len(got) != 3 || !got["10.0.0.0/24@0"] || !got["10.0.0.0/24@3"] || !got["2001:db8::/64@2"] {
+		t.Fatalf("prefixes %v", got)
+	}
+	if len(p.LSP.TLVs.All(TLVIPv6Reach)) != 0 || len(p.LSP.TLVs.All(TLVMTIPv6Reach)) != 1 {
+		t.Fatal("IPv6 prefixes must use TLV 237 in MT 2")
+	}
+	// Hellos carry TLV 229.
+	h, _ := Decode(frame(EncodeP2PHello(circuitL2, sysA, 9, 1, [][]byte{area}, nil, nil, []uint16{0, 2}, ThreeWay{}, 0)))
+	if !h.HasMT || len(h.MTs) != 2 || h.MTs[1] != 2 {
+		t.Fatalf("hello MTs %v", h.MTs)
+	}
+	if h2, _ := Decode(frame(EncodeP2PHello(circuitL2, sysA, 9, 1, [][]byte{area}, nil, nil, nil, ThreeWay{}, 0))); h2.HasMT {
+		t.Fatal("single-topology hello with TLV 229")
+	}
+}
+
+// Many MT prefixes split over several 237 TLVs, each with its MT ID; the
+// fragment-size estimate matches what EncodeLSP produces.
+func TestMTPrefixesFit(t *testing.T) {
+	s := &session{cfg: *defaultConfig()}
+	var ps []IPReach
+	for i := 0; i < 400; i++ {
+		ps = append(ps, IPReach{Prefix: netip.PrefixFrom(netip.AddrFrom16([16]byte{0x20, 0x01, 0xd, 0xb8, byte(i >> 8), byte(i)}), 64), Metric: 1, MT: MTIPv6Unicast})
+	}
+	body := lspBody{MTs: []uint16{0, 2}}
+	n := s.fitPrefixes(2, lspTypeL1L2, body, ps, true)
+	body.Prefixes = ps[:n]
+	raw := EncodeLSP(2, MakeLSPID(sysA, 0, 0), 1, 1200, lspTypeL1L2, body)
+	if len(raw)+3 > s.cfg.LSPMTU || n < 50 {
+		t.Fatalf("%d prefixes → %d bytes (mtu %d)", n, len(raw), s.cfg.LSPMTU)
+	}
+	body.Prefixes = ps[:n+1]
+	if raw := EncodeLSP(2, MakeLSPID(sysA, 0, 0), 1, 1200, lspTypeL1L2, body); len(raw)+3 <= s.cfg.LSPMTU {
+		t.Fatalf("one more prefix would still fit (%d bytes): estimate too low", len(raw))
+	}
+	p, _ := Decode(frame(raw))
+	for _, v := range p.LSP.TLVs.All(TLVMTIPv6Reach) {
+		if v[0] != 0 || v[1] != 2 {
+			t.Fatalf("TLV 237 without MT 2: % x", v[:2])
+		}
+	}
+}
+
+func TestCommonMTs(t *testing.T) {
+	s := &session{mts: []uint16{0, 2}}
+	if m, ok := s.commonMTs(&PDU{}); !ok || len(m) != 1 || m[0] != 0 {
+		t.Fatalf("vs single topology: %v %v", m, ok)
+	}
+	if m, ok := s.commonMTs(&PDU{HasMT: true, MTs: []uint16{0, 2}}); !ok || len(m) != 2 {
+		t.Fatalf("vs MT 0+2: %v", m)
+	}
+	if _, ok := s.commonMTs(&PDU{HasMT: true, MTs: []uint16{4}}); ok {
+		t.Fatal("no common topology")
+	}
+	if m, ok := (&session{}).commonMTs(&PDU{HasMT: true, MTs: []uint16{0, 2}}); !ok || len(m) != 1 {
+		t.Fatalf("single topology vs MT: %v", m)
 	}
 }

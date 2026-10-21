@@ -21,13 +21,14 @@ const maxSimNodes = 10000
 const usName = "us"
 
 type simNode struct {
-	name     string
-	sys      SysID
-	loopback netip.Prefix
-	prefixes []IPReach
-	links    map[string]uint32 // neighbor name → metric
-	down     bool
-	overload bool
+	name      string
+	sys       SysID
+	loopback  netip.Prefix
+	loopback6 netip.Prefix
+	prefixes  []IPReach
+	links     map[string]uint32 // neighbor name → metric
+	down      bool
+	overload  bool
 }
 
 type topology struct {
@@ -218,19 +219,39 @@ func buildTopology(c Topology, us *SysID) (*topology, error) {
 			n.loopback = lb
 		}
 	}
-	if c.PrefixesPerNode > 0 {
-		if c.PrefixBase == "" {
-			return nil, errors.New("prefixes_per_node needs prefix_base")
-		}
-		if c.PrefixesPerNode*len(t.nodes) > 200000 {
-			return nil, errors.New("at most 200000 simulated prefixes")
-		}
-		ps, err := Prefix{Prefix: c.PrefixBase, Count: c.PrefixesPerNode * len(t.nodes)}.expand()
-		if err != nil {
-			return nil, fmt.Errorf("prefix_base: %w", err)
+	if c.Loopback6Base != "" {
+		lb, err := netip.ParsePrefix(c.Loopback6Base)
+		if err != nil || !lb.Addr().Is6() {
+			return nil, fmt.Errorf("loopback6_base: want an IPv6 prefix like 2001:db8:ff::1/128")
 		}
 		for i, n := range t.nodes {
-			n.prefixes = append(n.prefixes, ps[i*c.PrefixesPerNode:(i+1)*c.PrefixesPerNode]...)
+			if i > 0 {
+				var ok bool
+				if lb, ok = nextPrefix(lb); !ok {
+					return nil, errors.New("loopback6_base runs out of addresses")
+				}
+			}
+			n.loopback6 = lb
+		}
+	}
+	if c.PrefixesPerNode > 0 {
+		if c.PrefixBase == "" && c.Prefix6Base == "" {
+			return nil, errors.New("prefixes_per_node needs prefix_base or prefix6_base")
+		}
+		if c.PrefixesPerNode*len(t.nodes) > 200000 {
+			return nil, errors.New("at most 200000 simulated prefixes per family")
+		}
+		for _, base := range []string{c.PrefixBase, c.Prefix6Base} {
+			if base == "" {
+				continue
+			}
+			ps, err := Prefix{Prefix: base, Count: c.PrefixesPerNode * len(t.nodes)}.expand()
+			if err != nil {
+				return nil, fmt.Errorf("prefix base %s: %w", base, err)
+			}
+			for i, n := range t.nodes {
+				n.prefixes = append(n.prefixes, ps[i*c.PrefixesPerNode:(i+1)*c.PrefixesPerNode]...)
+			}
 		}
 	}
 	return t, nil
@@ -281,13 +302,16 @@ func (t *topology) originateLocked(s *session, l *level, isType byte, now time.T
 		body := lspBody{Areas: s.areas, Hostname: s.simHost(n), Overload: n.overload}
 		has4, has6 := false, false
 		var pfx []IPReach
-		if n.loopback.IsValid() {
-			pfx = append(pfx, IPReach{Prefix: n.loopback.Masked(), Metric: 0})
-			if n.loopback.Addr().Is4() {
-				body.RouterID = n.loopback.Addr()
-				body.V4Addrs = []netip.Addr{n.loopback.Addr()}
+		for _, lb := range []netip.Prefix{n.loopback, n.loopback6} {
+			if !lb.IsValid() {
+				continue
+			}
+			pfx = append(pfx, IPReach{Prefix: lb.Masked(), Metric: 0})
+			if lb.Addr().Is4() {
+				body.RouterID = lb.Addr()
+				body.V4Addrs = []netip.Addr{lb.Addr()}
 			} else {
-				body.V6Addrs = []netip.Addr{n.loopback.Addr()}
+				body.V6Addrs = []netip.Addr{lb.Addr()}
 			}
 		}
 		pfx = append(pfx, n.prefixes...)
@@ -321,6 +345,7 @@ func (t *topology) originateLocked(s *session, l *level, isType byte, now time.T
 			}
 			body.Neighbors = append(body.Neighbors, ISReach{id, t.metric(n.name, x, n.links[x])})
 		}
+		pfx = s.mtify(&body, pfx)
 		s.originateSys(l, n.sys, body, pfx, isType, now)
 	}
 }
@@ -416,6 +441,9 @@ func (t *topology) status() *TopoStatus {
 	for _, n := range t.nodes {
 		st.Prefixes += len(n.prefixes)
 		if n.loopback.IsValid() {
+			st.Prefixes++
+		}
+		if n.loopback6.IsValid() {
 			st.Prefixes++
 		}
 		if n.down {

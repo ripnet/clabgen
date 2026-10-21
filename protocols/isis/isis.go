@@ -106,6 +106,7 @@ type adjacency struct {
 	since       time.Time
 	areas       []string
 	addrs       []string
+	mts         []uint16 // topologies in common
 	threeWay    bool
 	transitions int
 }
@@ -166,6 +167,8 @@ type session struct {
 
 	adjTransitions int // LAN adjacency ups and downs
 
+	mts []uint16 // multi-topology: 0 plus the configured MTs (nil: single topology)
+
 	topo     *topology // simulated routers behind us (nil: none)
 	flapTill time.Time
 	flapMode string
@@ -206,6 +209,12 @@ func (isisType) Start(env protocol.Env, c any) (protocol.Session, error) {
 		s.lv[n] = &level{n: n, db: map[LSPID]*dbEntry{}, orig: map[SysID]*origin{}, dirty: true}
 	}
 	s.adj.state = stDown
+	if len(cfg.Topologies) > 0 {
+		s.mts = []uint16{MTIPv4Unicast}
+		for _, t := range cfg.Topologies {
+			s.mts = append(s.mts, mtIDs[t])
+		}
+	}
 	if k := cfg.Topology.Kind; k != "" && k != "none" {
 		t, err := buildTopology(cfg.Topology, &s.sys)
 		if err != nil {
@@ -300,7 +309,7 @@ func (s *session) helloLocked() []byte {
 		padTo = 1497 - s.cfg.HelloAuth.tlvLen()
 	}
 	hold := uint16(s.cfg.HelloInterval * s.cfg.HelloMultiplier)
-	return s.cfg.HelloAuth.sign(EncodeP2PHello(s.cfg.circuitType(), s.sys, hold, 1, s.areas, a4, a6, tw, padTo))
+	return s.cfg.HelloAuth.sign(EncodeP2PHello(s.cfg.circuitType(), s.sys, hold, 1, s.areas, a4, a6, s.mts, tw, padTo))
 }
 
 // ---- main loop ----
@@ -508,6 +517,12 @@ func (s *session) rxHello(f *pkt.Frame, p *PDU) {
 		s.count("rx_hello_level_mismatch")
 		return
 	}
+	mts, ok := s.commonMTs(p)
+	if !ok {
+		s.count("rx_hello_mt_mismatch")
+		return
+	}
+	s.adj.mts = mts
 	if s.adj.state != stDown && s.adj.sys != h.Source {
 		s.count("rx_hello_other_neighbor")
 		return
@@ -905,6 +920,7 @@ func (s *session) originateLocked(l *level, now time.Time) {
 	if s.topo != nil {
 		body.Neighbors = append(body.Neighbors, s.topo.attachedLocked(l.n)...)
 	}
+	pfx = s.mtify(&body, pfx)
 	s.originateSys(l, s.sys, body, pfx, isType, now)
 	if s.topo != nil {
 		s.topo.originateLocked(s, l, isType, now)
@@ -916,6 +932,74 @@ func (s *session) originateLocked(l *level, now time.Time) {
 		l.refreshAt = now.Add(time.Duration(s.cfg.LSPRefresh) * time.Second)
 	}
 	l.dirty = false
+}
+
+var mtIDs = map[string]uint16{"ipv6-unicast": MTIPv6Unicast, "ipv4-multicast": MTIPv4Multicast, "ipv6-multicast": MTIPv6Multicast}
+
+// commonMTs returns the topologies we share with a hello's sender; a hello
+// without TLV 229 (or our own single-topology mode) means MT 0.
+func (s *session) commonMTs(p *PDU) ([]uint16, bool) {
+	ours, theirs := s.mts, p.MTs
+	if len(ours) == 0 {
+		ours = []uint16{MTIPv4Unicast}
+	}
+	if !p.HasMT {
+		theirs = []uint16{MTIPv4Unicast}
+	}
+	var out []uint16
+	for _, a := range ours {
+		for _, b := range theirs {
+			if a == b {
+				out = append(out, a)
+			}
+		}
+	}
+	return out, len(out) > 0
+}
+
+// mtify applies multi-topology to an LSP body (ours or a simulated
+// router's): TLV 229, IS reachability per MT, IPv6 prefixes into the IPv6
+// unicast topology, and copies of prefixes into multicast topologies.
+func (s *session) mtify(body *lspBody, pfx []IPReach) []IPReach {
+	if len(s.mts) == 0 {
+		return pfx
+	}
+	body.MTs = s.mts
+	body.MTNeighbors = map[uint16][]ISReach{}
+	has := map[uint16]bool{}
+	for _, m := range s.mts {
+		has[m] = true
+		if m != MTIPv4Unicast {
+			body.MTNeighbors[m] = body.Neighbors
+		}
+	}
+	out := make([]IPReach, 0, len(pfx))
+	for _, p := range pfx {
+		v6 := p.Prefix.Addr().Is6()
+		if v6 && has[MTIPv6Unicast] {
+			p.MT = MTIPv6Unicast
+		}
+		out = append(out, p)
+		if !v6 && has[MTIPv4Multicast] {
+			c := p
+			c.MT = MTIPv4Multicast
+			out = append(out, c)
+		}
+		if v6 && has[MTIPv6Multicast] {
+			c := p
+			c.MT = MTIPv6Multicast
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func mtNameList(ids []uint16) []string {
+	var out []string
+	for _, id := range ids {
+		out = append(out, MTName(id))
+	}
+	return out
 }
 
 // bumpOwnLocked makes our next copy of id go past seq.
@@ -1037,17 +1121,27 @@ func sameContent(a, b []byte) bool {
 func (s *session) fitPrefixes(level int, isType byte, body lspBody, ps []IPReach, first bool) int {
 	body.Prefixes = nil
 	budget := s.cfg.LSPMTU - len(llc) - s.cfg.LSPAuth.tlvLen() - len(EncodeLSP(level, LSPID{}, 1, 1, isType, body))
-	var open4, open6, used int // bytes in the current v4 / v6 TLV
+	type tlvKey struct {
+		v6 bool
+		mt uint16
+	}
+	open := map[tlvKey]int{} // bytes in the current TLV of each kind
+	used := 0
 	for i, p := range ps {
-		sz, open := 5, &open4
-		if p.Prefix.Addr().Is6() {
-			sz, open = 6, &open6
+		k := tlvKey{p.Prefix.Addr().Is6(), p.MT}
+		sz := 5
+		if k.v6 {
+			sz = 6
 		}
 		sz += (p.Prefix.Bits() + 7) / 8
+		hdr := 0 // MT TLVs start with the 2-byte MT ID
+		if p.MT != 0 {
+			hdr = 2
+		}
 		add := sz
-		if *open == 0 || *open+sz > 255 {
-			add += 2 // a new TLV
-			*open = 0
+		if open[k] == 0 || open[k]+sz > 255-hdr {
+			add += 2 + hdr // a new TLV
+			open[k] = 0
 		}
 		if used+add > budget {
 			if i == 0 && !first {
@@ -1056,7 +1150,7 @@ func (s *session) fitPrefixes(level int, isType byte, body lspBody, ps []IPReach
 			return i
 		}
 		used += add
-		*open += sz
+		open[k] += sz
 	}
 	return len(ps)
 }
@@ -1103,8 +1197,9 @@ type AdjStatus struct {
 	Addresses   []string `json:"addresses,omitempty"`
 	ThreeWay    bool     `json:"three_way"`
 	Transitions int      `json:"transitions"`
-	Priority    uint8    `json:"priority,omitempty"` // LAN
-	DIS         bool     `json:"dis,omitempty"`      // LAN: this neighbor is the DIS
+	Topologies  []string `json:"topologies,omitempty"` // in common with the neighbor
+	Priority    uint8    `json:"priority,omitempty"`   // LAN
+	DIS         bool     `json:"dis,omitempty"`        // LAN: this neighbor is the DIS
 }
 
 // LSPStatus summarises one LSDB entry. Statuses are polled often, so they
@@ -1148,6 +1243,7 @@ type Status struct {
 	Overload    bool              `json:"overload"`
 	Flapping    bool              `json:"flapping,omitempty"`
 	Prefixes    int               `json:"advertised_prefixes"`
+	Topologies  []string          `json:"topologies"` // multi-topology (ipv4-unicast alone: single topology)
 	HelloAuth   string            `json:"hello_auth"` // type only, never the key
 	LSPAuth     string            `json:"lsp_auth"`
 	Adjacency   AdjStatus         `json:"adjacency"`   // point-to-point (or, on a LAN, the first Up one)
@@ -1165,7 +1261,10 @@ func (s *session) Status() any {
 	defer s.mu.Unlock()
 	st := Status{SystemID: s.sys.String(), Hostname: s.host, Level: s.cfg.Level, Circuit: s.cfg.Circuit,
 		Areas: s.cfg.Areas, Metric: s.metric, Overload: s.overload, Flapping: now.Before(s.flapTill), Prefixes: len(s.prefixes),
-		LSDB: []LSPStatus{}, Counters: map[string]uint64{}, HelloAuth: authType(s.cfg.HelloAuth), LSPAuth: authType(s.cfg.LSPAuth)}
+		LSDB: []LSPStatus{}, Counters: map[string]uint64{}, HelloAuth: authType(s.cfg.HelloAuth), LSPAuth: authType(s.cfg.LSPAuth), Topologies: mtNameList(s.mts)}
+	if len(s.mts) == 0 {
+		st.Topologies = []string{"ipv4-unicast (single topology)"}
+	}
 	for k, v := range s.counters {
 		st.Counters[k] = v
 	}
@@ -1216,6 +1315,7 @@ func (s *session) Status() any {
 		st.Adjacency.Neighbor, st.Adjacency.MAC, st.Adjacency.Levels = a.sys.String(), a.mac.String(), a.levels
 		st.Adjacency.HoldS = (a.hold - now.Sub(a.lastHello)).Seconds()
 		st.Adjacency.Areas, st.Adjacency.Addresses = a.areas, a.addrs
+		st.Adjacency.Topologies = mtNameList(a.mts)
 		st.Adjacency.Hostname = names[a.sys]
 	}
 	if !a.since.IsZero() {

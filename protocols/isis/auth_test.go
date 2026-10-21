@@ -7,9 +7,9 @@ import (
 )
 
 func TestAuthSignVerify(t *testing.T) {
-	hello := EncodeP2PHello(circuitL2, sysA, 9, 1, [][]byte{area}, nil, nil, ThreeWay{State: AdjDown, ExtCircuit: 1}, 0)
+	hello := EncodeP2PHello(circuitL2, sysA, 9, 1, [][]byte{area}, nil, nil, nil, ThreeWay{State: AdjDown, ExtCircuit: 1}, 0)
 	lsp := EncodeLSP(2, MakeLSPID(sysA, 0, 0), 7, 1200, lspTypeL1L2, lspBody{Hostname: "a",
-		Prefixes: []IPReach{{netip.MustParsePrefix("10.0.0.0/24"), 10, false}}})
+		Prefixes: []IPReach{{Prefix: netip.MustParsePrefix("10.0.0.0/24"), Metric: 10, Down: false}}})
 	purge := purgeRaw(2, MakeLSPID(sysA, 0, 1), 3, lspTypeL1L2)
 	csnp := EncodeCSNP(2, NodeID{}, LSPID{}, LSPID{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, []LSPEntry{{1200, MakeLSPID(sysA, 0, 0), 7, 1}})
 	for _, a := range []Auth{{"password", "secret", 0}, {"hmac-md5", "s3cr3t", 0}, {"hmac-sha1", "k", 3}, {"hmac-sha224", "k", 4},
@@ -61,12 +61,12 @@ func TestAuthSignVerify(t *testing.T) {
 	}
 	// Padding plus authentication still fits the target size.
 	for _, a := range []Auth{{"hmac-md5", "k", 0}, {"hmac-sha512", "k", 1}} {
-		padded := a.sign(EncodeP2PHello(circuitL2, sysA, 9, 1, [][]byte{area}, nil, nil, ThreeWay{}, 1497-a.tlvLen()))
+		padded := a.sign(EncodeP2PHello(circuitL2, sysA, 9, 1, [][]byte{area}, nil, nil, nil, ThreeWay{}, 1497-a.tlvLen()))
 		if len(padded) != 1497 {
 			t.Fatalf("%s: padded signed hello %d bytes", a.Type, len(padded))
 		}
 	}
-	padded := (Auth{"hmac-md5", "k", 0}).sign(EncodeP2PHello(circuitL2, sysA, 9, 1, [][]byte{area}, nil, nil, ThreeWay{}, 1497-(Auth{"hmac-md5", "k", 0}).tlvLen()))
+	padded := (Auth{"hmac-md5", "k", 0}).sign(EncodeP2PHello(circuitL2, sysA, 9, 1, [][]byte{area}, nil, nil, nil, ThreeWay{}, 1497-(Auth{"hmac-md5", "k", 0}).tlvLen()))
 	if len(padded) != 1497 {
 		t.Fatalf("padded signed hello %d bytes", len(padded))
 	}
@@ -74,7 +74,7 @@ func TestAuthSignVerify(t *testing.T) {
 
 func TestAuthKeyID(t *testing.T) {
 	a := Auth{"hmac-sha256", "k", 9}
-	p, _ := Decode(frame(a.sign(EncodeP2PHello(circuitL2, sysA, 9, 1, [][]byte{area}, nil, nil, ThreeWay{}, 0))))
+	p, _ := Decode(frame(a.sign(EncodeP2PHello(circuitL2, sysA, 9, 1, [][]byte{area}, nil, nil, nil, ThreeWay{}, 0))))
 	if err := (Auth{"hmac-sha256", "k", 10}).verify(p.Raw); err != errKeyID {
 		t.Fatalf("other key ID: %v", err)
 	}

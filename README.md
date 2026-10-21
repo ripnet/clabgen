@@ -172,6 +172,11 @@ key_id: …}`; SHA is RFC 5310, where `key_id` is the SR OS keychain entry); `ls
 SR OS the level key signs hellos too where an interface has no hello key,
 so match it with `hello_auth` on such interfaces.
 
+Multi-topology: `topologies: [ipv6-unicast]` (also `ipv4-multicast`,
+`ipv6-multicast`) runs RFC 5120 MTs beside IPv4 unicast; IPv6 prefixes then
+go in MT 2. Simulated routers follow, with `loopback6_base` / `prefix6_base`
+for IPv6 addressing.
+
 Kinds are `grid`, `ring`, `line`, `full` and `custom` (named nodes with
 links and prefixes). `topology-link a=r1-1 b=r1-2 up=false` (or `metric=…`)
 and `topology-node node=r2-2 up=false` (or `overload=true`) fail parts of

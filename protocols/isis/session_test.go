@@ -81,7 +81,7 @@ func TestPurgeOfOwnLSPAtSameSeq(t *testing.T) {
 		defer s.Stop()
 		// Bring the adjacency up: the peer reports Up toward us.
 		hello := func(state uint8) []byte {
-			return auth.sign(EncodeP2PHello(circuitL2, sysB, 30, 1, [][]byte{area}, nil, nil,
+			return auth.sign(EncodeP2PHello(circuitL2, sysB, 30, 1, [][]byte{area}, nil, nil, nil,
 				ThreeWay{State: state, ExtCircuit: 1, NeighborSys: s.sys, HasNeighbor: state != AdjDown, NeighborExtCircuit: 1}, 0))
 		}
 		rx(s, hello(AdjDown))
