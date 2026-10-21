@@ -1,0 +1,33 @@
+devices:
+  - {name: untagged, port: eth1, addresses: [192.0.2.1/24, 2001:db8::1/64]}
+  - {name: v100, port: eth2, vlans: [{vid: 100}], addresses: [10.0.100.1/24]}
+  - {name: qinq, port: eth2, vlans: [{tpid: 0x88a8, vid: 200}, {vid: 10}]}
+protocols:
+  - name: mep-untagged
+    type: cfm-mep
+    device: untagged
+    config: {level: 3, mep_id: 1, remote_meps: [2], ma_format: icc, ma_name: CLABGEN00001, ccm_interval: 100ms}
+  - name: mep-v100
+    type: cfm-mep
+    device: v100
+    config: {level: 5, mep_id: 101, remote_meps: [102], md_format: string, md_name: lab, ma_name: v100, ccm_interval: 1s,
+             port_status_tlv: true, interface_status_tlv: true}
+  - name: mep-qinq
+    type: cfm-mep
+    device: qinq
+    config: {level: 2, mep_id: 201, ma_format: integer, ma_name: "200", ccm_interval: 10ms}
+  # 100 pps ping to gen2: shut a port and watch the outage it measures.
+  - name: ping-gen2
+    type: icmp
+    device: untagged
+    config: {destination: 192.0.2.2, rate: 100, timeout: 500ms, auto_start: true}
+  # UDP: one way to gen2 (measured by gen2), and an echo round trip
+  # (gen2's udp-echo reflects it).
+  - name: udp-gen2
+    type: udp
+    device: v100
+    config: {destination: 10.0.100.2, dst_port: 5001, rate: 100, auto_start: true}
+  - name: udp-echo-gen2
+    type: udp
+    device: untagged
+    config: {destination: 192.0.2.2, reply: echo, rate: 50, timeout: 500ms, auto_start: true}

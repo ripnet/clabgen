@@ -1,0 +1,26 @@
+# clabgen <-> Nokia SR-SIM CFM interop.
+#   gen1:eth1 -- sr1:1/1/c1/1 (dot1q)
+#     VLAN 100: SR MEP 1 <-> clabgen MEP 101  (MD "lab" level 5, MA string "v100", 1s)
+#     VLAN 200: SR MEP 1 <-> clabgen MEP 2    (MD none level 3, ICC "CLABGEN00001", 1s)
+#     VLAN 300: clabgen MEP 301 -- SR VPLS 300 with MIPs -- clabgen MEP 302 (level 6),
+#               also hosts 10.0.30.1 and .2 bridged through the VPLS
+#     VLAN 400: SR IES interface 10.0.4.1/24, 2001:db8:4::1/64 -- clabgen host .2
+#   gen1:eth2 -- sr1:1/1/c2/1 (dot1q)
+#     VLAN 300: the far side of VPLS 300 (MEP 302)
+#     VLAN 401: SR IES interface 10.0.41.1/24, 2001:db8:41::1/64 -- clabgen host .2
+#               (UDP flows between the VLAN 400 and 401 hosts are routed by the SR)
+name: cfm-srsim
+topology:
+  nodes:
+    sr1:
+      kind: nokia_srsim
+      image: nokia_srsim:26.7.R1
+      startup-config: sr1.partial.txt
+    gen1:
+      kind: linux
+      image: ghcr.io/ripnet/clabgen:dev
+      binds: [gen1.yml:/etc/clabgen/scenario.yml:ro]
+      env: {CLABGEN_SCENARIO: /etc/clabgen/scenario.yml}
+  links:
+    - endpoints: [gen1:eth1, sr1:1/1/c1/1]
+    - endpoints: [gen1:eth2, sr1:1/1/c2/1]

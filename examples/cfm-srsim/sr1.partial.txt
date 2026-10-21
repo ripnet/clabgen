@@ -1,0 +1,40 @@
+/configure card 1 card-type iom-1
+/configure card 1 mda 1 mda-type me6-100gb-qsfp28
+/configure port 1/1/c1 admin-state enable
+/configure port 1/1/c1 connector breakout c1-100g
+/configure port 1/1/c1/1 admin-state enable
+/configure port 1/1/c1/1 ethernet mode access
+/configure port 1/1/c1/1 ethernet encap-type dot1q
+/configure port 1/1/c2 admin-state enable
+/configure port 1/1/c2 connector breakout c1-100g
+/configure port 1/1/c2/1 admin-state enable
+/configure port 1/1/c2/1 ethernet mode access
+/configure port 1/1/c2/1 ethernet encap-type dot1q
+/configure eth-cfm domain "lab" level 5 name "lab" md-index 1
+/configure eth-cfm domain "lab" association "v100" ma-index 1 string "v100" ccm-interval 1s
+/configure eth-cfm domain "lab" association "v100" remote-mep 101
+/configure eth-cfm domain "lab" association "v100" bridge-identifier "vpls100"
+/configure eth-cfm domain "icc" level 3 format none md-index 2
+/configure eth-cfm domain "icc" association "icc200" ma-index 1 icc-based "CLABGEN00001" ccm-interval 1s
+/configure eth-cfm domain "icc" association "icc200" remote-mep 2
+/configure eth-cfm domain "icc" association "icc200" bridge-identifier "vpls200"
+/configure eth-cfm domain "transit" level 6 name "transit" md-index 3
+/configure eth-cfm domain "transit" association "t300" ma-index 1 string "t300" ccm-interval 1s
+/configure eth-cfm domain "transit" association "t300" bridge-identifier "vpls300" mhf-creation default
+/configure service vpls "vpls100" admin-state enable service-id 100 customer "1"
+/configure service vpls "vpls100" sap 1/1/c1/1:100 eth-cfm mep md-admin-name "lab" ma-admin-name "v100" mep-id 1 admin-state enable ccm true direction down
+/configure service vpls "vpls200" admin-state enable service-id 200 customer "1"
+/configure service vpls "vpls200" sap 1/1/c1/1:200 eth-cfm mep md-admin-name "icc" ma-admin-name "icc200" mep-id 1 admin-state enable ccm true direction down
+/configure service vpls "vpls300" admin-state enable service-id 300 customer "1"
+/configure service vpls "vpls300" sap 1/1/c1/1:300 eth-cfm mip primary-vlan none
+/configure service vpls "vpls300" sap 1/1/c2/1:300 eth-cfm mip primary-vlan none
+/configure service ies "ies400" admin-state enable service-id 400 customer "1"
+/configure service ies "ies400" interface "gen1" admin-state enable
+/configure service ies "ies400" interface "gen1" sap 1/1/c1/1:400
+/configure service ies "ies400" interface "gen1" ipv4 primary address 10.0.4.1 prefix-length 24
+/configure service ies "ies400" interface "gen1" ipv6 address 2001:db8:4::1 prefix-length 64
+/configure router "Base" static-routes route 198.51.100.0/24 route-type unicast next-hop 10.0.4.2 admin-state enable
+/configure service ies "ies400" interface "gen1b" admin-state enable
+/configure service ies "ies400" interface "gen1b" sap 1/1/c2/1:401
+/configure service ies "ies400" interface "gen1b" ipv4 primary address 10.0.41.1 prefix-length 24
+/configure service ies "ies400" interface "gen1b" ipv6 address 2001:db8:41::1 prefix-length 64

@@ -1,0 +1,6 @@
+bin/
+.git/
+examples/**/clab-*
+web/node_modules/
+internal/webui/dist/assets/
+internal/webui/dist/index.html

@@ -1,0 +1,1000 @@
+// clabgenctl is the command line client for clabgen agents.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/netip"
+	"os"
+	"os/signal"
+	"sort"
+	"strconv"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	"connectrpc.com/connect"
+	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
+	"sigs.k8s.io/yaml"
+
+	v1 "github.com/ripnet/clabgen/gen/clabgen/v1"
+	"github.com/ripnet/clabgen/gen/clabgen/v1/clabgenv1connect"
+)
+
+var (
+	serverAddr string
+	outFormat  string
+	timeout    time.Duration
+)
+
+func client() clabgenv1connect.AgentServiceClient {
+	addr := serverAddr
+	if !strings.Contains(addr, "://") {
+		addr = "http://" + addr
+	}
+	if host := strings.TrimPrefix(strings.TrimPrefix(addr, "http://"), "https://"); !strings.Contains(host, ":") {
+		addr += ":8080"
+	}
+	return clabgenv1connect.NewAgentServiceClient(http.DefaultClient, addr)
+}
+
+func ctx() (context.Context, context.CancelFunc) {
+	c, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	if timeout <= 0 {
+		return c, stop
+	}
+	c2, cancel := context.WithTimeout(c, timeout)
+	return c2, func() { cancel(); stop() }
+}
+
+// printMsg prints a proto message as YAML (default) or JSON.
+func printMsg(m proto.Message) error {
+	b, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: false}.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return printJSON(b)
+}
+
+func printJSON(b []byte) error {
+	if outFormat == "json" {
+		var v any
+		json.Unmarshal(b, &v)
+		out, _ := json.MarshalIndent(v, "", "  ")
+		fmt.Println(string(out))
+		return nil
+	}
+	y, err := yaml.JSONToYAML(b)
+	if err != nil {
+		return err
+	}
+	fmt.Print(string(y))
+	return nil
+}
+
+func table() *tabwriter.Writer { return tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0) }
+
+// parseSets turns ["a.b=1", "c=[1,2]", "d=x"] into a nested map. Values that
+// parse as JSON keep their type; anything else is a string.
+func parseSets(sets []string) (map[string]any, error) {
+	root := map[string]any{}
+	for _, s := range sets {
+		k, v, ok := strings.Cut(s, "=")
+		if !ok || k == "" {
+			return nil, fmt.Errorf("expected key=value, got %q", s)
+		}
+		var val any
+		if err := json.Unmarshal([]byte(v), &val); err != nil {
+			val = v
+		}
+		m := root
+		parts := strings.Split(k, ".")
+		for _, p := range parts[:len(parts)-1] {
+			next, ok := m[p].(map[string]any)
+			if !ok {
+				next = map[string]any{}
+				m[p] = next
+			}
+			m = next
+		}
+		m[parts[len(parts)-1]] = val
+	}
+	return root, nil
+}
+
+func merge(dst, src map[string]any) {
+	for k, v := range src {
+		if sm, ok := v.(map[string]any); ok {
+			if dm, ok := dst[k].(map[string]any); ok {
+				merge(dm, sm)
+				continue
+			}
+		}
+		dst[k] = v
+	}
+}
+
+func buildStruct(jsonArg string, sets []string) (*structpb.Struct, error) {
+	m := map[string]any{}
+	if jsonArg != "" {
+		if strings.HasPrefix(jsonArg, "@") {
+			b, err := os.ReadFile(jsonArg[1:])
+			if err != nil {
+				return nil, err
+			}
+			jsonArg = string(b)
+		}
+		jb, err := yaml.YAMLToJSON([]byte(jsonArg))
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(jb, &m); err != nil {
+			return nil, fmt.Errorf("config must be an object: %w", err)
+		}
+	}
+	extra, err := parseSets(sets)
+	if err != nil {
+		return nil, err
+	}
+	merge(m, extra)
+	return structpb.NewStruct(m)
+}
+
+func parseVLAN(s string) (*v1.VlanTag, error) {
+	// [tpid:]vid[.pcp], e.g. 100, 0x88a8:200, 100.5
+	t := &v1.VlanTag{}
+	if tp, rest, ok := strings.Cut(s, ":"); ok {
+		v, err := strconv.ParseUint(tp, 0, 16)
+		if err != nil {
+			return nil, fmt.Errorf("bad TPID in %q", s)
+		}
+		t.Tpid, s = uint32(v), rest
+	}
+	if vid, pcp, ok := strings.Cut(s, "."); ok {
+		p, err := strconv.ParseUint(pcp, 10, 3)
+		if err != nil {
+			return nil, fmt.Errorf("bad PCP in %q", s)
+		}
+		t.Pcp, s = uint32(p), vid
+	}
+	v, err := strconv.ParseUint(s, 10, 12)
+	if err != nil {
+		return nil, fmt.Errorf("bad VLAN ID %q", s)
+	}
+	t.Vid = uint32(v)
+	return t, nil
+}
+
+func main() {
+	root := &cobra.Command{
+		Use:           "clabgenctl",
+		Short:         "Control clabgen agents",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	def := os.Getenv("CLABGEN_SERVER")
+	if def == "" {
+		def = "localhost:8080"
+	}
+	root.PersistentFlags().StringVarP(&serverAddr, "server", "s", def, "agent address host[:port] (env CLABGEN_SERVER)")
+	root.PersistentFlags().StringVarP(&outFormat, "output", "o", "yaml", "output format for detailed views: yaml or json")
+	root.PersistentFlags().DurationVar(&timeout, "timeout", 0, "overall request timeout (0 = none)")
+
+	root.AddCommand(&cobra.Command{
+		Use: "info", Short: "Show agent info",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().GetInfo(c, connect.NewRequest(&v1.GetInfoRequest{}))
+			if err != nil {
+				return err
+			}
+			return printMsg(r.Msg)
+		}})
+
+	root.AddCommand(portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), eventsCmd(), scenarioCmd(),
+		flowCmd("start"), flowCmd("stop"), pingCmd(), receivedCmd())
+
+	if err := root.Execute(); err != nil {
+		var ce *connect.Error
+		if errors.As(err, &ce) {
+			fmt.Fprintf(os.Stderr, "error: %s: %s\n", ce.Code(), ce.Message())
+		} else {
+			fmt.Fprintln(os.Stderr, "error:", err)
+		}
+		os.Exit(1)
+	}
+}
+
+func upDown(b bool) string {
+	if b {
+		return "up"
+	}
+	return "down"
+}
+
+func portsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use: "ports", Short: "List data ports",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().ListPorts(c, connect.NewRequest(&v1.ListPortsRequest{}))
+			if err != nil {
+				return err
+			}
+			w := table()
+			fmt.Fprintln(w, "PORT\tADMIN\tOPER\tMAC\tMTU\tRX\tTX\tTX-ERR\tUNMATCHED")
+			for _, p := range r.Msg.Ports {
+				k := p.Counters
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n", p.Name, upDown(p.AdminUp), upDown(p.OperUp), p.Mac, p.Mtu,
+					k.GetRxFrames(), k.GetTxFrames(), k.GetTxErrors(), k.GetRxUnmatched())
+			}
+			return w.Flush()
+		}}
+}
+
+func portCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "port", Short: "Change a port"}
+	for _, up := range []bool{true, false} {
+		up := up
+		cmd.AddCommand(&cobra.Command{
+			Use: upDown(up) + " PORT...", Short: "Set port(s) admin " + upDown(up), Args: cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c, cancel := ctx()
+				defer cancel()
+				for _, p := range args {
+					if _, err := client().SetPortAdmin(c, connect.NewRequest(&v1.SetPortAdminRequest{Name: p, Up: up})); err != nil {
+						return err
+					}
+				}
+				return nil
+			}})
+	}
+	return cmd
+}
+
+func devicesCmd() *cobra.Command {
+	return &cobra.Command{
+		Use: "devices", Short: "List emulated devices",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().ListDevices(c, connect.NewRequest(&v1.ListDevicesRequest{}))
+			if err != nil {
+				return err
+			}
+			w := table()
+			fmt.Fprintln(w, "DEVICE\tPORT\tMAC\tVLANS\tADDRESSES")
+			for _, d := range r.Msg.Devices {
+				var tags []string
+				for _, t := range d.Vlans {
+					s := strconv.Itoa(int(t.Vid))
+					if t.Tpid != 0 && t.Tpid != 0x8100 {
+						s = fmt.Sprintf("%#x:%s", t.Tpid, s)
+					}
+					tags = append(tags, s)
+				}
+				addrs := strings.Join(d.Addresses, ",")
+				if gw := strings.Trim(d.Gateway4+","+d.Gateway6, ","); gw != "" {
+					addrs += " gw " + gw
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", d.Name, d.Port, d.Mac, strings.Join(tags, ","), addrs)
+			}
+			return w.Flush()
+		}}
+}
+
+func deviceCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "device", Short: "Create, change, inspect or delete devices"}
+	var port, mac string
+	var vlans, ips, gws []string
+	add := &cobra.Command{
+		Use: "add NAME", Short: "Create a device", Args: cobra.ExactArgs(1),
+		Example: "  clabgenctl device add d1 --port eth1 --vlan 100 --ip 10.0.100.2/24 --gw 10.0.100.1\n" +
+			"  clabgenctl device add qinq --port eth2 --vlan 0x88a8:200 --vlan 10 --ip 2001:db8::2/64",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			d := &v1.Device{Name: args[0], Port: port, Mac: mac, Addresses: ips}
+			if err := setGateways(d, gws); err != nil {
+				return err
+			}
+			for _, v := range vlans {
+				t, err := parseVLAN(v)
+				if err != nil {
+					return err
+				}
+				d.Vlans = append(d.Vlans, t)
+			}
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().CreateDevice(c, connect.NewRequest(&v1.CreateDeviceRequest{Device: d}))
+			if err != nil {
+				return err
+			}
+			return printMsg(r.Msg.Device)
+		}}
+	add.Flags().StringVar(&port, "port", "eth1", "port")
+	add.Flags().StringVar(&mac, "mac", "", "MAC (default: derived from host and name)")
+	add.Flags().StringArrayVar(&vlans, "vlan", nil, "VLAN tag [tpid:]vid[.pcp], outermost first; repeatable")
+	add.Flags().StringArrayVar(&ips, "ip", nil, "address in CIDR form (IPv4 or IPv6); repeatable")
+	add.Flags().StringArrayVar(&gws, "gw", nil, "default gateway (one IPv4 and/or one IPv6); repeatable")
+	var setPort, setMAC string
+	var setVLANs, setIPs, setGWs []string
+	var untagged, noIP, noGW bool
+	set := &cobra.Command{
+		Use:   "set NAME",
+		Short: "Change a device (port, MAC or VLAN changes restart its protocols; IP changes don't)",
+		Args:  cobra.ExactArgs(1),
+		Example: "  clabgenctl device set d1 --vlan 200\n  clabgenctl device set d1 --vlan 0x88a8:300 --vlan 20\n" +
+			"  clabgenctl device set d1 --untagged --mac 02:00:00:00:00:01\n  clabgenctl device set d1 --mac auto\n" +
+			"  clabgenctl device set d1 --ip 10.0.0.2/24 --ip 2001:db8::2/64 --gw 10.0.0.1\n  clabgenctl device set d1 --no-ip",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			cl := client()
+			list, err := cl.ListDevices(c, connect.NewRequest(&v1.ListDevicesRequest{}))
+			if err != nil {
+				return err
+			}
+			var d *v1.Device
+			for _, x := range list.Msg.Devices {
+				if x.Name == args[0] {
+					d = x
+				}
+			}
+			if d == nil {
+				return fmt.Errorf("no device %q", args[0])
+			}
+			f := cmd.Flags()
+			if f.Changed("port") {
+				d.Port = setPort
+			}
+			if f.Changed("mac") {
+				d.Mac = setMAC
+				if setMAC == "auto" {
+					d.Mac = ""
+				}
+			}
+			if untagged && len(setVLANs) > 0 {
+				return errors.New("--untagged and --vlan are mutually exclusive")
+			}
+			if untagged {
+				d.Vlans = nil
+			} else if len(setVLANs) > 0 {
+				d.Vlans = nil
+				for _, v := range setVLANs {
+					t, err := parseVLAN(v)
+					if err != nil {
+						return err
+					}
+					d.Vlans = append(d.Vlans, t)
+				}
+			}
+			if noIP && len(setIPs) > 0 {
+				return errors.New("--no-ip and --ip are mutually exclusive")
+			}
+			if noIP {
+				d.Addresses, d.Gateway4, d.Gateway6 = nil, "", ""
+			} else if len(setIPs) > 0 {
+				d.Addresses = setIPs
+			}
+			if noGW {
+				d.Gateway4, d.Gateway6 = "", ""
+			}
+			if err := setGateways(d, setGWs); err != nil {
+				return err
+			}
+			r, err := cl.UpdateDevice(c, connect.NewRequest(&v1.UpdateDeviceRequest{Device: d}))
+			if err != nil {
+				return err
+			}
+			return printMsg(r.Msg.Device)
+		}}
+	set.Flags().StringVar(&setPort, "port", "", "new port")
+	set.Flags().StringVar(&setMAC, "mac", "", "new MAC, or 'auto' for the derived one")
+	set.Flags().StringArrayVar(&setVLANs, "vlan", nil, "new VLAN stack [tpid:]vid[.pcp], outermost first; repeatable")
+	set.Flags().BoolVar(&untagged, "untagged", false, "remove all VLAN tags")
+	set.Flags().StringArrayVar(&setIPs, "ip", nil, "new address list in CIDR form; repeatable")
+	set.Flags().BoolVar(&noIP, "no-ip", false, "remove all addresses and gateways")
+	set.Flags().StringArrayVar(&setGWs, "gw", nil, "set the IPv4 and/or IPv6 gateway; repeatable")
+	set.Flags().BoolVar(&noGW, "no-gw", false, "remove the gateways")
+	show := &cobra.Command{
+		Use: "show NAME", Short: "Show a device's addresses, neighbors and IP counters", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().GetDeviceIP(c, connect.NewRequest(&v1.GetDeviceIPRequest{Name: args[0]}))
+			if err != nil {
+				return err
+			}
+			m := r.Msg
+			fmt.Printf("addresses: %s\n", orNone(strings.Join(m.Addresses, ", ")))
+			fmt.Printf("gateways:  %s\n\n", orNone(strings.Trim(m.Gateway4+", "+m.Gateway6, ", ")))
+			w := table()
+			fmt.Fprintln(w, "NEIGHBOR\tMAC\tSTATE\tAGE")
+			for _, n := range m.Neighbors {
+				age := "-"
+				if n.Mac != "" {
+					age = (time.Duration(n.AgeMs) * time.Millisecond).Round(time.Second).String()
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", n.Ip, orNone(n.Mac), n.State, age)
+			}
+			w.Flush()
+			fmt.Println()
+			keys := make([]string, 0, len(m.Counters))
+			for k, v := range m.Counters {
+				if v != 0 {
+					keys = append(keys, k)
+				}
+			}
+			sort.Strings(keys)
+			w = table()
+			for _, k := range keys {
+				fmt.Fprintf(w, "%s\t%d\n", k, m.Counters[k])
+			}
+			return w.Flush()
+		}}
+	resolve := &cobra.Command{
+		Use: "resolve NAME IP", Aliases: []string{"arp"}, Short: "Resolve an address with ARP or ND (off-link: the gateway)", Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().ResolveNeighbor(c, connect.NewRequest(&v1.ResolveNeighborRequest{Device: args[0], Ip: args[1]}))
+			if err != nil {
+				return err
+			}
+			m := r.Msg
+			via := ""
+			if m.NextHop != args[1] {
+				via = " via " + m.NextHop
+			}
+			how := fmt.Sprintf("%.2f ms", float64(m.RttUs)/1000)
+			if m.Cached {
+				how = "cached"
+			}
+			fmt.Printf("%s%s is at %s (%s)\n", args[1], via, m.Mac, how)
+			return nil
+		}}
+	clearNeigh := &cobra.Command{
+		Use: "clear-neighbors NAME", Short: "Empty a device's neighbor cache", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			_, err := client().ClearNeighbors(c, connect.NewRequest(&v1.ClearNeighborsRequest{Device: args[0]}))
+			return err
+		}}
+	del := &cobra.Command{
+		Use: "del NAME...", Aliases: []string{"delete", "rm"}, Short: "Delete devices", Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			for _, n := range args {
+				if _, err := client().DeleteDevice(c, connect.NewRequest(&v1.DeleteDeviceRequest{Name: n})); err != nil {
+					return err
+				}
+			}
+			return nil
+		}}
+	cmd.AddCommand(add, set, show, resolve, clearNeigh, del)
+	return cmd
+}
+
+func typesCmd() *cobra.Command {
+	return &cobra.Command{
+		Use: "types [TYPE]", Short: "List protocol types, or show one type's config and action schemas",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().ListProtocolTypes(c, connect.NewRequest(&v1.ListProtocolTypesRequest{}))
+			if err != nil {
+				return err
+			}
+			if len(args) == 0 {
+				w := table()
+				fmt.Fprintln(w, "TYPE\tACTIONS\tDESCRIPTION")
+				for _, t := range r.Msg.Types {
+					var as []string
+					for _, a := range t.Actions {
+						as = append(as, a.Name)
+					}
+					fmt.Fprintf(w, "%s\t%s\t%s\n", t.Name, strings.Join(as, ","), t.Description)
+				}
+				return w.Flush()
+			}
+			for _, t := range r.Msg.Types {
+				if t.Name != args[0] {
+					continue
+				}
+				out := map[string]any{"name": t.Name, "description": t.Description}
+				var cfg any
+				json.Unmarshal([]byte(t.ConfigSchema), &cfg)
+				out["config"] = cfg
+				acts := map[string]any{}
+				for _, a := range t.Actions {
+					var s any
+					json.Unmarshal([]byte(a.ArgsSchema), &s)
+					acts[a.Name] = map[string]any{"description": a.Description, "args": s}
+				}
+				out["actions"] = acts
+				b, _ := json.Marshal(out)
+				return printJSON(b)
+			}
+			return fmt.Errorf("no protocol type %q", args[0])
+		}}
+}
+
+// summary picks a one-line status for list views.
+func summary(p *v1.Protocol) string {
+	if p.Status == nil {
+		return p.Error
+	}
+	m := p.Status.AsMap()
+	if p.Type == "cfm-mep" {
+		var rs []string
+		if l, ok := m["remote_meps"].([]any); ok {
+			for _, x := range l {
+				r := x.(map[string]any)
+				rs = append(rs, fmt.Sprintf("%v:%v", r["mep_id"], r["state"]))
+			}
+		}
+		return fmt.Sprintf("lvl=%v mep=%v %v rmeps=[%s] defect=%v", m["level"], m["mep_id"], m["maid"], strings.Join(rs, " "), m["highest_defect"])
+	}
+	if p.Type == "icmp" || p.Type == "udp" {
+		out := fmt.Sprintf("%v → %v %v@%vpps tx=%v rx=%v lost=%v", m["state"], m["destination"], m["kind"], m["rate"], m["tx"], m["rx"], m["lost"])
+		if m["tracks_replies"] == false {
+			// One way: receivers report rx/loss (clabgenctl received).
+			out = fmt.Sprintf("%v → %v %v@%vpps tx=%v", m["state"], m["destination"], m["kind"], m["rate"], m["tx"])
+			if e, _ := m["tx_errors"].(float64); e > 0 {
+				out += fmt.Sprintf(" tx_errors=%v", e)
+			}
+		}
+		if o, _ := m["outage_max_ms"].(float64); o > 0 {
+			out += fmt.Sprintf(" outage_max=%gms", o)
+		}
+		if r, ok := m["rtt"].(map[string]any); ok {
+			out += fmt.Sprintf(" rtt=%.2fms", r["avg_us"].(float64)/1000)
+		}
+		if e, _ := m["error"].(string); e != "" {
+			out += " (" + e + ")"
+		}
+		return out
+	}
+	return ""
+}
+
+func protocolsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use: "protocols", Aliases: []string{"protos"}, Short: "List protocol instances",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().ListProtocols(c, connect.NewRequest(&v1.ListProtocolsRequest{WithStatus: true}))
+			if err != nil {
+				return err
+			}
+			w := table()
+			fmt.Fprintln(w, "NAME\tTYPE\tDEVICE\tSTATE\tSUMMARY")
+			for _, p := range r.Msg.Protocols {
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", p.Name, p.Type, p.Device, p.State, summary(p))
+			}
+			return w.Flush()
+		}}
+}
+
+func protoCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "proto", Short: "Create, inspect, change and drive protocol instances"}
+
+	var typ, dev, cfgJSON string
+	add := &cobra.Command{
+		Use: "add NAME [key=value...]", Short: "Create a protocol instance", Args: cobra.MinimumNArgs(1),
+		Example: "  clabgenctl proto add mep1 --type cfm-mep --device d1 level=3 mep_id=1 ma_format=icc ma_name=CLABGEN00001 remote_meps=[2]",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := buildStruct(cfgJSON, args[1:])
+			if err != nil {
+				return err
+			}
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().CreateProtocol(c, connect.NewRequest(&v1.CreateProtocolRequest{
+				Protocol: &v1.Protocol{Name: args[0], Type: typ, Device: dev, Config: cfg}}))
+			if err != nil {
+				return err
+			}
+			return printMsg(r.Msg.Protocol)
+		}}
+	add.Flags().StringVar(&typ, "type", "cfm-mep", "protocol type")
+	add.Flags().StringVar(&dev, "device", "", "device name")
+	add.Flags().StringVar(&cfgJSON, "config", "", "config as JSON/YAML, or @file")
+	add.MarkFlagRequired("device")
+
+	show := &cobra.Command{
+		Use: "show NAME", Short: "Show config and live status", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().GetProtocol(c, connect.NewRequest(&v1.GetProtocolRequest{Name: args[0]}))
+			if err != nil {
+				return err
+			}
+			return printMsg(r.Msg.Protocol)
+		}}
+
+	var setJSON string
+	set := &cobra.Command{
+		Use: "set NAME key=value...", Short: "Change config (merged onto current config; restarts the instance)", Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			cl := client()
+			cur, err := cl.GetProtocol(c, connect.NewRequest(&v1.GetProtocolRequest{Name: args[0]}))
+			if err != nil {
+				return err
+			}
+			upd, err := buildStruct(setJSON, args[1:])
+			if err != nil {
+				return err
+			}
+			m := cur.Msg.Protocol.Config.AsMap()
+			merge(m, upd.AsMap())
+			cfg, err := structpb.NewStruct(m)
+			if err != nil {
+				return err
+			}
+			r, err := cl.UpdateProtocol(c, connect.NewRequest(&v1.UpdateProtocolRequest{Name: args[0], Config: cfg}))
+			if err != nil {
+				return err
+			}
+			return printMsg(r.Msg.Protocol.Config)
+		}}
+	set.Flags().StringVar(&setJSON, "config", "", "config fragment as JSON/YAML, or @file")
+
+	del := &cobra.Command{
+		Use: "del NAME...", Aliases: []string{"delete", "rm"}, Short: "Delete protocol instances", Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			for _, n := range args {
+				if _, err := client().DeleteProtocol(c, connect.NewRequest(&v1.DeleteProtocolRequest{Name: n})); err != nil {
+					return err
+				}
+			}
+			return nil
+		}}
+
+	var argsJSON string
+	run := &cobra.Command{
+		Use: "run NAME ACTION [key=value...]", Short: "Run an action (see `types TYPE` for actions and arguments)", Args: cobra.MinimumNArgs(2),
+		Example: "  clabgenctl proto run mep1 loopback target_mep_id=2 count=5\n  clabgenctl proto run mep1 fault ccm_enabled=false",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := buildStruct(argsJSON, args[2:])
+			if err != nil {
+				return err
+			}
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().RunProtocolAction(c, connect.NewRequest(&v1.RunProtocolActionRequest{Name: args[0], Action: args[1], Args: a}))
+			if err != nil {
+				return err
+			}
+			return printMsg(r.Msg.Result)
+		}}
+	run.Flags().StringVar(&argsJSON, "args", "", "arguments as JSON/YAML, or @file")
+
+	cmd.AddCommand(add, show, set, del, run)
+	return cmd
+}
+
+func eventsCmd() *cobra.Command {
+	var replay bool
+	cmd := &cobra.Command{
+		Use: "events", Short: "Stream agent events",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			st, err := client().WatchEvents(c, connect.NewRequest(&v1.WatchEventsRequest{Replay: replay}))
+			if err != nil {
+				return err
+			}
+			for st.Receive() {
+				e := st.Msg()
+				if outFormat == "json" {
+					b, _ := protojson.Marshal(e)
+					fmt.Println(string(b))
+					continue
+				}
+				extra := ""
+				if e.Data != nil {
+					m := e.Data.AsMap()
+					keys := make([]string, 0, len(m))
+					for k := range m {
+						keys = append(keys, k)
+					}
+					sort.Strings(keys)
+					var kv []string
+					for _, k := range keys {
+						if s, ok := m[k].(string); ok && s == "" {
+							continue
+						}
+						kv = append(kv, fmt.Sprintf("%s=%v", k, m[k]))
+					}
+					extra = "  " + strings.Join(kv, " ")
+				}
+				fmt.Printf("%s %-16s %-16s %s%s\n", e.Time.AsTime().Local().Format("15:04:05.000"), e.Source, e.Kind, e.Message, extra)
+			}
+			if err := st.Err(); err != nil && !errors.Is(err, context.Canceled) && c.Err() == nil {
+				return err
+			}
+			return nil
+		}}
+	cmd.Flags().BoolVar(&replay, "replay", false, "print recent buffered events first")
+	return cmd
+}
+
+func scenarioCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "scenario", Short: "Export or apply the agent's whole config"}
+	cmd.AddCommand(&cobra.Command{
+		Use: "get", Short: "Print the current scenario YAML",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().GetScenario(c, connect.NewRequest(&v1.GetScenarioRequest{}))
+			if err != nil {
+				return err
+			}
+			fmt.Print(r.Msg.Yaml)
+			return nil
+		}})
+	var replace bool
+	apply := &cobra.Command{
+		Use: "apply FILE", Short: "Apply a scenario file ('-' for stdin)", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var b []byte
+			var err error
+			if args[0] == "-" {
+				b, err = readAll(os.Stdin)
+			} else {
+				b, err = os.ReadFile(args[0])
+			}
+			if err != nil {
+				return err
+			}
+			c, cancel := ctx()
+			defer cancel()
+			_, err = client().ApplyScenario(c, connect.NewRequest(&v1.ApplyScenarioRequest{Yaml: string(b), Replace: replace}))
+			return err
+		}}
+	apply.Flags().BoolVar(&replace, "replace", false, "delete existing devices and protocols first")
+	cmd.AddCommand(apply)
+	return cmd
+}
+
+func readAll(f *os.File) ([]byte, error) { return io.ReadAll(f) }
+
+// setGateways assigns each --gw value to gateway4 or gateway6 by family.
+func setGateways(d *v1.Device, gws []string) error {
+	for _, g := range gws {
+		a, err := netip.ParseAddr(g)
+		if err != nil {
+			return fmt.Errorf("--gw %q: %w", g, err)
+		}
+		if a.Is4() {
+			d.Gateway4 = g
+		} else {
+			d.Gateway6 = g
+		}
+	}
+	return nil
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
+// flowCmd runs the start or stop action on traffic flows.
+func flowCmd(action string) *cobra.Command {
+	return &cobra.Command{
+		Use: action + " FLOW...", Short: strings.ToUpper(action[:1]) + action[1:] + " traffic flows", Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			for _, n := range args {
+				if _, err := client().RunProtocolAction(c, connect.NewRequest(&v1.RunProtocolActionRequest{Name: n, Action: action})); err != nil {
+					return fmt.Errorf("%s: %w", n, err)
+				}
+			}
+			return nil
+		}}
+}
+
+// pingCmd runs a temporary ICMP flow and prints it like ping(8).
+func pingCmd() *cobra.Command {
+	var count uint64
+	var interval time.Duration
+	var size int
+	var ttl uint8
+	var keep bool
+	cmd := &cobra.Command{
+		Use:   "ping DEVICE DESTINATION",
+		Short: "Ping from a device (a temporary icmp flow; Ctrl-C to stop)",
+		Example: "  clabgenctl ping v400 10.0.4.1 -c 5\n  clabgenctl ping v400 2001:db8:4::1 -i 10ms\n" +
+			"  clabgenctl ping v400 192.0.2.9 --keep    # leave the flow (ping-v400) running",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+			defer stop()
+			cl := client()
+			name := "ping-" + args[0]
+			if !keep {
+				name += fmt.Sprintf("-%d", time.Now().UnixNano()%100000)
+			}
+			mode := "continuous"
+			if count > 0 {
+				mode = "count"
+			}
+			cfg, err := structpb.NewStruct(map[string]any{"destination": args[1], "mode": mode, "count": float64(count),
+				"rate": float64(time.Second) / float64(interval), "payload_size": float64(size), "ttl": float64(ttl), "auto_start": true})
+			if err != nil {
+				return err
+			}
+			if _, err := cl.CreateProtocol(c, connect.NewRequest(&v1.CreateProtocolRequest{
+				Protocol: &v1.Protocol{Name: name, Type: "icmp", Device: args[0], Config: cfg}})); err != nil {
+				return err
+			}
+			bg := context.Background()
+			cleanup := func() {
+				if !keep {
+					cl.DeleteProtocol(bg, connect.NewRequest(&v1.DeleteProtocolRequest{Name: name}))
+				}
+			}
+			defer cleanup()
+			fmt.Printf("PING %s from %s: %d data bytes\n", args[1], args[0], size)
+			printed := map[string]bool{}
+			status := func() (map[string]any, error) {
+				r, err := cl.GetProtocol(bg, connect.NewRequest(&v1.GetProtocolRequest{Name: name}))
+				if err != nil {
+					return nil, err
+				}
+				return r.Msg.Protocol.Status.AsMap(), nil
+			}
+			printNew := func(m map[string]any) {
+				// recent is a sliding window: remember only what is still in it.
+				lines, _ := m["recent"].([]any)
+				now := map[string]bool{}
+				for _, x := range lines {
+					l := x.(map[string]any)
+					seq := uint64(l["seq"].(float64))
+					key := fmt.Sprint(seq, l["result"], l["time"])
+					now[key] = true
+					if printed[key] {
+						continue
+					}
+					switch l["result"] {
+					case "reply":
+						fmt.Printf("%v: seq=%d time=%.3f ms\n", l["detail"], seq, l["rtt_us"].(float64)/1000)
+					case "timeout":
+						fmt.Printf("seq=%d timeout\n", seq)
+					default:
+						fmt.Printf("seq=%d %v %v\n", seq, l["result"], l["detail"])
+					}
+				}
+				printed = now
+			}
+			poll := interval
+			if poll < 200*time.Millisecond {
+				poll = 200 * time.Millisecond
+			}
+			if poll > time.Second {
+				poll = time.Second
+			}
+			tk := time.NewTicker(poll)
+			defer tk.Stop()
+			var m map[string]any
+		loop:
+			for {
+				select {
+				case <-c.Done():
+					if !keep {
+						cl.RunProtocolAction(bg, connect.NewRequest(&v1.RunProtocolActionRequest{Name: name, Action: "stop"}))
+					}
+					break loop
+				case <-tk.C:
+					if m, err = status(); err != nil {
+						return err
+					}
+					printNew(m)
+					if e, _ := m["error"].(string); e != "" && m["state"] == "resolving" {
+						fmt.Fprintln(os.Stderr, "waiting:", e)
+					}
+					if m["state"] == "done" {
+						break loop
+					}
+				}
+			}
+			if m, err = status(); err != nil {
+				return err
+			}
+			printNew(m)
+			fmt.Printf("--- %s ping statistics ---\n", args[1])
+			fmt.Printf("%v transmitted, %v received, %v lost (%.1f%%)", m["tx"], m["rx"], m["lost"], m["loss_pct"])
+			if o, _ := m["outage_max_ms"].(float64); o > 0 {
+				fmt.Printf(", %v outages (max %g ms)", m["outages"], o)
+			}
+			fmt.Println()
+			if r, ok := m["rtt"].(map[string]any); ok {
+				fmt.Printf("rtt min/avg/max/jitter = %.3f/%.3f/%.3f/%.3f ms\n", r["min_us"].(float64)/1000, r["avg_us"].(float64)/1000,
+					r["max_us"].(float64)/1000, r["jitter_us"].(float64)/1000)
+			}
+			if keep {
+				fmt.Printf("flow %s kept\n", name)
+			}
+			return nil
+		}}
+	cmd.Flags().Uint64VarP(&count, "count", "c", 0, "stop after this many packets (default: until Ctrl-C)")
+	cmd.Flags().DurationVarP(&interval, "interval", "i", time.Second, "time between packets")
+	cmd.Flags().IntVar(&size, "size", 56, "data bytes (at least 24, for the signature)")
+	cmd.Flags().Uint8VarP(&ttl, "ttl", "t", 64, "TTL / hop limit")
+	cmd.Flags().BoolVar(&keep, "keep", false, "keep the flow (named ping-DEVICE) after exiting, still running")
+	return cmd
+}
+
+// receivedCmd lists the signed flows devices have received.
+func receivedCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use: "received [DEVICE]", Short: "Flows received by devices (one-way loss, reordering, latency, outages)", Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			dev := ""
+			if len(args) == 1 {
+				dev = args[0]
+			}
+			r, err := client().ListReceivedFlows(c, connect.NewRequest(&v1.ListReceivedFlowsRequest{Device: dev}))
+			if err != nil {
+				return err
+			}
+			w := table()
+			fmt.Fprintln(w, "DEVICE\tFLOW-ID\tPROTO\tFROM\tTO\tRX\tPPS\tLOST\tREORDER\tDUP\tLATENCY(avg/max)\tOUTAGES(max)\tIDLE")
+			for _, f := range r.Msg.Flows {
+				m := f.Stats.AsMap()
+				g := func(k string) float64 { v, _ := m[k].(float64); return v }
+				from, to := fmt.Sprint(m["src"]), fmt.Sprint(m["dst"])
+				if m["proto"] == "udp" {
+					hp := func(h any, p float64) string { return net.JoinHostPort(fmt.Sprint(h), strconv.Itoa(int(p))) }
+					from, to = hp(m["src"], g("src_port")), hp(m["dst"], g("dst_port"))
+				}
+				fmt.Fprintf(w, "%s\t%v\t%v\t%s\t%s\t%.0f\t%.0f\t%.0f (%.2f%%)\t%.0f\t%.0f\t%.3f/%.3f ms\t%.0f (%.0f ms)\t%s\n",
+					f.Device, m["flow_id"], m["proto"], from, to, g("rx"), g("rate_pps"), g("lost"), g("loss_pct"), g("reordered"), g("duplicate"),
+					g("latency_avg_us")/1000, g("latency_max_us")/1000, g("outages"), g("outage_max_ms"),
+					(time.Duration(g("idle_ms")) * time.Millisecond).Round(100*time.Millisecond))
+			}
+			return w.Flush()
+		}}
+	var flowID string
+	clr := &cobra.Command{
+		Use: "clear [DEVICE]", Short: "Forget received flows", Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			dev := ""
+			if len(args) == 1 {
+				dev = args[0]
+			}
+			_, err := client().ClearReceivedFlows(c, connect.NewRequest(&v1.ClearReceivedFlowsRequest{Device: dev, FlowId: flowID}))
+			return err
+		}}
+	clr.Flags().StringVar(&flowID, "flow", "", "only this flow ID (8 hex digits)")
+	cmd.AddCommand(clr)
+	return cmd
+}

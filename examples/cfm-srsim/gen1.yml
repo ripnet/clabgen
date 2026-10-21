@@ -1,0 +1,62 @@
+# clabgen side of the SR-SIM interop lab (see sr1.partial.txt).
+devices:
+  - {name: v100, port: eth1, vlans: [{vid: 100}]}
+  - {name: v200, port: eth1, vlans: [{vid: 200}]}
+  - {name: t300a, port: eth1, vlans: [{vid: 300}], addresses: [10.0.30.1/24, 2001:db8:30::1/64]}
+  - {name: t300b, port: eth2, vlans: [{vid: 300}], addresses: [10.0.30.2/24, 2001:db8:30::2/64]}
+  # Host on SR IES 400 (interface 10.0.4.1/24, 2001:db8:4::1/64).
+  - {name: v400, port: eth1, vlans: [{vid: 400}], addresses: [10.0.4.2/24, 2001:db8:4::2/64], gateway4: 10.0.4.1, gateway6: 2001:db8:4::1}
+  # Second host behind another SR interface (eth2 VLAN 401): flows between
+  # v400 and v401 are routed by the SR.
+  - {name: v401, port: eth2, vlans: [{vid: 401}], addresses: [10.0.41.2/24, 2001:db8:41::2/64], gateway4: 10.0.41.1, gateway6: 2001:db8:41::1}
+protocols:
+  # Peer: SR VPLS 100 SAP 1/1/c1/1:100 MEP 1, MD "lab" level 5, MA string "v100".
+  - name: mep-v100
+    type: cfm-mep
+    device: v100
+    config: {level: 5, mep_id: 101, remote_meps: [1], md_format: string, md_name: lab, ma_format: string, ma_name: v100, ccm_interval: 1s}
+  # Peer: SR VPLS 200 SAP 1/1/c1/1:200 MEP 1, MD format none level 3, Y.1731 ICC MEG ID.
+  - name: mep-icc
+    type: cfm-mep
+    device: v200
+    config: {level: 3, mep_id: 2, remote_meps: [1], md_format: none, ma_format: icc, ma_name: CLABGEN00001, ccm_interval: 1s}
+  # Two clabgen MEPs either side of SR VPLS 300, which has a level-6 MIP.
+  - name: mep-t300a
+    type: cfm-mep
+    device: t300a
+    config: {level: 6, mep_id: 301, remote_meps: [302], md_format: string, md_name: transit, ma_name: t300, ccm_interval: 1s}
+  - name: mep-t300b
+    type: cfm-mep
+    device: t300b
+    config: {level: 6, mep_id: 302, remote_meps: [301], md_format: string, md_name: transit, ma_name: t300, ccm_interval: 1s}
+  # Traffic: continuous pings to the SR interface, and a TTL=1 flow through
+  # the SR (expects ICMP time exceeded back).
+  - name: ping-sr
+    type: icmp
+    device: v400
+    config: {destination: 10.0.4.1, rate: 10, auto_start: true}
+  - name: ping-sr-v6
+    type: icmp
+    device: v400
+    config: {destination: "2001:db8:4::1", rate: 10, auto_start: true}
+  - name: ttl1
+    type: icmp
+    device: v400
+    config: {destination: 198.51.100.1, ttl: 1, rate: 1}
+  # UDP routed through the SR: one way (v401 measures it) and echoed back.
+  - name: echo-v401
+    type: udp-echo
+    device: v401
+  - name: udp-routed
+    type: udp
+    device: v400
+    config: {destination: 10.0.41.2, dst_port: 5001, rate: 100, auto_start: true}
+  - name: udp-echo-routed
+    type: udp
+    device: v400
+    config: {destination: "2001:db8:41::2", reply: echo, rate: 50, auto_start: true}
+  # To a closed port on the SR: expect ICMP port unreachable.
+  - name: udp-closed
+    type: udp
+    device: v400
+    config: {destination: 10.0.4.1, dst_port: 9, rate: 1}

@@ -1,0 +1,253 @@
+syntax = "proto3";
+
+package clabgen.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/ripnet/clabgen/gen/clabgen/v1;clabgenv1";
+
+// AgentService is exposed by every clabgen-agent. It is served over
+// Connect, gRPC and gRPC-Web on the same HTTP port, so it can be driven by
+// curl (JSON), the CLI, a browser, or generated clients.
+service AgentService {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+
+  // Ports are the physical (veth) interfaces of the container.
+  rpc ListPorts(ListPortsRequest) returns (ListPortsResponse);
+  rpc SetPortAdmin(SetPortAdminRequest) returns (SetPortAdminResponse);
+
+  // Devices are emulated endpoints (MAC + VLAN stack, later IP) on a port.
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+  rpc CreateDevice(CreateDeviceRequest) returns (CreateDeviceResponse);
+  // UpdateDevice replaces a device's port, MAC and VLAN stack (the name is
+  // the key). Protocols on the device restart.
+  rpc UpdateDevice(UpdateDeviceRequest) returns (UpdateDeviceResponse);
+  rpc DeleteDevice(DeleteDeviceRequest) returns (DeleteDeviceResponse);
+  // GetDeviceIP returns a device's effective addresses, neighbor cache and
+  // IP counters.
+  rpc GetDeviceIP(GetDeviceIPRequest) returns (GetDeviceIPResponse);
+  // ResolveNeighbor resolves an address with ARP or ND (an off-link address
+  // resolves the device's gateway).
+  rpc ResolveNeighbor(ResolveNeighborRequest) returns (ResolveNeighborResponse);
+  rpc ClearNeighbors(ClearNeighborsRequest) returns (ClearNeighborsResponse);
+  // ListReceivedFlows returns the signed flow packets devices have received
+  // (one-way loss, reordering, latency and outages per flow ID).
+  rpc ListReceivedFlows(ListReceivedFlowsRequest) returns (ListReceivedFlowsResponse);
+  rpc ClearReceivedFlows(ClearReceivedFlowsRequest) returns (ClearReceivedFlowsResponse);
+
+  // Protocol types are the plugins compiled into the agent. Each publishes a
+  // JSON schema for its config and for each action's arguments.
+  rpc ListProtocolTypes(ListProtocolTypesRequest) returns (ListProtocolTypesResponse);
+
+  // Protocols are running instances of a protocol type bound to a device.
+  rpc ListProtocols(ListProtocolsRequest) returns (ListProtocolsResponse);
+  rpc GetProtocol(GetProtocolRequest) returns (GetProtocolResponse);
+  rpc CreateProtocol(CreateProtocolRequest) returns (CreateProtocolResponse);
+  rpc UpdateProtocol(UpdateProtocolRequest) returns (UpdateProtocolResponse);
+  rpc DeleteProtocol(DeleteProtocolRequest) returns (DeleteProtocolResponse);
+  rpc RunProtocolAction(RunProtocolActionRequest) returns (RunProtocolActionResponse);
+
+  rpc WatchEvents(WatchEventsRequest) returns (stream Event);
+
+  // Scenarios are the whole agent config as YAML.
+  rpc GetScenario(GetScenarioRequest) returns (GetScenarioResponse);
+  rpc ApplyScenario(ApplyScenarioRequest) returns (ApplyScenarioResponse);
+}
+
+message GetInfoRequest {}
+message GetInfoResponse {
+  string hostname = 1;
+  string version = 2;
+  google.protobuf.Timestamp start_time = 3;
+}
+
+message PortCounters {
+  uint64 rx_frames = 1;
+  uint64 rx_bytes = 2;
+  uint64 tx_frames = 3;
+  uint64 tx_bytes = 4;
+  uint64 tx_errors = 5;
+  uint64 rx_unmatched = 6;
+}
+
+message Port {
+  string name = 1;
+  int32 index = 2;
+  string mac = 3;
+  bool admin_up = 4;
+  bool oper_up = 5;
+  int32 mtu = 6;
+  PortCounters counters = 7;
+}
+
+message ListPortsRequest {}
+message ListPortsResponse { repeated Port ports = 1; }
+
+message SetPortAdminRequest {
+  string name = 1;
+  bool up = 2;
+}
+message SetPortAdminResponse { Port port = 1; }
+
+message VlanTag {
+  // 0 means 0x8100.
+  uint32 tpid = 1;
+  uint32 vid = 2;
+  uint32 pcp = 3;
+}
+
+message Device {
+  string name = 1;
+  string port = 2;
+  // Empty on create means "derive a stable locally-administered MAC".
+  string mac = 3;
+  // Outermost tag first.
+  repeated VlanTag vlans = 4;
+  // Output only: mac was derived rather than configured.
+  bool mac_derived = 5;
+  // IPv4 and IPv6 addresses in CIDR form, e.g. "10.0.0.2/24". With any
+  // IPv6 address, an EUI-64 link-local address is added automatically.
+  repeated string addresses = 6;
+  string gateway4 = 7;
+  string gateway6 = 8;
+}
+
+message ListDevicesRequest {}
+message ListDevicesResponse { repeated Device devices = 1; }
+message CreateDeviceRequest { Device device = 1; }
+message CreateDeviceResponse { Device device = 1; }
+message UpdateDeviceRequest { Device device = 1; }
+message UpdateDeviceResponse { Device device = 1; }
+message DeleteDeviceRequest { string name = 1; }
+message DeleteDeviceResponse {}
+
+message Neighbor {
+  string ip = 1;
+  string mac = 2;
+  // "reachable" (confirmed in the last 30s), "stale" or "incomplete".
+  string state = 3;
+  int64 age_ms = 4;
+}
+
+message GetDeviceIPRequest { string name = 1; }
+message GetDeviceIPResponse {
+  // Effective addresses, including the automatic link-local.
+  repeated string addresses = 1;
+  string gateway4 = 2;
+  string gateway6 = 3;
+  repeated Neighbor neighbors = 4;
+  map<string, uint64> counters = 5;
+}
+
+message ResolveNeighborRequest {
+  string device = 1;
+  string ip = 2;
+}
+message ResolveNeighborResponse {
+  // The on-link address resolved: ip itself or the gateway.
+  string next_hop = 1;
+  string mac = 2;
+  // Answered from the neighbor cache without sending anything.
+  bool cached = 3;
+  int64 rtt_us = 4;
+}
+
+message ClearNeighborsRequest { string device = 1; }
+message ClearNeighborsResponse {}
+
+message ReceivedFlow {
+  string device = 1;
+  // flow_id, proto, src, dst, ports, rx, lost, reordered, duplicate,
+  // latency_*_us, jitter_us, outages, outage_*_ms, rate_pps, idle_ms, …
+  google.protobuf.Struct stats = 2;
+}
+message ListReceivedFlowsRequest {
+  // Empty: all devices.
+  string device = 1;
+}
+message ListReceivedFlowsResponse { repeated ReceivedFlow flows = 1; }
+message ClearReceivedFlowsRequest {
+  // Empty: all devices.
+  string device = 1;
+  // Only this flow ID (as shown in flow statuses); empty: all flows.
+  string flow_id = 2;
+}
+message ClearReceivedFlowsResponse {}
+
+message ActionType {
+  string name = 1;
+  string description = 2;
+  string args_schema = 3; // JSON schema
+}
+
+message ProtocolType {
+  string name = 1;
+  string description = 2;
+  string config_schema = 3; // JSON schema
+  repeated ActionType actions = 4;
+  // "protocol" or "traffic" (flows: started/stopped by actions, reported
+  // with tx/rx/loss statistics).
+  string category = 5;
+}
+
+message ListProtocolTypesRequest {}
+message ListProtocolTypesResponse { repeated ProtocolType types = 1; }
+
+message Protocol {
+  string name = 1;
+  string type = 2;
+  string device = 3;
+  google.protobuf.Struct config = 4;
+  // "running", "waiting" (device/port missing) or "error".
+  string state = 5;
+  string error = 6;
+  google.protobuf.Struct status = 7;
+}
+
+message ListProtocolsRequest {
+  // Include each instance's live status.
+  bool with_status = 1;
+}
+message ListProtocolsResponse { repeated Protocol protocols = 1; }
+message GetProtocolRequest { string name = 1; }
+message GetProtocolResponse { Protocol protocol = 1; }
+message CreateProtocolRequest { Protocol protocol = 1; }
+message CreateProtocolResponse { Protocol protocol = 1; }
+message UpdateProtocolRequest {
+  string name = 1;
+  google.protobuf.Struct config = 2;
+}
+message UpdateProtocolResponse { Protocol protocol = 1; }
+message DeleteProtocolRequest { string name = 1; }
+message DeleteProtocolResponse {}
+
+message RunProtocolActionRequest {
+  string name = 1;
+  string action = 2;
+  google.protobuf.Struct args = 3;
+}
+message RunProtocolActionResponse { google.protobuf.Struct result = 1; }
+
+message WatchEventsRequest {
+  // Replay buffered recent events before streaming live ones.
+  bool replay = 1;
+}
+
+message Event {
+  google.protobuf.Timestamp time = 1;
+  // e.g. "port/eth1", "protocol/mep1".
+  string source = 2;
+  string kind = 3;
+  string message = 4;
+  google.protobuf.Struct data = 5;
+}
+
+message GetScenarioRequest {}
+message GetScenarioResponse { string yaml = 1; }
+message ApplyScenarioRequest {
+  string yaml = 1;
+  // Remove existing devices/protocols first.
+  bool replace = 2;
+}
+message ApplyScenarioResponse {}

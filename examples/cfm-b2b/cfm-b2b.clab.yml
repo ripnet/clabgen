@@ -1,0 +1,18 @@
+# Two clabgen agents back to back.
+#   eth1: untagged MEPs, level 3, ICC MEG ID
+#   eth2: dot1q VLAN 100 MEPs and QinQ 0x88a8:200/10 MEPs on the same port
+name: cfm-b2b
+topology:
+  defaults:
+    kind: linux
+    image: ghcr.io/ripnet/clabgen:dev
+  nodes:
+    gen1:
+      binds: [gen1.yml:/etc/clabgen/scenario.yml:ro]
+      env: {CLABGEN_SCENARIO: /etc/clabgen/scenario.yml}
+    gen2:
+      binds: [gen2.yml:/etc/clabgen/scenario.yml:ro]
+      env: {CLABGEN_SCENARIO: /etc/clabgen/scenario.yml}
+  links:
+    - endpoints: [gen1:eth1, gen2:eth1]
+    - endpoints: [gen1:eth2, gen2:eth2]
