@@ -1,5 +1,6 @@
 // Package isis is an emulated IS-IS router (ISO 10589, RFC 1195/5305/5308)
-// with one point-to-point interface: 3-way adjacency (RFC 5303), LSDB
+// with one interface, point-to-point (3-way adjacency, RFC 5303) or
+// broadcast (LAN adjacencies, DIS election, pseudonode; see lan.go): LSDB
 // synchronisation with CSNP/PSNP and flooding, our own LSPs (fragmented as
 // needed) carrying the device's addresses and injected prefixes, and
 // actions to overload, change metrics, advertise/withdraw prefixes and flap.
@@ -29,7 +30,7 @@ type isisType struct{}
 
 func (isisType) Name() string { return TypeName }
 func (isisType) Description() string {
-	return "IS-IS router (point-to-point): adjacency, LSDB sync, LSP origination with route injection, overload/metric/flap actions"
+	return "IS-IS router (point-to-point or broadcast/LAN with DIS): adjacencies, LSDB sync, LSP origination with route injection, overload/metric/flap actions"
 }
 func (isisType) NewConfig() any       { return defaultConfig() }
 func (isisType) EtherTypes() []uint16 { return []uint16{pkt.EtherTypeLLC} }
@@ -147,13 +148,16 @@ type session struct {
 	metric   uint32
 	overload bool
 	prefixes map[netip.Prefix]IPReach // configured + advertised
-	adj      adjacency
+	adj      adjacency                // point-to-point
+	lan      map[int]*lanLevel        // broadcast circuits, per level (nil for p2p)
 	lv       map[int]*level
-	flapTill time.Time
-	flapMode string
-	nextHelo time.Time
-	counters map[string]uint64
-	events   []string
+
+	adjTransitions int // LAN adjacency ups and downs
+	flapTill       time.Time
+	flapMode       string
+	nextHelo       time.Time
+	counters       map[string]uint64
+	events         []string
 
 	stop chan struct{}
 	done chan struct{}
@@ -188,6 +192,13 @@ func (isisType) Start(env protocol.Env, c any) (protocol.Session, error) {
 		s.lv[n] = &level{n: n, db: map[LSPID]*dbEntry{}, ownSeq: map[byte]uint32{}, dirty: true}
 	}
 	s.adj.state = stDown
+	if cfg.Circuit == "broadcast" {
+		s.lan = map[int]*lanLevel{}
+		for _, n := range cfg.levels() {
+			s.lan[n] = &lanLevel{n: n, adjs: map[pkt.MAC]*lanAdj{}}
+			s.electLocked(n, time.Now())
+		}
+	}
 	go s.run()
 	return s, nil
 }
@@ -209,8 +220,9 @@ func (s *session) event(kind, msg string) {
 
 // ---- sending ----
 
-func (s *session) send(pdu []byte, what string) {
-	dst := AllISs
+func (s *session) send(pdu []byte, what string) { s.sendTo(AllISs, pdu, what) }
+
+func (s *session) sendTo(dst pkt.MAC, pdu []byte, what string) {
 	if err := s.env.Send(dst, pkt.EtherTypeLLC, frame(pdu), protocol.SendOpts{SetPCP: true, PCP: 7}); err != nil {
 		s.mu.Lock()
 		s.count("tx_errors")
@@ -286,20 +298,29 @@ func (s *session) run() {
 }
 
 func (s *session) tick(now time.Time) {
-	var out [][2]any // PDUs and their kind, sent after unlocking
-	add := func(b []byte, kind string) { out = append(out, [2]any{b, kind}) }
+	type pdu struct {
+		dst  pkt.MAC
+		b    []byte
+		kind string
+	}
+	var out []pdu // sent after unlocking
+	add := func(dst pkt.MAC, b []byte, kind string) { out = append(out, pdu{dst, b, kind}) }
 	s.mu.Lock()
 	flapping := now.Before(s.flapTill)
-	// Hold timer.
-	if s.adj.state != stDown && now.Sub(s.adj.lastHello) > s.adj.hold {
-		s.adjDownLocked(now, "hold time expired")
-	}
-	// Hellos (jittered by up to 25%). A silent flap sends none; a reset
-	// flap keeps sending them with state Down (we ignore the neighbor's).
-	if !(flapping && s.flapMode == "silent") && !now.Before(s.nextHelo) {
-		add(s.helloLocked(), "hello")
-		iv := time.Duration(s.cfg.HelloInterval) * time.Second
-		s.nextHelo = now.Add(iv - time.Duration(rand.Int63n(int64(iv)/4+1)))
+	if s.lan != nil {
+		s.tickLANLocked(now, flapping, add)
+	} else {
+		// Hold timer.
+		if s.adj.state != stDown && now.Sub(s.adj.lastHello) > s.adj.hold {
+			s.adjDownLocked(now, "hold time expired")
+		}
+		// Hellos (jittered by up to 25%). A silent flap sends none; a reset
+		// flap keeps sending them with state Down (we ignore the neighbor's).
+		if !(flapping && s.flapMode == "silent") && !now.Before(s.nextHelo) {
+			add(AllISs, s.helloLocked(), "hello")
+			iv := time.Duration(s.cfg.HelloInterval) * time.Second
+			s.nextHelo = now.Add(iv - time.Duration(rand.Int63n(int64(iv)/4+1)))
+		}
 	}
 	for _, n := range s.sortedLevels() {
 		l := s.lv[n]
@@ -308,27 +329,46 @@ func (s *session) tick(now time.Time) {
 			s.originateLocked(l, now)
 		}
 		s.ageLocked(l, now)
-		if s.adjUpAt(n) {
-			// Periodic CSNP.
-			if now.Sub(l.lastCSNP) >= time.Duration(s.cfg.CSNPInterval)*time.Second {
+		if !s.adjUpAt(n) {
+			continue
+		}
+		if s.lan != nil {
+			dst := s.lanDst(n)
+			// Only the DIS sends CSNPs on a LAN.
+			if s.lan[n].isDIS && now.Sub(l.lastCSNP) >= time.Duration(s.cfg.CSNPInterval)*time.Second {
 				for _, c := range s.csnpsLocked(l, now) {
-					add(c, "csnp")
+					add(dst, c, "csnp")
 				}
 				l.lastCSNP = now
 			}
-			// Flood / retransmit (every 5 s until acknowledged).
+			// Flood once to the LAN; the DIS's CSNPs catch losses.
 			for _, id := range sortedIDs(l.db) {
-				e := l.db[id]
-				if e.srm && now.Sub(e.srmAt) >= 5*time.Second {
-					add(lspWithLifetime(e.lsp.Raw, e.remaining(now)), "lsp")
-					e.srmAt = now
+				if e := l.db[id]; e.srm {
+					add(dst, lspWithLifetime(e.lsp.Raw, e.remaining(now)), "lsp")
+					e.srm = false
 				}
+			}
+			continue
+		}
+		// Periodic CSNP.
+		if now.Sub(l.lastCSNP) >= time.Duration(s.cfg.CSNPInterval)*time.Second {
+			for _, c := range s.csnpsLocked(l, now) {
+				add(AllISs, c, "csnp")
+			}
+			l.lastCSNP = now
+		}
+		// Flood / retransmit (every 5 s until acknowledged).
+		for _, id := range sortedIDs(l.db) {
+			e := l.db[id]
+			if e.srm && now.Sub(e.srmAt) >= 5*time.Second {
+				add(AllISs, lspWithLifetime(e.lsp.Raw, e.remaining(now)), "lsp")
+				e.srmAt = now
 			}
 		}
 	}
 	s.mu.Unlock()
 	for _, o := range out {
-		s.send(o[0].([]byte), o[1].(string))
+		s.sendTo(o.dst, o.b, o.kind)
 	}
 }
 
@@ -342,6 +382,9 @@ func (s *session) sortedLevels() []int {
 }
 
 func (s *session) adjUpAt(n int) bool {
+	if s.lan != nil {
+		return s.lanAdjUp(n)
+	}
 	if s.adj.state != stUp {
 		return false
 	}
@@ -373,6 +416,21 @@ func lspWithLifetime(raw []byte, life uint16) []byte {
 // ---- adjacency ----
 
 func (s *session) adjDownLocked(now time.Time, why string) {
+	if s.lan != nil {
+		for _, n := range s.sortedLevels() {
+			ll := s.lan[n]
+			for m, a := range ll.adjs {
+				if a.state == stUp {
+					s.adjTransitions++
+					go s.event("adjacency-down", fmt.Sprintf("L%d adjacency with %s down: %s", n, a.sys, why))
+				}
+				delete(ll.adjs, m)
+			}
+			s.electLocked(n, now)
+			s.lv[n].dirty = true
+		}
+		return
+	}
 	if s.adj.state == stDown {
 		return
 	}
@@ -548,11 +606,19 @@ func (s *session) rxLSP(p *PDU) {
 				lv.ownSeq[frag] = l.Seq
 			}
 			lv.dirty = true
+		} else if s.lan != nil && l.ID[6] == pnID && frag == 0 && s.lan[l.Level].isDIS {
+			// Our pseudonode from before a restart: take it over.
+			if ll := s.lan[l.Level]; l.Seq >= ll.pnSeq {
+				ll.pnSeq = l.Seq
+			}
+			lv.dirty = true
 		} else {
 			// A fragment we no longer originate: purge it.
 			lv.db[l.ID] = &dbEntry{lsp: mustLSP(purgeRaw(l.Level, l.ID, l.Seq, l.Flags&3)), rxAt: now, own: true, srm: true, purgeAt: now.Add(60 * time.Second)}
 		}
-		out = append(out, EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}}))
+		if s.lan == nil {
+			out = append(out, EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}}))
+		}
 	case cmp > 0:
 		raw := append([]byte{}, l.Raw...)
 		cp := *l
@@ -564,13 +630,17 @@ func (s *session) rxLSP(p *PDU) {
 		}
 		lv.db[l.ID] = ne
 		s.count("lsdb_updates")
-		// Acknowledge (p2p: PSNP).
-		out = append(out, EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}}))
+		// Acknowledge (p2p: PSNP; on a LAN the DIS's CSNPs do).
+		if s.lan == nil {
+			out = append(out, EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}}))
+		}
 	case cmp == 0:
 		if e != nil {
 			e.srm = false
 		}
-		out = append(out, EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}}))
+		if s.lan == nil {
+			out = append(out, EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}}))
+		}
 	default:
 		// Ours is newer: send it.
 		e.srm, e.srmAt = true, time.Time{}
@@ -640,7 +710,11 @@ func (s *session) rxSNP(p *PDU) {
 	}
 	s.mu.Unlock()
 	if len(reqs) > 0 {
-		s.send(EncodePSNP(sn.Level, s.nodeID(), reqs), "psnp")
+		dst := AllISs
+		if s.lan != nil {
+			dst = s.lanDst(sn.Level)
+		}
+		s.sendTo(dst, EncodePSNP(sn.Level, s.nodeID(), reqs), "psnp")
 	}
 }
 
@@ -659,15 +733,25 @@ func (s *session) HandleRx(f *pkt.Frame) {
 	}
 	switch {
 	case p.P2P != nil:
+		if s.lan != nil {
+			s.mu.Lock()
+			s.count("rx_p2p_hello_ignored")
+			s.mu.Unlock()
+			return
+		}
 		s.rxHello(f, p)
 	case p.LSP != nil:
 		s.rxLSP(p)
 	case p.SNP != nil:
 		s.rxSNP(p)
 	case p.LAN != nil:
-		s.mu.Lock()
-		s.count("rx_lan_hello_ignored")
-		s.mu.Unlock()
+		if s.lan == nil {
+			s.mu.Lock()
+			s.count("rx_lan_hello_ignored")
+			s.mu.Unlock()
+			return
+		}
+		s.rxLANHello(f, p)
 	}
 }
 
@@ -734,7 +818,12 @@ func (s *session) originateLocked(l *level, now time.Time) {
 	for _, p := range v6g {
 		body.V6Addrs = append(body.V6Addrs, p.Addr())
 	}
-	if s.adjUpAt(l.n) {
+	if s.lan != nil {
+		// On a LAN we point at the pseudonode (once a DIS is up).
+		if ll := s.lan[l.n]; s.lanAdjUp(l.n) {
+			body.Neighbors = []ISReach{{ll.lanID, s.metric}}
+		}
+	} else if s.adjUpAt(l.n) {
 		var nb NodeID
 		copy(nb[:], s.adj.sys[:])
 		body.Neighbors = []ISReach{{nb, s.metric}}
@@ -824,6 +913,9 @@ func (s *session) originateLocked(l *level, now time.Time) {
 		}
 		l.db[id] = &dbEntry{lsp: mustLSP(raw), rxAt: now, life: life, own: true, srm: s.adjUpAt(l.n)}
 	}
+	if s.lan != nil {
+		s.pseudonodeLocked(l, isType, now)
+	}
 	if now.After(l.refreshAt) || l.refreshAt.IsZero() {
 		l.refreshAt = now.Add(time.Duration(s.cfg.LSPRefresh) * time.Second)
 	}
@@ -899,6 +991,8 @@ type AdjStatus struct {
 	Addresses   []string `json:"addresses,omitempty"`
 	ThreeWay    bool     `json:"three_way"`
 	Transitions int      `json:"transitions"`
+	Priority    uint8    `json:"priority,omitempty"` // LAN
+	DIS         bool     `json:"dis,omitempty"`      // LAN: this neighbor is the DIS
 }
 
 type LSPStatus struct {
@@ -912,18 +1006,20 @@ type LSPStatus struct {
 }
 
 type Status struct {
-	SystemID  string            `json:"system_id"`
-	Hostname  string            `json:"hostname"`
-	Level     string            `json:"level"`
-	Circuit   string            `json:"circuit"`
-	Areas     []string          `json:"areas"`
-	Metric    uint32            `json:"metric"`
-	Overload  bool              `json:"overload"`
-	Flapping  bool              `json:"flapping,omitempty"`
-	Prefixes  int               `json:"advertised_prefixes"`
-	Adjacency AdjStatus         `json:"adjacency"`
-	LSDB      []LSPStatus       `json:"lsdb"`
-	Counters  map[string]uint64 `json:"counters"`
+	SystemID    string            `json:"system_id"`
+	Hostname    string            `json:"hostname"`
+	Level       string            `json:"level"`
+	Circuit     string            `json:"circuit"`
+	Areas       []string          `json:"areas"`
+	Metric      uint32            `json:"metric"`
+	Overload    bool              `json:"overload"`
+	Flapping    bool              `json:"flapping,omitempty"`
+	Prefixes    int               `json:"advertised_prefixes"`
+	Adjacency   AdjStatus         `json:"adjacency"`   // point-to-point (or, on a LAN, the first Up one)
+	Adjacencies []AdjStatus       `json:"adjacencies"` // all neighbors
+	LAN         []LANStatus       `json:"lan,omitempty"`
+	LSDB        []LSPStatus       `json:"lsdb"`
+	Counters    map[string]uint64 `json:"counters"`
 }
 
 func (s *session) Status() any {
@@ -936,16 +1032,8 @@ func (s *session) Status() any {
 	for k, v := range s.counters {
 		st.Counters[k] = v
 	}
-	a := s.adj
-	st.Adjacency = AdjStatus{State: a.state, ThreeWay: a.threeWay, Transitions: a.transitions}
-	if a.state != stDown {
-		st.Adjacency.Neighbor, st.Adjacency.MAC, st.Adjacency.Levels = a.sys.String(), a.mac.String(), a.levels
-		st.Adjacency.HoldS = (a.hold - now.Sub(a.lastHello)).Seconds()
-		st.Adjacency.Areas, st.Adjacency.Addresses = a.areas, a.addrs
-	}
-	if !a.since.IsZero() {
-		st.Adjacency.Since = a.since.Format(time.RFC3339)
-	}
+	// Hostnames from the LSDB (TLV 137), for naming neighbors.
+	names := map[SysID]string{}
 	for _, n := range s.sortedLevels() {
 		l := s.lv[n]
 		for _, id := range sortedIDs(l.db) {
@@ -953,12 +1041,45 @@ func (s *session) Status() any {
 			ls := LSPStatus{Level: n, ID: id.String(), Seq: e.lsp.Seq, Lifetime: e.remaining(now), Checksum: fmt.Sprintf("%#04x", e.lsp.Checksum), Own: e.own}
 			if e.purgeAt.IsZero() || e.remaining(now) > 0 {
 				ls.LSPInfo = e.lsp.Info()
-			}
-			if a.state == stUp && id.Node().Sys() == a.sys && ls.Hostname != "" {
-				st.Adjacency.Hostname = ls.Hostname
+				if ls.Hostname != "" {
+					names[id.Node().Sys()] = ls.Hostname
+				}
 			}
 			st.LSDB = append(st.LSDB, ls)
 		}
+	}
+	if s.lan != nil {
+		st.Adjacencies, st.LAN = s.lanStatusLocked(now)
+		st.Adjacency = AdjStatus{State: stDown, Transitions: s.adjTransitions}
+		for i := range st.Adjacencies {
+			x := &st.Adjacencies[i]
+			if sys, err := ParseSysID(x.Neighbor); err == nil {
+				x.Hostname = names[sys]
+			}
+			if x.State == stUp && st.Adjacency.State != stUp {
+				st.Adjacency = *x
+				st.Adjacency.Transitions = s.adjTransitions
+			}
+		}
+		if st.Adjacencies == nil {
+			st.Adjacencies = []AdjStatus{}
+		}
+		return st
+	}
+	a := s.adj
+	st.Adjacency = AdjStatus{State: a.state, ThreeWay: a.threeWay, Transitions: a.transitions}
+	if a.state != stDown {
+		st.Adjacency.Neighbor, st.Adjacency.MAC, st.Adjacency.Levels = a.sys.String(), a.mac.String(), a.levels
+		st.Adjacency.HoldS = (a.hold - now.Sub(a.lastHello)).Seconds()
+		st.Adjacency.Areas, st.Adjacency.Addresses = a.areas, a.addrs
+		st.Adjacency.Hostname = names[a.sys]
+	}
+	if !a.since.IsZero() {
+		st.Adjacency.Since = a.since.Format(time.RFC3339)
+	}
+	st.Adjacencies = []AdjStatus{}
+	if a.state != stDown {
+		st.Adjacencies = append(st.Adjacencies, st.Adjacency)
 	}
 	return st
 }

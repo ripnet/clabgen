@@ -3,15 +3,24 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/ripnet/clabgen/internal/core"
+	"github.com/ripnet/clabgen/internal/events"
 	_ "github.com/ripnet/clabgen/protocols/isis"
 )
 
-func isisStatus(t *testing.T, e *core.Engine) map[string]any { t.Helper(); return flowStatus(t, e, "isis") }
+func isisStatus(t *testing.T, e *core.Engine) map[string]any {
+	t.Helper()
+	return flowStatus(t, e, "isis")
+}
 
 func lsdb(st map[string]any) []map[string]any {
 	l, _ := st["lsdb"].([]any)
@@ -75,7 +84,9 @@ func TestISISP2P(t *testing.T) {
 		return adj["state"] == "up"
 	}
 	eventually(t, "adjacency up", func() bool { return up(a) && up(b) })
-	eventually(t, "LSDBs synced", func() bool { return lspOf(isisStatus(t, b), "0000.0000.000a") != nil && lspOf(isisStatus(t, a), "0000.0000.000b") != nil })
+	eventually(t, "LSDBs synced", func() bool {
+		return lspOf(isisStatus(t, b), "0000.0000.000a") != nil && lspOf(isisStatus(t, a), "0000.0000.000b") != nil
+	})
 	st := isisStatus(t, b)
 	if adj := st["adjacency"].(map[string]any); adj["hostname"] != "ra" || adj["three_way"] != true {
 		t.Fatalf("adjacency %v", adj)
@@ -145,4 +156,147 @@ func TestISISP2P(t *testing.T) {
 		return l != nil && l["hostname"] == "ra2" && num(l, "seq") > seqBefore
 	})
 	time.Sleep(10 * time.Millisecond)
+}
+
+// hub joins port eth1 of several engines like a shared segment.
+type hub struct {
+	mu    sync.Mutex
+	ports []*hubPort
+}
+
+type hubPort struct {
+	h   *hub
+	eng *core.Engine
+}
+
+func (p *hubPort) Send(_ string, b []byte) error {
+	p.h.mu.Lock()
+	peers := append([]*hubPort(nil), p.h.ports...)
+	p.h.mu.Unlock()
+	for _, q := range peers {
+		if q != p && q.eng != nil {
+			go q.eng.Receive("eth1", append([]byte(nil), b...), time.Now())
+		}
+	}
+	return nil
+}
+func (p *hubPort) PortUp(string) bool          { return true }
+func (p *hubPort) SetAdmin(string, bool) error { return nil }
+func (p *hubPort) Desired() map[string]bool    { return map[string]bool{} }
+
+func lanRouter(t *testing.T, h *hub, i int, prio int) *core.Engine {
+	t.Helper()
+	p := &hubPort{h: h}
+	e := core.New(p, events.NewBus(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	p.eng = e
+	h.mu.Lock()
+	h.ports = append(h.ports, p)
+	h.mu.Unlock()
+	mac := fmt.Sprintf("02:00:00:00:00:%02x", i)
+	if _, err := e.CreateDevice(core.DeviceSpec{Name: "d", Port: "eth1", MAC: mac, Addresses: []string{fmt.Sprintf("10.9.0.%d/24", i)}}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := fmt.Sprintf(`{"system_id":"0000.0000.00%02x","hostname":"r%d","circuit":"broadcast","priority":%d,"hello_interval":1,"csnp_interval":1}`, i, i, prio)
+	if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "isis", Type: "isis", Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+func upCount(st map[string]any) int {
+	n := 0
+	l, _ := st["adjacencies"].([]any)
+	for _, a := range l {
+		if a.(map[string]any)["state"] == "up" {
+			n++
+		}
+	}
+	return n
+}
+
+func lanDIS(st map[string]any) (dis, lanID string) {
+	l, _ := st["lan"].([]any)
+	if len(l) == 0 {
+		return "", ""
+	}
+	m := l[0].(map[string]any)
+	return m["dis"].(string), m["lan_id"].(string)
+}
+
+func lspNeighbors(l map[string]any) []string {
+	var out []string
+	nb, _ := l["neighbors"].([]any)
+	for _, x := range nb {
+		out = append(out, x.(map[string]any)["id"].(string))
+	}
+	sort.Strings(out)
+	return out
+}
+
+func TestISISLAN(t *testing.T) {
+	h := &hub{}
+	a := lanRouter(t, h, 1, 64)
+	b := lanRouter(t, h, 2, 64)
+	c := lanRouter(t, h, 3, 100)
+	all := []*core.Engine{a, b, c}
+	eventually(t, "full mesh of LAN adjacencies", func() bool {
+		for _, e := range all {
+			if upCount(isisStatus(t, e)) != 2 {
+				return false
+			}
+		}
+		return true
+	})
+	// c has the highest priority: it is DIS, and everyone uses its LAN ID.
+	eventually(t, "c elected DIS", func() bool {
+		for _, e := range all {
+			if d, id := lanDIS(isisStatus(t, e)); d != "0000.0000.0003" || id != "0000.0000.0003.01" {
+				return false
+			}
+		}
+		return true
+	})
+	pn := "0000.0000.0003.01-00"
+	eventually(t, "pseudonode and router LSPs everywhere", func() bool {
+		for _, e := range all {
+			st := isisStatus(t, e)
+			var p map[string]any
+			for _, l := range lsdb(st) {
+				if l["lsp_id"] == pn {
+					p = l
+				}
+			}
+			if p == nil || strings.Join(lspNeighbors(p), ",") != "0000.0000.0001.00,0000.0000.0002.00,0000.0000.0003.00" {
+				return false
+			}
+			for _, sys := range []string{"0000.0000.0001", "0000.0000.0002", "0000.0000.0003"} {
+				l := lspOf(st, sys)
+				if l == nil || strings.Join(lspNeighbors(l), ",") != "0000.0000.0003.01" {
+					return false
+				}
+			}
+		}
+		return true
+	})
+	// Flooding on the LAN: a's new prefix reaches b and c.
+	act(t, a, "advertise", `{"prefixes":[{"prefix":"203.0.113.0/24"}]}`)
+	eventually(t, "flooded on the LAN", func() bool {
+		return prefixes(lspOf(isisStatus(t, b), "0000.0000.0001"))["203.0.113.0/24"] && prefixes(lspOf(isisStatus(t, c), "0000.0000.0001"))["203.0.113.0/24"]
+	})
+	// c leaves: a and b (equal priority) elect b, the higher MAC.
+	if err := c.DeleteProtocol("isis"); err != nil {
+		t.Fatal(err)
+	}
+	h.mu.Lock()
+	h.ports[2].eng = nil
+	h.mu.Unlock()
+	eventually(t, "b takes over as DIS", func() bool {
+		da, ida := lanDIS(isisStatus(t, a))
+		db, _ := lanDIS(isisStatus(t, b))
+		return da == "0000.0000.0002" && db == "0000.0000.0002" && ida == "0000.0000.0002.01" && upCount(isisStatus(t, a)) == 1
+	})
+	eventually(t, "LSPs point at the new pseudonode", func() bool {
+		l := lspOf(isisStatus(t, b), "0000.0000.0001")
+		return l != nil && strings.Join(lspNeighbors(l), ",") == "0000.0000.0002.01"
+	})
 }

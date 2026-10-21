@@ -305,3 +305,27 @@ func TestEngineIP(t *testing.T) {
 		}
 	}
 }
+
+// Two devices on one port and VLAN hear each other, like hosts on a
+// segment; devices in other VLANs don't.
+func TestLocalDelivery(t *testing.T) {
+	a, _, _, _ := newPair()
+	for _, d := range []core.DeviceSpec{
+		{Name: "x", Port: "eth1", MAC: "02:00:00:00:00:0a", VLANs: []pkt.VLANTag{{VID: 7}}, Addresses: []string{"10.7.0.1/24"}},
+		{Name: "y", Port: "eth1", MAC: "02:00:00:00:00:0b", VLANs: []pkt.VLANTag{{VID: 7}}, Addresses: []string{"10.7.0.2/24"}},
+		{Name: "z", Port: "eth1", MAC: "02:00:00:00:00:0c", VLANs: []pkt.VLANTag{{VID: 8}}, Addresses: []string{"10.7.0.3/24"}},
+	} {
+		if _, err := a.CreateDevice(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nh, mac, _, err := a.ResolveNeighbor(context.Background(), "x", netip.MustParseAddr("10.7.0.2"))
+	if err != nil || mac.String() != "02:00:00:00:00:0b" || nh.String() != "10.7.0.2" {
+		t.Fatalf("x → y: %s %v", mac, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	if _, _, _, err := a.ResolveNeighbor(ctx, "x", netip.MustParseAddr("10.7.0.3")); err == nil {
+		t.Fatal("resolved a device in another VLAN")
+	}
+}

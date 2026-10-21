@@ -7,8 +7,9 @@ drive it over an API, with `clabgenctl`, or with scenario files.
 
 Devices can carry IPv4/IPv6 addresses: they answer ARP, ND and ping, and
 resolve neighbors on demand. Currently implemented protocols: **ETH-CFM /
-Y.1731 down MEPs** and **IS-IS** (point-to-point: adjacency, LSDB sync, route
-injection at scale, overload/metric/flap actions). Traffic flows: **ICMP** (continuous, counted or timed
+Y.1731 down MEPs** and **IS-IS** (point-to-point or broadcast with DIS election and
+pseudonode; LSDB sync, route injection at scale, overload/metric/flap
+actions). Traffic flows: **ICMP** (continuous, counted or timed
 ping, or any crafted ICMP/ICMPv6 packet) and **UDP** (one way, or echoed
 back by a `udp-echo` responder or any echo service), with loss, outage
 time, RTT and jitter, and ICMP errors matched to the flow. Every clabgen

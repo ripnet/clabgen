@@ -555,7 +555,26 @@ func summary(p *v1.Protocol) string {
 			nbr = h
 		}
 		out := fmt.Sprintf("%v %v adj=%v", m["system_id"], m["level"], adj["state"])
-		if adj["state"] != "down" {
+		if lan, ok := m["lan"].([]any); ok {
+			up := 0
+			if as, ok := m["adjacencies"].([]any); ok {
+				for _, a := range as {
+					if a.(map[string]any)["state"] == "up" {
+						up++
+					}
+				}
+			}
+			var dis []string
+			for _, l := range lan {
+				x := l.(map[string]any)
+				if x["we_are_dis"] == true {
+					dis = append(dis, "us")
+				} else {
+					dis = append(dis, fmt.Sprint(x["dis"]))
+				}
+			}
+			out = fmt.Sprintf("%v %v lan neighbors=%d dis=%s", m["system_id"], m["level"], up, strings.Join(dis, "/"))
+		} else if adj["state"] != "down" {
 			out += " nbr=" + nbr
 		}
 		db, _ := m["lsdb"].([]any)

@@ -13,7 +13,8 @@ type Config struct {
 	Hostname string   `json:"hostname,omitempty" jsonschema:"description=Dynamic hostname (TLV 137). Default: the instance name"`
 	Areas    []string `json:"areas" jsonschema:"description=Area addresses like 49.0001"`
 	Level    string   `json:"level" jsonschema:"enum=L1,enum=L2,enum=L1L2,description=Levels this router runs"`
-	Circuit  string   `json:"circuit" jsonschema:"enum=point-to-point,description=Interface type"`
+	Circuit  string   `json:"circuit" jsonschema:"enum=point-to-point,enum=broadcast,description=Interface type"`
+	Priority uint8    `json:"priority" jsonschema:"minimum=0,maximum=127,description=DIS election priority (broadcast circuits)"`
 	Metric   uint32   `json:"metric" jsonschema:"minimum=1,maximum=16777214,description=Wide metric toward the neighbor"`
 
 	HelloInterval   int  `json:"hello_interval" jsonschema:"minimum=1,maximum=20000,description=Seconds"`
@@ -36,7 +37,7 @@ type Prefix struct {
 }
 
 func defaultConfig() *Config {
-	return &Config{Areas: []string{"49.0001"}, Level: "L2", Circuit: "point-to-point", Metric: 10,
+	return &Config{Areas: []string{"49.0001"}, Level: "L2", Circuit: "point-to-point", Priority: 64, Metric: 10,
 		HelloInterval: 3, HelloMultiplier: 3, CSNPInterval: 10, LSPLifetime: 1200, LSPRefresh: 900, LSPMTU: 1492}
 }
 
@@ -57,8 +58,11 @@ func (c *Config) Validate() error {
 	if c.Level != "L1" && c.Level != "L2" && c.Level != "L1L2" {
 		return fmt.Errorf("invalid level %q (L1, L2 or L1L2)", c.Level)
 	}
-	if c.Circuit != "point-to-point" {
-		return fmt.Errorf("circuit %q is not supported yet (point-to-point only)", c.Circuit)
+	if c.Circuit != "point-to-point" && c.Circuit != "broadcast" {
+		return fmt.Errorf("invalid circuit %q", c.Circuit)
+	}
+	if c.Priority > 127 {
+		return errors.New("priority must be 0-127")
 	}
 	if c.Metric < 1 || c.Metric > 0xfffffe {
 		return errors.New("metric must be 1-16777214")

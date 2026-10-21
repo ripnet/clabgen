@@ -104,7 +104,7 @@ func (e *Engine) newDevice(s DeviceSpec, mac pkt.MAC, cfg ipstack.Config) *devic
 	d := &device{name: s.Name, port: s.Port, mac: mac, vlans: s.VLANs, spec: s, e: e}
 	send := func(dst pkt.MAC, et uint16, payload []byte) error {
 		f := pkt.Frame{Dst: dst, Src: mac, Tags: d.vlans, EtherType: et, Payload: payload}
-		return e.ports.Send(d.port, f.Encode())
+		return e.transmit(d, f.Encode())
 	}
 	emit := func(kind, msg string, data map[string]any) { e.publish("device/"+d.name, kind, msg, data) }
 	d.ip = ipstack.New(mac, cfg, send, emit)
@@ -139,12 +139,47 @@ type Engine struct {
 	devices map[string]*device
 	byPort  map[string][]*device
 	insts   map[string]*instance
+
+	// Frames a device sends are also delivered to the other devices on the
+	// same port, like hosts on one segment (the port only sends them out).
+	local chan localFrame
+}
+
+type localFrame struct {
+	port string
+	b    []byte
+	ts   time.Time
+	from *device
 }
 
 func New(ports PortIO, bus *events.Bus, log *slog.Logger) *Engine {
 	host, _ := os.Hostname()
-	return &Engine{ports: ports, bus: bus, log: log, host: host,
-		devices: map[string]*device{}, byPort: map[string][]*device{}, insts: map[string]*instance{}}
+	e := &Engine{ports: ports, bus: bus, log: log, host: host,
+		devices: map[string]*device{}, byPort: map[string][]*device{}, insts: map[string]*instance{},
+		local: make(chan localFrame, 4096)}
+	go func() {
+		// One worker keeps local frames in order.
+		for lf := range e.local {
+			e.receive(lf.port, lf.b, lf.ts, lf.from)
+		}
+	}()
+	return e
+}
+
+// transmit sends a device's frame out of its port and to the other
+// devices on that port.
+func (e *Engine) transmit(d *device, frame []byte) error {
+	err := e.ports.Send(d.port, frame)
+	e.mu.RLock()
+	peers := len(e.byPort[d.port]) > 1
+	e.mu.RUnlock()
+	if peers && e.ports.PortUp(d.port) {
+		select {
+		case e.local <- localFrame{d.port, frame, time.Now(), d}:
+		default: // overloaded: drop, as a congested segment would
+		}
+	}
+	return err
 }
 
 func (e *Engine) Events() *events.Bus { return e.bus }
@@ -159,6 +194,12 @@ var (
 // Receive dispatches one frame from a port. It returns false if nothing
 // consumed it.
 func (e *Engine) Receive(port string, b []byte, ts time.Time) bool {
+	return e.receive(port, b, ts, nil)
+}
+
+// receive dispatches a frame to the port's devices, except `from` (the
+// sender of a locally delivered frame).
+func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool {
 	f, err := pkt.Decode(b)
 	if err != nil {
 		return false
@@ -169,6 +210,9 @@ func (e *Engine) Receive(port string, b []byte, ts time.Time) bool {
 	isIP := f.EtherType == pkt.EtherTypeARP || f.EtherType == pkt.EtherTypeIPv4 || f.EtherType == pkt.EtherTypeIPv6
 	e.mu.RLock()
 	for _, d := range e.byPort[port] {
+		if d == from {
+			continue
+		}
 		if f.Dst != d.mac && !f.Dst.IsMulticast() {
 			continue
 		}
@@ -723,7 +767,7 @@ func (v *env) Send(dst pkt.MAC, et uint16, payload []byte, opt protocol.SendOpts
 		}
 	}
 	f := pkt.Frame{Dst: dst, Src: v.dev.mac, Tags: tags, EtherType: et, Payload: payload}
-	return v.e.ports.Send(v.dev.port, f.Encode())
+	return v.e.transmit(v.dev, f.Encode())
 }
 
 func (v *env) Emit(kind, msg string, data map[string]any) {

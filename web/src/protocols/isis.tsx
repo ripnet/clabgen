@@ -19,6 +19,8 @@ type LSPRow = {
   neighbors?: Nbr[];
   prefixes?: Pfx[];
 };
+type Adj = ISISStatus["adjacency"];
+type LANRow = { level: number; we_are_dis: boolean; dis: string; lan_id: string; priority: number; elections: number };
 type ISISStatus = {
   system_id: string;
   hostname: string;
@@ -41,7 +43,11 @@ type ISISStatus = {
     addresses?: string[];
     three_way: boolean;
     transitions: number;
+    priority?: number;
+    dis?: boolean;
   };
+  adjacencies?: ISISStatus["adjacency"][];
+  lan?: LANRow[];
   lsdb: LSPRow[];
   counters: Record<string, number>;
 };
@@ -50,12 +56,75 @@ const as = (s: JsonObject) => s as unknown as ISISStatus;
 
 function summary(st: JsonObject): { health: Health; text: string } {
   const s = as(st);
+  if (s.lan) {
+    const up = (s.adjacencies ?? []).filter((x) => x.state === "up").length;
+    const disNames = s.lan.map((l) => (l.we_are_dis ? "us" : hostOf(s, l.dis))).join("/");
+    const tail = `${s.lsdb.filter((l) => l.lifetime > 0).length} LSPs${s.overload ? " · overload" : ""}`;
+    if (up) return { health: s.overload ? "warn" : "ok", text: `${up} neighbor${up > 1 ? "s" : ""} · DIS ${disNames} · ${tail}` };
+    return { health: "bad", text: s.flapping ? "down (flap)" : "no LAN neighbors" };
+  }
   const a = s.adjacency;
   const who = a.hostname || a.neighbor;
   const tail = `${s.lsdb.filter((l) => l.lifetime > 0).length} LSPs${s.overload ? " · overload" : ""}`;
   if (a.state === "up") return { health: s.overload ? "warn" : "ok", text: `up with ${who} · ${tail}` };
   if (a.state === "initializing") return { health: "warn", text: `initializing with ${who}` };
   return { health: "bad", text: s.flapping ? "down (flap)" : "adjacency down" };
+}
+
+function hostOf(s: ISISStatus, sys: string): string {
+  const l = s.lsdb.find((x) => x.lsp_id.startsWith(sys + ".00") && x.hostname);
+  return l?.hostname ?? sys;
+}
+
+function LANAdjacencies({ s }: { s: ISISStatus }) {
+  return (
+    <>
+      {(s.lan ?? []).map((l) => (
+        <div key={l.level} className="flow-path mono small-note">
+          L{l.level} DIS: <b>{l.we_are_dis ? `us (${s.hostname})` : hostOf(s, l.dis)}</b> · LAN ID {l.lan_id} · our priority {l.priority} · {l.elections} election
+          {l.elections === 1 ? "" : "s"}
+        </div>
+      ))}
+      {(s.adjacencies ?? []).length === 0 ? (
+        <div className="muted">No neighbors heard on the LAN.</div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table dense">
+            <thead>
+              <tr>
+                <th>Neighbor</th>
+                <th>State</th>
+                <th>Level</th>
+                <th className="num">Priority</th>
+                <th className="num">Hold</th>
+                <th>MAC</th>
+                <th>Addresses</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(s.adjacencies ?? []).map((a: Adj) => (
+                <tr key={`${a.levels?.[0]}/${a.mac}`}>
+                  <td className="mono">
+                    {a.hostname ? `${a.hostname} · ` : ""}
+                    {a.neighbor}
+                    {a.dis && <span className="tag">DIS</span>}
+                  </td>
+                  <td>
+                    <span className={a.state === "up" ? "pill pill-on" : "pill pill-warn"}>{a.state}</span>
+                  </td>
+                  <td>L{a.levels?.join("/L")}</td>
+                  <td className="num mono">{a.priority}</td>
+                  <td className="num mono">{a.hold_remaining_s !== undefined ? `${Math.max(0, a.hold_remaining_s).toFixed(0)} s` : "—"}</td>
+                  <td className="mono">{a.mac}</td>
+                  <td className="mono">{a.addresses?.join(", ")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
 }
 
 // Names LSP IDs by hostname where the LSDB knows one.
@@ -106,7 +175,11 @@ function Status({ status }: { status: JsonObject }) {
         </div>
       </dl>
 
-      <h4>Adjacency</h4>
+      <h4>{s.lan ? "LAN adjacencies" : "Adjacency"}</h4>
+      {s.lan ? (
+        <LANAdjacencies s={s} />
+      ) : (
+        <>
       <div className="flow-head">
         <div className="flow-path mono">
           <span className={pill}>{a.state}</span> {a.neighbor ? `${a.hostname ? a.hostname + " · " : ""}${a.neighbor}` : "no neighbor"}
@@ -120,6 +193,8 @@ function Status({ status }: { status: JsonObject }) {
         </div>
       </div>
       {a.addresses && a.addresses.length > 0 && <div className="muted mono small-note">neighbor addresses: {a.addresses.join(", ")}</div>}
+        </>
+      )}
 
       <h4>Link-state database</h4>
       <div className="table-wrap">

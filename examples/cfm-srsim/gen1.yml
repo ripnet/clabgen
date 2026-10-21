@@ -10,6 +10,9 @@ devices:
   # v400 and v401 are routed by the SR.
   # IS-IS peer of the SR (eth3 VLAN 500, point-to-point).
   - {name: i500, port: eth3, vlans: [{vid: 500}], addresses: [10.0.50.2/30, 2001:db8:50::2/64, 192.0.2.50/32]}
+  # Two IS-IS routers on the SR's broadcast interface (eth3 VLAN 501).
+  - {name: l501a, port: eth3, vlans: [{vid: 501}], addresses: [10.0.60.2/24]}
+  - {name: l501b, port: eth3, vlans: [{vid: 501}], addresses: [10.0.60.3/24]}
   - {name: v401, port: eth2, vlans: [{vid: 401}], addresses: [10.0.41.2/24, 2001:db8:41::2/64], gateway4: 10.0.41.1, gateway6: 2001:db8:41::1}
 protocols:
   # Peer: SR VPLS 100 SAP 1/1/c1/1:100 MEP 1, MD "lab" level 5, MA string "v100".
@@ -74,3 +77,14 @@ protocols:
     type: icmp
     device: v400
     config: {destination: 192.0.2.50, rate: 100, timeout: 500ms, auto_start: true}
+  # LAN: the SR and two clabgen routers; lan-b has the highest priority
+  # and becomes DIS.
+  - name: isis-lan-a
+    type: isis
+    device: l501a
+    config: {system_id: 0000.0000.0061, hostname: lan-a, level: L2, circuit: broadcast}
+  - name: isis-lan-b
+    type: isis
+    device: l501b
+    config: {system_id: 0000.0000.0062, hostname: lan-b, level: L2, circuit: broadcast, priority: 100,
+             prefixes: [{prefix: 198.19.0.0/24, count: 5}]}
