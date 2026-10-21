@@ -7,7 +7,8 @@ drive it over an API, with `clabgenctl`, or with scenario files.
 
 Devices can carry IPv4/IPv6 addresses: they answer ARP, ND and ping, and
 resolve neighbors on demand. Currently implemented protocols: **ETH-CFM /
-Y.1731 down MEPs**. Traffic flows: **ICMP** (continuous, counted or timed
+Y.1731 down MEPs** and **IS-IS** (point-to-point: adjacency, LSDB sync, route
+injection at scale, overload/metric/flap actions). Traffic flows: **ICMP** (continuous, counted or timed
 ping, or any crafted ICMP/ICMPv6 packet) and **UDP** (one way, or echoed
 back by a `udp-echo` responder or any echo service), with loss, outage
 time, RTT and jitter, and ICMP errors matched to the flow. Every clabgen
@@ -139,6 +140,21 @@ and latency per direction).
     device: v400
     config: {destination: 10.0.41.2, reply: echo, rate: 100, src_port_count: 16, auto_start: true}
 ```
+
+An IS-IS router on a device (point-to-point to the SR in
+`examples/cfm-srsim`):
+
+```yaml
+  - name: isis
+    type: isis
+    device: i500
+    config: {system_id: 0000.0000.0050, hostname: clabgen, level: L2, areas: [49.0001],
+             prefixes: [{prefix: 198.18.0.0/24, count: 1000, metric: 20}]}
+```
+
+`clabgenctl proto run isis flap seconds=5`, `… overload set=true`, `… advertise
+prefixes='[{"prefix":"203.0.113.0/24"}]'` and `… withdraw …` change it at
+runtime; a flow routed over the adjacency measures the resulting outage.
 
 Mount the file in the topology and set `CLABGEN_SCENARIO`. See
 `examples/*/*.clab.yml`.

@@ -15,6 +15,12 @@ const (
 	TPIDQinQ   uint16 = 0x9100
 
 	EtherTypeCFM uint16 = 0x8902
+
+	// EtherTypeLLC stands for an IEEE 802.3 frame whose type field is a
+	// length (< 0x600), i.e. one carrying an LLC header (IS-IS, STP, …).
+	// Decode reports such frames with this value and the payload cut to
+	// the length; Encode writes the payload length in its place.
+	EtherTypeLLC uint16 = 0
 )
 
 // MAC is a 48-bit Ethernet address. It is a value type so it can be used as
@@ -108,6 +114,14 @@ func Decode(b []byte) (*Frame, error) {
 			return nil, ErrShort
 		}
 		et := binary.BigEndian.Uint16(b[off:])
+		if et < 0x600 {
+			off += 2
+			if int(et) > len(b)-off || et == 0 {
+				return nil, ErrShort
+			}
+			f.EtherType, f.Payload = EtherTypeLLC, b[off:off+int(et)]
+			return f, nil
+		}
 		if !IsTPID(et) {
 			f.EtherType = et
 			off += 2
@@ -139,7 +153,11 @@ func (f *Frame) Encode() []byte {
 		binary.BigEndian.PutUint16(b[off+2:], t.tci())
 		off += 4
 	}
-	binary.BigEndian.PutUint16(b[off:], f.EtherType)
+	if f.EtherType == EtherTypeLLC {
+		binary.BigEndian.PutUint16(b[off:], uint16(len(f.Payload)))
+	} else {
+		binary.BigEndian.PutUint16(b[off:], f.EtherType)
+	}
 	copy(b[off+2:], f.Payload)
 	return b
 }

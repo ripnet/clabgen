@@ -196,16 +196,32 @@ func Schema(v any) string {
 		return string(b)
 	}
 	addDefaults(sm, vm)
-	// JSON objects are unordered; publish the struct field order for UIs.
-	if s.Properties != nil {
-		var order []string
-		for p := s.Properties.Oldest(); p != nil; p = p.Next() {
-			order = append(order, p.Key)
-		}
-		sm["x-order"] = order
-	}
+	addOrder(s, sm)
 	b, _ = json.Marshal(sm)
 	return string(b)
+}
+
+// addOrder publishes struct field order ("x-order") for UIs, since JSON
+// objects are unordered, on the schema and every nested object or list
+// item schema.
+func addOrder(s *jsonschema.Schema, m map[string]any) {
+	if s == nil || m == nil {
+		return
+	}
+	if s.Properties != nil {
+		var order []string
+		props, _ := m["properties"].(map[string]any)
+		for p := s.Properties.Oldest(); p != nil; p = p.Next() {
+			order = append(order, p.Key)
+			sub, _ := props[p.Key].(map[string]any)
+			addOrder(p.Value, sub)
+		}
+		m["x-order"] = order
+	}
+	if s.Items != nil {
+		sub, _ := m["items"].(map[string]any)
+		addOrder(s.Items, sub)
+	}
 }
 
 // addDefaults copies values from a marshalled default config into the

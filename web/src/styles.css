@@ -411,3 +411,9 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .sub-head h3 { margin: 0; font-size: 15px; }
 .small-note { font-size: 12px; margin: -4px 0 10px; }
 .table .actions .row-clear { margin-left: 4px; font-size: 15px; vertical-align: middle; }
+.lsp-detail td { background: var(--surface-2); white-space: normal; }
+.lsp-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 4px 2px; }
+.pfx-list { max-height: 240px; overflow: auto; columns: 2 180px; font-size: 12px; }
+@media (max-width: 700px) { .lsp-grid { grid-template-columns: 1fr; } }
+.obj-list { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.obj-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: start; width: 100%; }

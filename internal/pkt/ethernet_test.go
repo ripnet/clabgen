@@ -51,3 +51,20 @@ func TestSameVLANs(t *testing.T) {
 		}
 	}
 }
+
+func TestLLCFrame(t *testing.T) {
+	llc := []byte{0xfe, 0xfe, 0x03, 0x83, 0x14}
+	f := &Frame{Dst: MAC{0x01, 0x80, 0xc2, 0, 0, 0x14}, Tags: []VLANTag{{VID: 5}}, EtherType: EtherTypeLLC, Payload: llc}
+	b := f.Encode()
+	if len(b) != 60 || b[16] != 0 || b[17] != byte(len(llc)) {
+		t.Fatalf("encoded % x", b[:20])
+	}
+	g, err := Decode(b)
+	if err != nil || g.EtherType != EtherTypeLLC || !bytes.Equal(g.Payload, llc) || len(g.Tags) != 1 {
+		t.Fatalf("decoded %+v %v", g, err)
+	}
+	b[17] = 200 // length beyond the frame
+	if _, err := Decode(b); err == nil {
+		t.Fatal("accepted a bad length")
+	}
+}

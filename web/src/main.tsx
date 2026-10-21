@@ -8,6 +8,7 @@ import "./styles.css";
 import "./protocols/cfm";
 import "./protocols/icmp";
 import "./protocols/udp";
+import "./protocols/isis";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

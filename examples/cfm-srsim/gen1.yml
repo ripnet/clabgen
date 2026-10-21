@@ -8,6 +8,8 @@ devices:
   - {name: v400, port: eth1, vlans: [{vid: 400}], addresses: [10.0.4.2/24, 2001:db8:4::2/64], gateway4: 10.0.4.1, gateway6: 2001:db8:4::1}
   # Second host behind another SR interface (eth2 VLAN 401): flows between
   # v400 and v401 are routed by the SR.
+  # IS-IS peer of the SR (eth3 VLAN 500, point-to-point).
+  - {name: i500, port: eth3, vlans: [{vid: 500}], addresses: [10.0.50.2/30, 2001:db8:50::2/64, 192.0.2.50/32]}
   - {name: v401, port: eth2, vlans: [{vid: 401}], addresses: [10.0.41.2/24, 2001:db8:41::2/64], gateway4: 10.0.41.1, gateway6: 2001:db8:41::1}
 protocols:
   # Peer: SR VPLS 100 SAP 1/1/c1/1:100 MEP 1, MD "lab" level 5, MA string "v100".
@@ -60,3 +62,15 @@ protocols:
     type: udp
     device: v400
     config: {destination: 10.0.4.1, dst_port: 9, rate: 1}
+  # IS-IS with the SR on eth3 VLAN 500 (level 2, area 49.0001). It
+  # advertises i500's addresses (incl. the 192.0.2.50/32 loopback) and
+  # injects 10 prefixes; ping-isis is routed by the SR over that adjacency.
+  - name: isis
+    type: isis
+    device: i500
+    config: {system_id: 0000.0000.0050, hostname: clabgen, level: L2,
+             prefixes: [{prefix: 198.18.0.0/24, count: 10, metric: 20}]}
+  - name: ping-isis
+    type: icmp
+    device: v400
+    config: {destination: 192.0.2.50, rate: 100, timeout: 500ms, auto_start: true}

@@ -32,7 +32,9 @@ func ipPair(t *testing.T) (*core.Engine, *core.Engine, *wire, *wire) {
 		if i == 1 {
 			ip = []string{"10.0.0.2/24", "2001:db8::2/64"}
 		}
-		if _, err := e.CreateDevice(core.DeviceSpec{Name: "d", Port: "eth1", VLANs: []pkt.VLANTag{{VID: 10}}, Addresses: ip}); err != nil {
+		// Distinct MACs: both engines run on one host, so derived MACs collide.
+		mac := []string{"02:00:00:00:0a:01", "02:00:00:00:0b:01"}[i]
+		if _, err := e.CreateDevice(core.DeviceSpec{Name: "d", Port: "eth1", MAC: mac, VLANs: []pkt.VLANTag{{VID: 10}}, Addresses: ip}); err != nil {
 			t.Fatal(err)
 		}
 	}

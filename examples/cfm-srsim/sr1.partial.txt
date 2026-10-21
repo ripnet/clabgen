@@ -38,3 +38,20 @@
 /configure service ies "ies400" interface "gen1b" sap 1/1/c2/1:401
 /configure service ies "ies400" interface "gen1b" ipv4 primary address 10.0.41.1 prefix-length 24
 /configure service ies "ies400" interface "gen1b" ipv6 address 2001:db8:41::1 prefix-length 64
+/configure port 1/1/c3 admin-state enable
+/configure port 1/1/c3 connector breakout c1-100g
+/configure port 1/1/c3/1 admin-state enable
+/configure port 1/1/c3/1 ethernet mode network
+/configure port 1/1/c3/1 ethernet encap-type dot1q
+/configure router "Base" interface "system" ipv4 primary address 192.0.2.100 prefix-length 32
+/configure router "Base" interface "system" ipv6 address 2001:db8:ffff::100 prefix-length 128
+/configure router "Base" interface "isis-p2p" port 1/1/c3/1:500
+/configure router "Base" interface "isis-p2p" ipv4 primary address 10.0.50.1 prefix-length 30
+/configure router "Base" interface "isis-p2p" ipv6 address 2001:db8:50::1 prefix-length 64
+/configure router "Base" isis 0 admin-state enable
+/configure router "Base" isis 0 area-address [49.0001]
+/configure router "Base" isis 0 level-capability 2
+/configure router "Base" isis 0 ipv6-routing native
+/configure router "Base" isis 0 level 2 wide-metrics-only true
+/configure router "Base" isis 0 interface "system" passive true
+/configure router "Base" isis 0 interface "isis-p2p" interface-type point-to-point

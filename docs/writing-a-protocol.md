@@ -46,7 +46,10 @@ session when all of these hold:
 - its VLAN stack matches the device's (TPIDs and VIDs; PCP is ignored, and a
   lone priority tag counts as untagged);
 - its destination is the device's MAC or any multicast address;
-- its ethertype is in the list.
+- its ethertype is in the list. IEEE 802.3 frames with an LLC header
+  (IS-IS, STP, …) carry a length instead of an ethertype; they are
+  delivered as `pkt.EtherTypeLLC` with the payload starting at the LLC
+  header, and `Send` with `pkt.EtherTypeLLC` writes the length.
 
 ## 3. Implement the Session
 

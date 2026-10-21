@@ -548,6 +548,23 @@ func summary(p *v1.Protocol) string {
 		}
 		return fmt.Sprintf("lvl=%v mep=%v %v rmeps=[%s] defect=%v", m["level"], m["mep_id"], m["maid"], strings.Join(rs, " "), m["highest_defect"])
 	}
+	if p.Type == "isis" {
+		adj, _ := m["adjacency"].(map[string]any)
+		nbr := fmt.Sprint(adj["neighbor"])
+		if h, _ := adj["hostname"].(string); h != "" {
+			nbr = h
+		}
+		out := fmt.Sprintf("%v %v adj=%v", m["system_id"], m["level"], adj["state"])
+		if adj["state"] != "down" {
+			out += " nbr=" + nbr
+		}
+		db, _ := m["lsdb"].([]any)
+		out += fmt.Sprintf(" lsdb=%d prefixes=%v", len(db), m["advertised_prefixes"])
+		if m["overload"] == true {
+			out += " overload"
+		}
+		return out
+	}
 	if p.Type == "icmp" || p.Type == "udp" {
 		out := fmt.Sprintf("%v → %v %v@%vpps tx=%v rx=%v lost=%v", m["state"], m["destination"], m["kind"], m["rate"], m["tx"], m["rx"], m["lost"])
 		if m["tracks_replies"] == false {

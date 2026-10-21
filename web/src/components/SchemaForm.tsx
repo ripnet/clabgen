@@ -87,6 +87,28 @@ function ListField({ schema, value, onChange }: FieldProps) {
   );
 }
 
+// ObjectListField edits an array of objects: one sub-form per item.
+function ObjectListField({ schema, value, onChange }: FieldProps) {
+  const items = Array.isArray(value) ? (value as Obj[]) : [];
+  const item = schema.items ?? {};
+  const set = (next: Obj[]) => onChange(next.length ? next : undefined);
+  return (
+    <div className="obj-list">
+      {items.map((it, i) => (
+        <div className="obj-list-row" key={i}>
+          <SchemaFields schema={item} value={it ?? {}} mode="args" onChange={(v) => set(items.map((x, j) => (j === i ? v : x)))} nested />
+          <button type="button" className="icon-btn" aria-label="Remove item" title="Remove" onClick={() => set(items.filter((_, j) => j !== i))}>
+            ×
+          </button>
+        </div>
+      ))}
+      <button type="button" className="btn small" onClick={() => set([...items, defaults(item)])}>
+        Add
+      </button>
+    </div>
+  );
+}
+
 function Field(p: FieldProps) {
   const { schema, value, mode, required, onChange } = p;
   const t = typeOf(schema);
@@ -140,6 +162,7 @@ function Field(p: FieldProps) {
         />
       );
     case "array":
+      if (typeOf(schema.items ?? {}) === "object" && schema.items?.properties) return <ObjectListField {...p} />;
       return <ListField {...p} />;
     case "object":
       return (
