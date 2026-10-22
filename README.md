@@ -39,32 +39,42 @@ Interop is verified against Nokia SR-SIM.
 
 ```sh
 make image                                    # builds ghcr.io/ripnet/clabgen:dev
-cd examples/cfm-b2b && containerlab deploy -t cfm-b2b.clab.yml
+cd examples/b2b && containerlab deploy -t b2b.clab.yml
 
-docker exec clab-cfm-b2b-gen1 clabgenctl protocols
+docker exec clab-b2b-gen1 clabgenctl protocols
 NAME          TYPE     DEVICE    STATE    SUMMARY
 mep-qinq      cfm-mep  qinq      running  lvl=2 mep=201 integer(200) rmeps=[202:ok] defect=none
 mep-untagged  cfm-mep  untagged  running  lvl=3 mep=1 icc(CLABGEN00001) rmeps=[2:ok] defect=none
 mep-v100      cfm-mep  v100      running  lvl=5 mep=101 string(lab)/string(v100) rmeps=[102:ok] defect=none
 ```
 
+Two example labs:
+
+- `examples/b2b`: two clabgen agents back to back (CFM MEPs untagged,
+  dot1q and QinQ, IP hosts and flows). Needs only the clabgen image.
+- `examples/srsim`: one clabgen agent against a Nokia SR-SIM router: CFM
+  and Y.1731, LLDP, IS-IS (point-to-point, LAN, L1/L2, segment routing),
+  OSPFv2/v3, BGP (unicast, VPN, EVPN, L2VPN) and routed flows. SR-SIM
+  needs a license: add `license: <file>` to the `sr1` node before
+  deploying.
+
 The CLI also runs from the host (or a Mac) against an agent's management address:
 
 ```sh
 make build          # needs Go 1.23+ and Node 20+ (for the UI)
-bin/clabgenctl -s clab-cfm-b2b-gen1 events &                        # live events
-bin/clabgenctl -s clab-cfm-b2b-gen2 port down eth1                  # gen1 raises LOC
-bin/clabgenctl -s clab-cfm-b2b-gen1 proto run mep-v100 loopback target_mep_id=102 count=5
-bin/clabgenctl -s clab-cfm-b2b-gen1 proto run mep-v100 fault ccm_enabled=false
-bin/clabgenctl -s clab-cfm-b2b-gen1 proto disable mep-v100      # stop it, keep its config (enable starts it)
-bin/clabgenctl -s clab-cfm-b2b-gen1 types cfm-mep                   # config + action schemas
-bin/clabgenctl -s clab-cfm-b2b-gen1 device set v100 --ip 10.0.100.1/24 --gw 10.0.100.254
-bin/clabgenctl -s clab-cfm-b2b-gen1 device resolve untagged 192.0.2.2  # ARP / ND
-bin/clabgenctl -s clab-cfm-b2b-gen1 device show untagged               # neighbors + counters
-bin/clabgenctl -s clab-cfm-b2b-gen1 ping untagged 192.0.2.2 -c 5 -i 100ms
-bin/clabgenctl -s clab-cfm-b2b-gen1 stop ping-gen2                     # flows: start / stop
-bin/clabgenctl -s clab-cfm-b2b-gen2 received                           # flows arriving at gen2
-bin/clabgenctl -s clab-cfm-b2b-gen1 scenario get > saved.yml
+bin/clabgenctl -s clab-b2b-gen1 events &                        # live events
+bin/clabgenctl -s clab-b2b-gen2 port down eth1                  # gen1 raises LOC
+bin/clabgenctl -s clab-b2b-gen1 proto run mep-v100 loopback target_mep_id=102 count=5
+bin/clabgenctl -s clab-b2b-gen1 proto run mep-v100 fault ccm_enabled=false
+bin/clabgenctl -s clab-b2b-gen1 proto disable mep-v100      # stop it, keep its config (enable starts it)
+bin/clabgenctl -s clab-b2b-gen1 types cfm-mep                   # config + action schemas
+bin/clabgenctl -s clab-b2b-gen1 device set v100 --ip 10.0.100.1/24 --gw 10.0.100.254
+bin/clabgenctl -s clab-b2b-gen1 device resolve untagged 192.0.2.2  # ARP / ND
+bin/clabgenctl -s clab-b2b-gen1 device show untagged               # neighbors + counters
+bin/clabgenctl -s clab-b2b-gen1 ping untagged 192.0.2.2 -c 5 -i 100ms
+bin/clabgenctl -s clab-b2b-gen1 stop ping-gen2                     # flows: start / stop
+bin/clabgenctl -s clab-b2b-gen2 received                           # flows arriving at gen2
+bin/clabgenctl -s clab-b2b-gen1 scenario get > saved.yml
 ```
 
 ## Web UI
@@ -88,7 +98,7 @@ binary also runs directly on a host:
 
 ```sh
 bin/clabgen-ui                                  # Docker socket discovery
-bin/clabgen-ui -lab examples/cfm-b2b/cfm-b2b.clab.yml
+bin/clabgen-ui -lab examples/b2b/b2b.clab.yml
 bin/clabgen-ui -agent gen1=172.20.20.5 -agent gen2=172.20.20.6
 ```
 
@@ -175,7 +185,7 @@ and latency per direction).
 ```
 
 An IS-IS router on a device (point-to-point to the SR in
-`examples/cfm-srsim`):
+`examples/srsim`):
 
 ```yaml
   - name: isis
@@ -495,7 +505,7 @@ over Connect, gRPC and gRPC-Web, so plain curl works too:
 
 ```sh
 curl -s -H 'Content-Type: application/json' -d '{"withStatus":true}' \
-  http://clab-cfm-b2b-gen1:8080/clabgen.v1.AgentService/ListProtocols
+  http://clab-b2b-gen1:8080/clabgen.v1.AgentService/ListProtocols
 ```
 
 ## Adding protocols

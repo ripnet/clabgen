@@ -1,4 +1,4 @@
-# clabgen <-> Nokia SR-SIM CFM interop.
+# clabgen <-> Nokia SR-SIM interop: CFM, LLDP, IS-IS, OSPFv2/v3, BGP and traffic flows.
 #   gen1:eth1 -- sr1:1/1/c1/1 (dot1q)
 #     VLAN 100: SR MEP 1 <-> clabgen MEP 101  (MD "lab" level 5, MA string "v100", 1s)
 #     VLAN 200: SR MEP 1 <-> clabgen MEP 2    (MD none level 3, ICC "CLABGEN00001", 1s)
@@ -13,7 +13,8 @@
 #   gen1:eth3 -- sr1:1/1/c3/1 (network port, dot1q): IS-IS
 #     VLAN 500: SR router interface 10.0.50.1/30 (p2p, level 2, area 49.0001) -- clabgen .2
 #     VLAN 501: SR router interface 10.0.60.1/24 (broadcast) -- two clabgen IS-IS routers (.2, .3)
-#     VLAN 502: SR router interface 10.0.52.1/30 (p2p) -- clabgen .2, the VLAN 500 router's second interface
+#     VLAN 502: SR router interface 10.0.52.1/30 (p2p, BFD) -- clabgen .2, the VLAN 500 router's second interface
+#     VLAN 503: not carried by the SR -- a level-1 link between two clabgen IS-IS routers inside gen1
 #     VLAN 600: SR router interface 10.0.70.1/30 (p2p, MD5) -- OSPF area 0 with clabgen router 192.0.2.60
 #     VLAN 601: SR router interface 10.0.71.1/24 (broadcast) -- the same clabgen router (DR) and a second one
 #               (OSPFv3 runs on both VLANs too: 2001:db8:70::/64 and 2001:db8:71::/64)
@@ -21,7 +22,7 @@
 #               border router) with clabgen router 192.0.2.64; the VLAN 600 router has area 2 behind it
 #     VLANs 1000-1007: SR router interfaces ce1000-ce1007 (10.1.0.x/30) -- device group "ce": one eBGP
 #               CE per VLAN, each in its own AS, to the SR's dynamic-neighbor group
-name: cfm-srsim
+name: srsim
 topology:
   nodes:
     sr1:
