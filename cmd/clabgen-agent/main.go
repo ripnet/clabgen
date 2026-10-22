@@ -30,6 +30,7 @@ import (
 	"github.com/ripnet/clabgen/internal/webui"
 
 	// Protocol plugins register themselves.
+	_ "github.com/ripnet/clabgen/protocols/bgp"
 	_ "github.com/ripnet/clabgen/protocols/cfm"
 	_ "github.com/ripnet/clabgen/protocols/icmp"
 	_ "github.com/ripnet/clabgen/protocols/isis"

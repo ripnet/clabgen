@@ -10,6 +10,7 @@ import "./protocols/icmp";
 import "./protocols/udp";
 import "./protocols/isis";
 import "./protocols/lldp";
+import "./protocols/bgp";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

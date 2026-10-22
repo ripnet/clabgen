@@ -226,6 +226,26 @@ links and prefixes). `topology-link a=r1-1 b=r1-2 up=false` (or `metric=…`)
 and `topology-node node=r2-2 up=false` (or `overload=true`) fail parts of
 it at runtime; `lsp id=sim-r2-2.00-00` shows one LSP.
 
+BGP runs on a device with addresses (its TCP is the device's, so it can
+peer from loopbacks too):
+
+```yaml
+  - name: bgp
+    type: bgp
+    device: i500
+    config: {local_as: 65050, router_id: 192.0.2.50, hold_time: 30,
+             peers: [{address: 10.0.50.1, remote_as: 65100, families: [ipv4-unicast, ipv6-unicast]},
+                     {address: 192.0.2.100, remote_as: 65100, local_address: 192.0.2.50, ttl: 64}],
+             routes: [{prefix: 100.64.0.0/24, count: 10000, communities: ["65050:1"], large_communities: ["65050:1:1"]},
+                      {prefix: "2001:db8:abc::/48", count: 1000, med: 50}]}
+```
+
+`clabgenctl proto run bgp advertise routes='[{"prefix":"101.0.0.0/24","count":200000}]'`
+(and `withdraw`), `… reset peer=10.0.50.1`, `… flap peer=… seconds=30 mode=silent`
+(the peer's hold timer expires) or `mode=notify`, `… notify code=6 subcode=2
+message="maintenance"`, `… route-refresh` and `… rib peer=10.0.50.1 prefix=…`.
+There is no TCP MD5 authentication (the netstack has none).
+
 LLDP runs on an untagged device (LLDP frames carry no VLAN tag):
 
 ```yaml

@@ -548,6 +548,26 @@ func summary(p *v1.Protocol) string {
 		}
 		return fmt.Sprintf("lvl=%v mep=%v %v rmeps=[%s] defect=%v", m["level"], m["mep_id"], m["maid"], strings.Join(rs, " "), m["highest_defect"])
 	}
+	if p.Type == "bgp" {
+		var ps []string
+		if l, ok := m["peers"].([]any); ok {
+			for _, x := range l {
+				n := x.(map[string]any)
+				sum := func(k string) int {
+					t := 0
+					if mm, ok := n[k].(map[string]any); ok {
+						for _, v := range mm {
+							f, _ := v.(float64)
+							t += int(f)
+						}
+					}
+					return t
+				}
+				ps = append(ps, fmt.Sprintf("%v:%v(rx %d tx %d)", n["address"], n["state"], sum("received"), sum("advertised")))
+			}
+		}
+		return fmt.Sprintf("AS %v id %v peers=[%s]", m["local_as"], m["router_id"], strings.Join(ps, " "))
+	}
 	if p.Type == "lldp" {
 		var ns []string
 		if l, ok := m["neighbors"].([]any); ok {

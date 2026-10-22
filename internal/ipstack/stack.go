@@ -153,6 +153,7 @@ type Stack struct {
 	flows     *flowrx.Table      // signed flow packets received
 	ownFlows  map[uint32]int     // flow IDs sent from this device (not recorded)
 	locals    map[netip.Addr]int // AddLocal addresses (reference counts)
+	tcp       *tcpStack          // netstack for TCP (created on first use)
 
 	ipID     atomic.Uint32
 	counters counters
@@ -179,6 +180,7 @@ func (s *Stack) SetConfig(cfg Config) {
 	}
 	s.mu.Lock()
 	s.cfg, s.addrs = cfg, addrs
+	s.syncTCPAddrsLocked()
 	s.mu.Unlock()
 }
 
@@ -227,10 +229,14 @@ func (s *Stack) Enabled() bool {
 	return len(s.addrs) > 0
 }
 
-// Close fails any pending resolutions.
+// Close fails any pending resolutions and ends TCP connections.
 func (s *Stack) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.tcp != nil {
+		s.tcp.close()
+		s.tcp = nil
+	}
 	for _, n := range s.neighbors {
 		for _, w := range n.waiters {
 			close(w)
@@ -261,6 +267,7 @@ func (s *Stack) AddLocal(a netip.Addr) func() {
 	a = a.Unmap()
 	s.mu.Lock()
 	s.locals[a]++
+	s.syncTCPAddrsLocked()
 	s.mu.Unlock()
 	var once sync.Once
 	return func() {
@@ -268,6 +275,7 @@ func (s *Stack) AddLocal(a netip.Addr) func() {
 			s.mu.Lock()
 			if s.locals[a]--; s.locals[a] <= 0 {
 				delete(s.locals, a)
+				s.syncTCPAddrsLocked()
 			}
 			s.mu.Unlock()
 		})
@@ -430,6 +438,12 @@ func (s *Stack) rxIPv4(f *pkt.Frame) bool {
 		s.rxUDP(f, h.Src, h.Dst, h.Payload)
 		return true
 	}
+	if h.Protocol == pkt.ProtoTCP {
+		if !s.rxTCP(false, f.Payload[:int(binary.BigEndian.Uint16(f.Payload[2:]))]) {
+			s.counters.ipv4Unhandled.Add(1)
+		}
+		return true
+	}
 	if h.Protocol != pkt.ProtoICMP {
 		s.counters.ipv4Unhandled.Add(1)
 		return true
@@ -479,6 +493,12 @@ func (s *Stack) rxIPv6(f *pkt.Frame) bool {
 	s.counters.ipv6Rx.Add(1)
 	if h.NextHeader == pkt.ProtoUDP && !h.Dst.IsMulticast() {
 		s.rxUDP(f, h.Src, h.Dst, h.Payload)
+		return true
+	}
+	if h.NextHeader == pkt.ProtoTCP && !h.Dst.IsMulticast() {
+		if !s.rxTCP(true, f.Payload[:40+int(binary.BigEndian.Uint16(f.Payload[4:]))]) {
+			s.counters.ipv6Unhandled.Add(1)
+		}
 		return true
 	}
 	if h.NextHeader != pkt.ProtoICMPv6 {
@@ -832,6 +852,7 @@ type counters struct {
 	icmpv6EchoRequests, icmpv6EchoReplies, icmpv6RxOther                      atomic.Uint64
 	resolveFailures, addressConflicts                                         atomic.Uint64
 	udpRx, udpErrors                                                          atomic.Uint64
+	tcpRx, tcpTx, tcpTxErrors                                                 atomic.Uint64
 }
 
 func (c *counters) snapshot() map[string]uint64 {
@@ -850,6 +871,7 @@ func (c *counters) snapshot() map[string]uint64 {
 		"icmpv6_rx_other":  c.icmpv6RxOther.Load(),
 		"resolve_failures": c.resolveFailures.Load(), "address_conflicts": c.addressConflicts.Load(),
 		"udp_rx": c.udpRx.Load(), "udp_errors": c.udpErrors.Load(),
+		"tcp_rx": c.tcpRx.Load(), "tcp_tx": c.tcpTx.Load(), "tcp_tx_errors": c.tcpTxErrors.Load(),
 	}
 	return m
 }

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/netip"
 	"sort"
 	"sync"
@@ -55,6 +56,12 @@ type IP interface {
 	// owning it on the link (no ARP/ND, not in Addresses): a router's
 	// loopback reachable over any of its interfaces. Call release to stop.
 	AddLocal(addr netip.Addr) (release func())
+	// DialTCP connects to remote from local (invalid: the device picks)
+	// with the TTL / hop limit ttl (0: 64).
+	DialTCP(ctx context.Context, remote netip.AddrPort, local netip.Addr, ttl int) (net.Conn, error)
+	// ListenTCP accepts connections on local:port, or (local invalid) on
+	// every address of the family (v6) the device has, sending with ttl.
+	ListenTCP(local netip.Addr, port uint16, v6 bool, ttl int) (net.Listener, error)
 }
 
 // Env is what the agent provides to a running session.

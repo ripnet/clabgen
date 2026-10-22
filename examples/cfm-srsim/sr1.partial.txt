@@ -101,3 +101,18 @@
 /configure port 1/1/c3/1 ethernet lldp dest-mac nearest-bridge receive true transmit true
 /configure port 1/1/c3/1 ethernet lldp dest-mac nearest-bridge tx-tlvs port-desc true sys-name true sys-desc true sys-cap true
 /configure port 1/1/c3/1 ethernet lldp dest-mac nearest-bridge tx-mgmt-address system admin-state enable
+/configure router "Base" autonomous-system 65100
+/configure policy-options policy-statement "accept-all" default-action action-type accept
+/configure policy-options policy-statement "export-to-clabgen" entry 10 from protocol name [static]
+/configure policy-options policy-statement "export-to-clabgen" entry 10 action action-type accept
+/configure policy-options policy-statement "export-to-clabgen" entry 20 from protocol name [bgp]
+/configure policy-options policy-statement "export-to-clabgen" entry 20 action action-type accept
+/configure router "Base" static-routes route 2001:db8:198::/48 route-type unicast blackhole admin-state enable
+/configure router "Base" bgp admin-state enable
+/configure router "Base" bgp group "clabgen" peer-as 65050
+/configure router "Base" bgp group "clabgen" family ipv4 true
+/configure router "Base" bgp group "clabgen" family ipv6 true
+/configure router "Base" bgp group "clabgen" import policy ["accept-all"]
+/configure router "Base" bgp group "clabgen" export policy ["export-to-clabgen"]
+/configure router "Base" bgp neighbor "10.0.50.2" group "clabgen"
+/configure router "Base" bgp neighbor "192.0.2.50" group "clabgen" multihop 5 local-address 192.0.2.100
