@@ -219,6 +219,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .table.dense th, .table.dense td { padding: 6px 8px; white-space: nowrap; }
+.table td.cell-wrap { white-space: normal; min-width: 220px; max-width: 420px; overflow-wrap: anywhere; }
 .table th { text-align: left; font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); background: var(--surface-2); padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .table tr:last-child td { border-bottom: none; }
@@ -465,3 +466,4 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .diff-from { color: var(--bad); }
 .diff-to { color: var(--ok); }
 .group-proto { display: flex; align-items: center; gap: 10px; }
+.cfm-session { margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }

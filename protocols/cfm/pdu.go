@@ -344,6 +344,9 @@ type ccm struct {
 	TxFCb      uint32
 	PortStatus uint8 // 0 = TLV absent
 	IntfStatus uint8 // 0 = TLV absent
+	SenderID   string
+	Org        string
+	Padding    int // Data TLV bytes
 }
 
 func (c *ccm) encode() []byte {
@@ -390,6 +393,12 @@ func parseCCM(h header, b []byte) (*ccm, error) {
 			if len(t.Value) >= 1 {
 				c.IntfStatus = t.Value[0]
 			}
+		case tlvSenderID:
+			c.SenderID = parseSenderID(t.Value)
+		case tlvOrg:
+			c.Org = orgString(t.Value)
+		case tlvData:
+			c.Padding = len(t.Value)
 		}
 	}
 	return c, nil

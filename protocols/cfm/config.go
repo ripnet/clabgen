@@ -24,6 +24,17 @@ type Config struct {
 	PortStatusTLV      bool `json:"port_status_tlv,omitempty" jsonschema:"description=Include Port Status TLV in CCMs" jsonschema_extras:"x-group=CCM"`
 	InterfaceStatusTLV bool `json:"interface_status_tlv,omitempty" jsonschema:"description=Include Interface Status TLV in CCMs" jsonschema_extras:"x-group=CCM"`
 
+	// More TLVs in CCMs.
+	SenderID   string  `json:"sender_id,omitempty" jsonschema:"description=Chassis ID (subtype local) for a Sender ID TLV in CCMs, LBMs and LTMs; empty: none" jsonschema_extras:"x-group=CCM,x-advanced=true"`
+	OrgTLV     *OrgTLV `json:"org_tlv,omitempty" jsonschema:"description=An Organization-Specific TLV in CCMs"`
+	CCMPadding int     `json:"ccm_padding,omitempty" jsonschema:"minimum=0,maximum=1400,description=Bytes of Data TLV padding in CCMs" jsonschema_extras:"x-group=CCM,x-advanced=true"`
+
+	// AIS (Y.1731 7.4) toward the client level while we have a defect.
+	AIS AISConfig `json:"ais" jsonschema:"description=AIS (and LCK) toward the client MEG level: AIS while the MEP has a defect (or forced), LCK while locked (fault action)"`
+
+	// Proactive measurement sessions with history.
+	Sessions []Session `json:"sessions,omitempty" jsonschema:"description=Continuous delay / synthetic loss / frame loss measurements, kept in bins" jsonschema_extras:"x-summary={name}: {type}[ → MEP {target_mep_id}][ → {target_mac}]"`
+
 	// Responder controls, for negative testing.
 	DisableLBR bool `json:"disable_lbr,omitempty" jsonschema_extras:"x-group=Responders,x-advanced=true"`
 	DisableLTR bool `json:"disable_ltr,omitempty" jsonschema_extras:"x-group=Responders,x-advanced=true"`
@@ -31,9 +42,34 @@ type Config struct {
 	DisableSLR bool `json:"disable_slr,omitempty" jsonschema_extras:"x-group=Responders,x-advanced=true"`
 }
 
+type OrgTLV struct {
+	OUI     string `json:"oui" jsonschema:"required,description=e.g. 00:16:4d"`
+	Subtype uint8  `json:"subtype"`
+	Value   string `json:"value,omitempty" jsonschema:"description=Hex bytes"`
+}
+
+type AISConfig struct {
+	Enabled     bool   `json:"enabled"`
+	ClientLevel uint8  `json:"client_level" jsonschema:"minimum=0,maximum=7,description=MEG level AIS and LCK are sent at (above ours). Default: our level + 1"`
+	Interval    string `json:"interval" jsonschema:"enum=1s,enum=1m,description=Transmission period"`
+	Priority    *uint8 `json:"priority,omitempty" jsonschema:"minimum=0,maximum=7,description=Default: ccm_priority"`
+}
+
+// Session is a proactive measurement: one PDU per interval toward a remote
+// MEP, results summed in bins of bin_s seconds.
+type Session struct {
+	Name string `json:"name" jsonschema:"required"`
+	Type string `json:"type" jsonschema:"required,enum=delay,enum=synthetic-loss,enum=loss,description=delay: DMM; synthetic-loss: SLM; loss: LMM (data frames)"`
+	Target
+	IntervalMS int    `json:"interval_ms,omitempty" jsonschema:"minimum=10,description=Default 1000"`
+	BinS       int    `json:"bin_s,omitempty" jsonschema:"minimum=1,maximum=86400,description=Measurement interval. Default 60"`
+	Bins       int    `json:"bins,omitempty" jsonschema:"minimum=1,maximum=96,description=Completed bins kept. Default 10"`
+	TestID     uint32 `json:"test_id,omitempty" jsonschema_extras:"x-show-if=type=synthetic-loss"`
+}
+
 func defaultConfig() *Config {
 	return &Config{Level: 0, MEPID: 1, MDFormat: "none", MAFormat: "string", MAName: "clabgen",
-		CCMEnabled: true, CCMInterval: "1s", CCMPriority: 7}
+		CCMEnabled: true, CCMInterval: "1s", CCMPriority: 7, AIS: AISConfig{Interval: "1s"}}
 }
 
 func (c *Config) Validate() error {
@@ -57,8 +93,62 @@ func (c *Config) Validate() error {
 			return errors.New("remote_meps must not contain the local mep_id")
 		}
 	}
-	_, err := encodeMAID(c.MDFormat, c.MDName, c.MAFormat, c.MAName)
-	return err
+	if _, err := encodeMAID(c.MDFormat, c.MDName, c.MAFormat, c.MAName); err != nil {
+		return err
+	}
+	if len(c.SenderID) > 255 {
+		return errors.New("sender_id: at most 255 bytes")
+	}
+	if c.CCMPadding < 0 || c.CCMPadding > 1400 {
+		return errors.New("ccm_padding must be 0-1400")
+	}
+	if c.OrgTLV != nil {
+		if _, err := c.OrgTLV.encode(); err != nil {
+			return err
+		}
+	}
+	if a := c.AIS; a.Enabled || a.ClientLevel != 0 {
+		if a.ClientLevel != 0 && a.ClientLevel <= c.Level || a.ClientLevel > 7 {
+			return errors.New("ais: client_level must be above the MEP's level (and at most 7)")
+		}
+		if c.Level == 7 && a.ClientLevel == 0 {
+			return errors.New("ais: a level-7 MEP has no client level")
+		}
+	}
+	if c.AIS.Interval != "1s" && c.AIS.Interval != "1m" {
+		return errors.New("ais: interval must be 1s or 1m")
+	}
+	if c.AIS.Priority != nil && *c.AIS.Priority > 7 {
+		return errors.New("ais: priority must be 0-7")
+	}
+	seen := map[string]bool{}
+	for _, x := range c.Sessions {
+		if x.Name == "" || seen[x.Name] {
+			return fmt.Errorf("sessions: name missing or repeated (%q)", x.Name)
+		}
+		seen[x.Name] = true
+		if x.Type != "delay" && x.Type != "synthetic-loss" && x.Type != "loss" {
+			return fmt.Errorf("session %s: type must be delay, synthetic-loss or loss", x.Name)
+		}
+		if x.TargetMAC == "" && x.TargetMEPID == 0 {
+			return fmt.Errorf("session %s: target_mac or target_mep_id is required", x.Name)
+		}
+		if x.IntervalMS != 0 && x.IntervalMS < 10 || x.BinS < 0 || x.BinS > 86400 || x.Bins < 0 || x.Bins > 96 {
+			return fmt.Errorf("session %s: interval_ms ≥ 10, bin_s 1-86400, bins 1-96", x.Name)
+		}
+		if err := validTarget(x.Target); err != nil {
+			return fmt.Errorf("session %s: %w", x.Name, err)
+		}
+	}
+	return nil
+}
+
+// clientLevel is where AIS and LCK go.
+func (c *Config) clientLevel() uint8 {
+	if c.AIS.ClientLevel != 0 {
+		return c.AIS.ClientLevel
+	}
+	return min(c.Level+1, 7)
 }
 
 // Target selects a remote MEP for on-demand tools.
@@ -107,9 +197,58 @@ type FaultArgs struct {
 	MEPIDOverride   *uint16 `json:"mep_id_override,omitempty" jsonschema:"description=Send CCMs with this MEP ID (0 restores); provokes DefErrorCCM"`
 	MAIDOverride    *string `json:"ma_name_override,omitempty" jsonschema:"description=Send CCMs with this MA name in the configured format (empty restores); provokes DefXconCCM"`
 	LevelOverride   *int    `json:"level_override,omitempty" jsonschema:"minimum=-1,maximum=7,description=Send CCMs at this level (-1 restores)"`
+	ForceAIS        *bool   `json:"force_ais,omitempty" jsonschema:"description=Send AIS to the client level regardless of defects"`
+	Lock            *bool   `json:"lock,omitempty" jsonschema:"description=Administrative lock: send LCK to the client level"`
+	CSF             *string `json:"csf,omitempty" jsonschema:"enum=none,enum=los,enum=fdi,enum=rdi,enum=dci,description=Send CSF (client signal fail) of this type to the peer MEPs (none stops)"`
 }
 
 type ClearArgs struct{}
+
+type OneWayDelayArgs struct {
+	Target
+	Count      int `json:"count" jsonschema:"minimum=1,maximum=10000"`
+	IntervalMS int `json:"interval_ms" jsonschema:"minimum=1"`
+}
+
+type TestSignalArgs struct {
+	Target
+	Count      int    `json:"count" jsonschema:"minimum=1,maximum=100000"`
+	IntervalMS int    `json:"interval_ms" jsonschema:"minimum=1"`
+	Size       int    `json:"size,omitempty" jsonschema:"minimum=0,maximum=1400,description=Bytes of test pattern"`
+	Pattern    string `json:"pattern,omitempty" jsonschema:"enum=null,enum=prbs,description=All zeros or PRBS 2^31-1. Default null"`
+	CRC        bool   `json:"crc,omitempty" jsonschema:"description=Add a CRC-32 over the pattern (receivers count bit errors)"`
+}
+
+type LossArgs struct {
+	Target
+	Count      int `json:"count" jsonschema:"minimum=2,maximum=100000"`
+	IntervalMS int `json:"interval_ms" jsonschema:"minimum=1"`
+	TimeoutMS  int `json:"timeout_ms" jsonschema:"minimum=1,description=Wait for each LMR"`
+}
+
+func (a *OneWayDelayArgs) Validate() error {
+	if a.Count < 1 || a.IntervalMS < 1 {
+		return errors.New("count and interval_ms must be positive")
+	}
+	return validTarget(a.Target)
+}
+
+func (a *TestSignalArgs) Validate() error {
+	if a.Count < 1 || a.IntervalMS < 1 || a.Size < 0 || a.Size > 1400 {
+		return errors.New("count and interval_ms must be positive, size 0-1400")
+	}
+	if a.Pattern != "" && a.Pattern != "null" && a.Pattern != "prbs" {
+		return errors.New("pattern must be null or prbs")
+	}
+	return validTarget(a.Target)
+}
+
+func (a *LossArgs) Validate() error {
+	if a.Count < 2 || a.IntervalMS < 1 || a.TimeoutMS < 1 {
+		return errors.New("count ≥ 2, interval_ms and timeout_ms positive")
+	}
+	return validTarget(a.Target)
+}
 
 func validTarget(t Target) error {
 	if t.Priority != nil && *t.Priority > 7 {
@@ -162,6 +301,11 @@ func (a *FaultArgs) Validate() error {
 	}
 	if a.LevelOverride != nil && (*a.LevelOverride < -1 || *a.LevelOverride > 7) {
 		return errors.New("level_override must be -1..7")
+	}
+	if a.CSF != nil {
+		if _, ok := csfTypes[*a.CSF]; !ok && *a.CSF != "none" {
+			return fmt.Errorf("invalid csf %q", *a.CSF)
+		}
 	}
 	return nil
 }

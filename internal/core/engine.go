@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ripnet/clabgen/internal/events"
@@ -99,6 +100,9 @@ type device struct {
 	taps  []*tap // sessions of other devices attached here
 	group string
 	e     *Engine
+
+	// Data (non-CFM) frames sent and received, for Y.1731 loss measurement.
+	dataTx, dataRx atomic.Uint64
 }
 
 func (d *device) Name() string         { return d.name }
@@ -107,10 +111,14 @@ func (d *device) MAC() pkt.MAC         { return d.mac }
 func (d *device) VLANs() []pkt.VLANTag { return d.vlans }
 func (d *device) PortUp() bool         { return d.e.ports.PortUp(d.port) }
 
+// DataFrames implements protocol.FrameCounter.
+func (d *device) DataFrames() (tx, rx uint64) { return d.dataTx.Load(), d.dataRx.Load() }
+
 func (e *Engine) newDevice(s DeviceSpec, mac pkt.MAC, cfg ipstack.Config) *device {
 	d := &device{name: s.Name, port: s.Port, mac: mac, vlans: s.VLANs, spec: s, e: e}
 	send := func(dst pkt.MAC, et uint16, payload []byte) error {
 		f := pkt.Frame{Dst: dst, Src: mac, Tags: d.vlans, EtherType: et, Payload: payload}
+		d.dataTx.Add(1)
 		return e.transmit(d, f.Encode())
 	}
 	emit := func(kind, msg string, data map[string]any) { e.publish("device/"+d.name, kind, msg, data) }
@@ -230,6 +238,9 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 		}
 		if !pkt.SameVLANs(d.vlans, f.Tags) {
 			continue
+		}
+		if f.EtherType != pkt.EtherTypeCFM {
+			d.dataRx.Add(1)
 		}
 		if isIP {
 			stacks = append(stacks, d.ip)
@@ -917,6 +928,9 @@ func (e *Engine) sendFrom(d *device, dst pkt.MAC, et uint16, payload []byte, opt
 		}
 	}
 	f := pkt.Frame{Dst: dst, Src: d.mac, Tags: tags, EtherType: et, Payload: payload}
+	if et != pkt.EtherTypeCFM {
+		d.dataTx.Add(1)
+	}
 	return e.transmit(d, f.Encode())
 }
 

@@ -130,6 +130,10 @@ type Type interface {
 // protocols; detail views still use Status.
 type Briefer interface{ Brief() any }
 
+// FrameCounter may be implemented by a Device: the data (non-CFM) frames
+// it sent and received, for Y.1731 frame loss measurement.
+type FrameCounter interface{ DataFrames() (tx, rx uint64) }
+
 // Healther may be implemented by a Session to summarise its state in one
 // short word for group views, e.g. "established" or "up". Counts of each
 // word are shown per group, so it should have few distinct values.

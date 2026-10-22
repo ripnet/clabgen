@@ -25,6 +25,11 @@
 /configure service vpls "vpls100" sap 1/1/c1/1:100 eth-cfm mep md-admin-name "lab" ma-admin-name "v100" mep-id 1 admin-state enable ccm true direction down
 /configure service vpls "vpls200" admin-state enable service-id 200 customer "1"
 /configure service vpls "vpls200" sap 1/1/c1/1:200 eth-cfm mep md-admin-name "icc" ma-admin-name "icc200" mep-id 1 admin-state enable ccm true direction down
+/configure service vpls "vpls100" sap 1/1/c1/1:100 eth-cfm mep md-admin-name "lab" ma-admin-name "v100" mep-id 1 eth-test test-pattern crc-tlv true
+/configure service vpls "vpls100" sap 1/1/c1/1:100 eth-cfm mep md-admin-name "lab" ma-admin-name "v100" mep-id 1 csf
+/configure service vpls "vpls100" sap 1/1/c1/1:100 eth-cfm mep md-admin-name "lab" ma-admin-name "v100" mep-id 1 ccm-padding-size 50
+/configure service vpls "vpls100" sap 1/1/c1/1:100 eth-cfm mep md-admin-name "lab" ma-admin-name "v100" mep-id 1 ais client-meg-level [6]
+/configure eth-cfm domain "icc" association "icc200" auto-mep-discovery true
 /configure service vpls "vpls300" admin-state enable service-id 300 customer "1"
 /configure service vpls "vpls300" sap 1/1/c1/1:300 eth-cfm mip primary-vlan none
 /configure service vpls "vpls300" sap 1/1/c2/1:300 eth-cfm mip primary-vlan none

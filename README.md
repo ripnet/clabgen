@@ -15,8 +15,10 @@ back by a `udp-echo` responder or any echo service), with loss, outage
 time, RTT and jitter, and ICMP errors matched to the flow. Every clabgen
 device measures signed flows it receives one way (loss, reordering,
 duplicates, latency, outages) with no setup. That covers CCM with
-defect detection; loopback, linktrace, delay (DMM) and synthetic loss (SLM)
-as both initiator and responder; and fault injection. MEPs can be untagged,
+defect detection; loopback, linktrace, delay (DMM, 1DM), synthetic loss
+(SLM), frame loss (LMM) and test signal (TST) as both initiator and
+responder; AIS, LCK and CSF; proactive measurement sessions; and fault
+injection. MEPs can be untagged,
 dot1q or QinQ. Interop with Nokia SR-SIM is verified.
 
 ## Quick start
@@ -106,6 +108,21 @@ protocols:
     device: v100
     config: {level: 5, mep_id: 101, remote_meps: [1], md_format: string, md_name: lab,
              ma_format: string, ma_name: v100, ccm_interval: 1s}
+```
+
+Y.1731 beyond CCM: `one-way-delay` (1DM; the receiving MEP shows the delay,
+clocks being shared in a lab), `loss` (LMM over the devices' data-frame
+counters: every non-CFM frame they send and receive, e.g. a flow's) and
+`test-signal` (TST with a null or PRBS pattern and optional CRC; the
+receiver counts loss, reordering and bit errors) are actions; `fault`
+also forces AIS, locks (LCK) or sends CSF. `ais: {enabled: true,
+client_level: 6}` sends AIS while the MEP has a defect. `sessions` measure
+continuously, kept in bins:
+
+```yaml
+    config: {…, sender_id: gen1,
+             sessions: [{name: dm, type: delay, target_mep_id: 1, interval_ms: 1000, bin_s: 60, bins: 10},
+                        {name: sl, type: synthetic-loss, target_mep_id: 1, interval_ms: 100}]}
 ```
 
 Flows are protocol instances of a traffic type:

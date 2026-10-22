@@ -34,7 +34,12 @@ protocols:
   - name: mep-v100
     type: cfm-mep
     device: v100
-    config: {level: 5, mep_id: 101, remote_meps: [1], md_format: string, md_name: lab, ma_format: string, ma_name: v100, ccm_interval: 1s}
+    config: {level: 5, mep_id: 101, remote_meps: [1], md_format: string, md_name: lab, ma_format: string, ma_name: v100, ccm_interval: 1s,
+             # Sender ID TLV (the SR shows chassis ID gen1); continuous delay and
+             # synthetic loss toward the SR's MEP in one-minute bins.
+             sender_id: gen1,
+             sessions: [{name: dm, type: delay, target_mep_id: 1, interval_ms: 1000},
+                        {name: sl, type: synthetic-loss, target_mep_id: 1, interval_ms: 100}]}
   # Peer: SR VPLS 200 SAP 1/1/c1/1:200 MEP 1, MD format none level 3, Y.1731 ICC MEG ID.
   - name: mep-icc
     type: cfm-mep

@@ -15,7 +15,26 @@ type RMEP = {
   seq_errors: number;
   last_rx?: string;
   state_since?: string;
+  sender_id?: string;
+  org_tlv?: string;
+  ccm_padding?: number;
 };
+
+type Bin = {
+  start: string;
+  end?: string;
+  sent: number;
+  received: number;
+  delay?: { min_us: number; avg_us: number; max_us: number };
+  avg_fdv_us?: number;
+  far_end_tx?: number;
+  far_end_loss: number;
+  near_end_tx?: number;
+  near_end_loss: number;
+  far_end_loss_pct: number;
+  near_end_loss_pct: number;
+};
+type Session = { name: string; type: string; target: string; error?: string; current: Bin; history: Bin[] };
 
 type MEPStatus = {
   mac: string;
@@ -36,7 +55,94 @@ type MEPStatus = {
   rx: Record<string, number>;
   rx_errors: number;
   faults?: Record<string, unknown>;
+  ais_sending?: boolean;
+  lck_sending?: boolean;
+  csf_sending?: string;
+  csf_received?: { type: string; from: string };
+  one_way_delay?: { from: string; count: number; last_us: number; min_us: number; avg_us: number; max_us: number; avg_fdv_us: number }[];
+  test_signal?: { from: string; received: number; pattern_bytes: number; lost: number; out_of_order: number; bit_errors: number; unchecked?: number }[];
+  sessions?: Session[];
 };
+
+const ms = (us?: number) => (us === undefined ? "—" : us >= 1000 ? `${(us / 1000).toFixed(2)} ms` : `${us.toFixed(0)} µs`);
+const hhmmss = (t?: string) => (t ? new Date(t).toLocaleTimeString() : "");
+
+// BinRow is one measurement bin of a session.
+function BinRow({ type, b, current }: { type: string; b: Bin; current?: boolean }) {
+  return (
+    <tr className={current ? "muted" : ""}>
+      <td className="mono small">
+        {hhmmss(b.start)}
+        {current ? " (now)" : `–${hhmmss(b.end)}`}
+      </td>
+      <td className="num mono">
+        {b.received}/{b.sent}
+      </td>
+      {type === "delay" ? (
+        <>
+          <td className="num mono">{ms(b.delay?.min_us)}</td>
+          <td className="num mono">{ms(b.delay?.avg_us)}</td>
+          <td className="num mono">{ms(b.delay?.max_us)}</td>
+          <td className="num mono">{ms(b.avg_fdv_us)}</td>
+        </>
+      ) : (
+        <>
+          <td className={`num mono ${b.far_end_loss > 0 ? "warn-text" : ""}`}>
+            {b.far_end_loss} ({b.far_end_loss_pct.toFixed(1)}%)
+          </td>
+          <td className={`num mono ${b.near_end_loss > 0 ? "warn-text" : ""}`}>
+            {b.near_end_loss} ({b.near_end_loss_pct.toFixed(1)}%)
+          </td>
+        </>
+      )}
+    </tr>
+  );
+}
+
+function Sessions({ ss }: { ss: Session[] }) {
+  return (
+    <>
+      <h4>Measurement sessions</h4>
+      {ss.map((x) => (
+        <div key={x.name} className="cfm-session">
+          <div className="small-note">
+            <b className="mono">{x.name}</b> · {x.type === "delay" ? "DMM" : x.type === "loss" ? "LMM (data frames)" : "SLM"} → <span className="mono">{x.target || "?"}</span>
+            {x.error && <span className="warn-text"> · {x.error}</span>}
+          </div>
+          <div className="table-wrap">
+            <table className="table dense">
+              <thead>
+                <tr>
+                  <th>Bin</th>
+                  <th className="num">Replies</th>
+                  {x.type === "delay" ? (
+                    <>
+                      <th className="num">Min</th>
+                      <th className="num">Avg</th>
+                      <th className="num">Max</th>
+                      <th className="num">FDV</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="num">Far-end loss</th>
+                      <th className="num">Near-end loss</th>
+                    </>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                <BinRow type={x.type} b={x.current} current />
+                {x.history.map((b) => (
+                  <BinRow key={b.start} type={x.type} b={b} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
 
 const ALL_DEFECTS: [string, string][] = [
   ["DefRDICCM", "RDI"],
@@ -47,7 +153,7 @@ const ALL_DEFECTS: [string, string][] = [
 ];
 
 function health(s: MEPStatus): Health {
-  if (!s.highest_defect || s.highest_defect === "none") return s.ais_received || s.lck_received ? "warn" : "ok";
+  if (!s.highest_defect || s.highest_defect === "none") return s.ais_received || s.lck_received || s.csf_received ? "warn" : "ok";
   return s.highest_defect === "DefRDICCM" ? "warn" : "bad";
 }
 
@@ -105,6 +211,14 @@ function CFMStatus({ status }: { status: JsonObject }) {
         <span className={`defect ${s.present_rdi ? "warn" : ""}`}>{s.present_rdi ? "sending RDI" : "no RDI tx"}</span>
         {s.ais_received && <span className="defect warn">AIS rx</span>}
         {s.lck_received && <span className="defect warn">LCK rx</span>}
+        {s.csf_received && (
+          <span className="defect warn" title={`from ${s.csf_received.from}`}>
+            CSF {s.csf_received.type} rx
+          </span>
+        )}
+        {s.ais_sending && <span className="defect warn">sending AIS</span>}
+        {s.lck_sending && <span className="defect warn">sending LCK (locked)</span>}
+        {s.csf_sending && <span className="defect warn">sending CSF {s.csf_sending}</span>}
       </div>
       {(s.error_reason || s.xcon_reason) && (
         <div className="reasons">
@@ -146,6 +260,11 @@ function CFMStatus({ status }: { status: JsonObject }) {
                   <td className="mono">
                     {r.mep_id}
                     {!r.configured && <span className="tag" title="auto-discovered">AD</span>}
+                    {(r.sender_id || r.org_tlv || r.ccm_padding) && (
+                      <div className="muted small-note">
+                        {[r.sender_id && `sender ${r.sender_id}`, r.org_tlv && `org ${r.org_tlv}`, r.ccm_padding && `pad ${r.ccm_padding} B`].filter(Boolean).join(" · ")}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <span className={`dot ${rmepHealth(r)}`} /> {r.state}
@@ -168,6 +287,75 @@ function CFMStatus({ status }: { status: JsonObject }) {
           </table>
         </div>
       )}
+
+      {(s.one_way_delay ?? []).length > 0 && (
+        <>
+          <h4>One-way delay received (1DM)</h4>
+          <div className="table-wrap">
+            <table className="table dense">
+              <thead>
+                <tr>
+                  <th>From</th>
+                  <th className="num">Count</th>
+                  <th className="num">Last</th>
+                  <th className="num">Min</th>
+                  <th className="num">Avg</th>
+                  <th className="num">Max</th>
+                  <th className="num">FDV</th>
+                </tr>
+              </thead>
+              <tbody>
+                {s.one_way_delay!.map((o) => (
+                  <tr key={o.from}>
+                    <td className="mono">{o.from}</td>
+                    <td className="num mono">{o.count}</td>
+                    <td className="num mono">{ms(o.last_us)}</td>
+                    <td className="num mono">{ms(o.min_us)}</td>
+                    <td className="num mono">{ms(o.avg_us)}</td>
+                    <td className="num mono">{ms(o.max_us)}</td>
+                    <td className="num mono">{ms(o.avg_fdv_us)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {(s.test_signal ?? []).length > 0 && (
+        <>
+          <h4>Test signal received (TST)</h4>
+          <div className="table-wrap">
+            <table className="table dense">
+              <thead>
+                <tr>
+                  <th>From</th>
+                  <th className="num">Received</th>
+                  <th className="num">Bytes</th>
+                  <th className="num">Lost</th>
+                  <th className="num">Out of order</th>
+                  <th className="num">Bit errors</th>
+                </tr>
+              </thead>
+              <tbody>
+                {s.test_signal!.map((x) => (
+                  <tr key={x.from}>
+                    <td className="mono">{x.from}</td>
+                    <td className="num mono">{x.received}</td>
+                    <td className="num mono">{x.pattern_bytes.toLocaleString()}</td>
+                    <td className={`num mono ${x.lost ? "warn-text" : ""}`}>{x.lost}</td>
+                    <td className="num mono">{x.out_of_order}</td>
+                    <td className={`num mono ${x.bit_errors ? "warn-text" : ""}`}>
+                      {x.bit_errors}
+                      {x.unchecked ? <span className="muted"> ({x.unchecked} unchecked)</span> : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {(s.sessions ?? []).length > 0 && <Sessions ss={s.sessions!} />}
 
       <div className="counter-row">
         <Counters title="Transmitted" c={s.tx ?? {}} />

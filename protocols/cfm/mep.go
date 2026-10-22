@@ -1,6 +1,7 @@
 // Package cfm implements an IEEE 802.1Q CFM / ITU-T Y.1731 down-MEP:
 // CCM with the remote-MEP and defect state machines, LBM/LBR, LTM/LTR,
-// DMM/DMR and SLM/SLR (both initiator and responder), plus fault injection.
+// DMM/DMR, SLM/SLR, LMM/LMR, 1DM and TST (initiator and responder),
+// AIS/LCK/CSF, proactive measurement sessions, plus fault injection.
 package cfm
 
 import (
@@ -26,7 +27,7 @@ type mepType struct{}
 
 func (mepType) Name() string { return TypeName }
 func (mepType) Description() string {
-	return "802.1ag/Y.1731 down MEP: CCM, loopback, linktrace, delay (DMM) and synthetic loss (SLM)"
+	return "802.1ag/Y.1731 down MEP: CCM, loopback, linktrace, delay (DMM, 1DM), loss (SLM, LMM), test signal (TST), AIS/LCK/CSF, measurement sessions"
 }
 func (mepType) NewConfig() any       { return defaultConfig() }
 func (mepType) EtherTypes() []uint16 { return []uint16{pkt.EtherTypeCFM} }
@@ -40,7 +41,13 @@ func (mepType) Actions() []protocol.Action {
 			NewArgs: func() any { return &DelayArgs{Count: 5, IntervalMS: 1000, TimeoutMS: 1000} }},
 		{Name: "synthetic-loss", Description: "Synthetic loss measurement with SLM/SLR",
 			NewArgs: func() any { return &SyntheticLossArgs{Count: 100, IntervalMS: 100, TimeoutMS: 1000} }},
-		{Name: "fault", Description: "Inject faults into transmitted CCMs (stop CCM, RDI, status TLVs, sequence, MEPID/MAID/level)",
+		{Name: "one-way-delay", Description: "Send 1DMs; the receiving MEP computes one-way delay (clocks are shared in a lab)",
+			NewArgs: func() any { return &OneWayDelayArgs{Count: 10, IntervalMS: 1000} }},
+		{Name: "loss", Description: "Frame loss measurement with LMM/LMR over the devices' data-frame counters",
+			NewArgs: func() any { return &LossArgs{Count: 10, IntervalMS: 1000, TimeoutMS: 1000} }},
+		{Name: "test-signal", Description: "Send TST frames (sequence numbers, test pattern, optional CRC); the receiver counts loss and bit errors",
+			NewArgs: func() any { return &TestSignalArgs{Count: 100, IntervalMS: 10, Size: 64} }},
+		{Name: "fault", Description: "Inject faults into transmitted CCMs (stop CCM, RDI, status TLVs, sequence, MEPID/MAID/level) and send AIS, LCK or CSF",
 			NewArgs: func() any { return &FaultArgs{} }},
 		{Name: "clear", Description: "Clear counters and forget failed auto-discovered remote MEPs",
 			NewArgs: func() any { return &ClearArgs{} }},
@@ -64,6 +71,9 @@ type rmep struct {
 	portStatus uint8
 	intfStatus uint8
 	interval   uint8
+	senderID   string
+	org        string
+	padding    int
 	ccmRx      uint64
 	seqErrors  uint64
 	lastSeq    uint32
@@ -160,6 +170,22 @@ type mep struct {
 	dmWait  map[uint64]chan dmReply
 	slWait  map[uint32]chan *slm
 	slrTx   map[slKey]uint32
+	lmWait  map[pkt.MAC]chan lmReply
+
+	// Y.1731 signals and receivers (y1731_mep.go).
+	forceAIS, aisOn, lock     bool
+	csf                       string
+	nextAIS, nextLCK, nextCSF time.Time
+	csfUntil                  time.Time
+	csfRxType                 uint8
+	csfFrom                   pkt.MAC
+	owds                      map[pkt.MAC]*owd
+	tsts                      map[pkt.MAC]*tstRx
+	tstSeq                    uint32
+	sessions                  []*session
+
+	ccmTLVs    []byte // Sender ID, Organization-Specific, padding
+	senderTLVs []byte // Sender ID for LBM / LTM
 
 	stop chan struct{}
 	done chan struct{}
@@ -178,12 +204,21 @@ func (mepType) Start(env protocol.Env, c any) (protocol.Session, error) {
 		ccmEnabled: cfg.CCMEnabled, portStatus: PortUp, intfStatus: 1, levelOverride: -1,
 		transID: rand.Uint32(),
 		lbWait:  map[uint32]chan lbReply{}, ltWait: map[uint32]chan *ltr{}, dmWait: map[uint64]chan dmReply{},
-		slWait: map[uint32]chan *slm{}, slrTx: map[slKey]uint32{},
+		slWait: map[uint32]chan *slm{}, slrTx: map[slKey]uint32{}, lmWait: map[pkt.MAC]chan lmReply{},
+		owds: map[pkt.MAC]*owd{}, tsts: map[pkt.MAC]*tstRx{},
 		stop: make(chan struct{}), done: make(chan struct{})}
+	m.senderTLVs = senderIDTLV(cfg.SenderID)
+	m.ccmTLVs = append([]byte{}, m.senderTLVs...)
+	if cfg.OrgTLV != nil {
+		o, _ := cfg.OrgTLV.encode()
+		m.ccmTLVs = append(m.ccmTLVs, o...)
+	}
+	m.ccmTLVs = append(m.ccmTLVs, dataTLV(cfg.CCMPadding)...)
 	for _, id := range cfg.RemoteMEPs {
 		m.rmeps[id] = &rmep{id: id, configured: true, state: rmepStart, since: now}
 	}
 	go m.run()
+	m.startSessions()
 	return m, nil
 }
 
@@ -262,7 +297,7 @@ func (m *mep) sendCCM() {
 	}
 	m.txCnt[OpCCM]++
 	m.mu.Unlock()
-	if err := m.send(ccmGroup(level), c.encode(), m.cfg.CCMPriority); err != nil {
+	if err := m.send(ccmGroup(level), withTLVs(c.encode(), m.ccmTLVs), m.cfg.CCMPriority); err != nil {
 		m.mu.Lock()
 		m.txCnt[OpCCM]--
 		m.mu.Unlock()
@@ -277,10 +312,15 @@ func (m *mep) presentRDI() bool {
 // evaluate runs the remote MEP timers and recomputes defects, emitting
 // events for any change.
 func (m *mep) evaluate() {
+	now := time.Now()
 	m.mu.Lock()
-	evs := m.evaluateLocked(time.Now())
+	evs := m.evaluateLocked(now)
+	sends := m.signalsLocked(now)
 	m.mu.Unlock()
 	m.emit(evs)
+	for _, f := range sends {
+		f()
+	}
 }
 
 func (m *mep) evaluateLocked(now time.Time) []event {
@@ -496,6 +536,22 @@ func (m *mep) HandleRx(f *pkt.Frame) {
 			default:
 			}
 		}
+	case Op1DM:
+		if m.forMe(f.Dst, ccmGroup(m.cfg.Level)) {
+			m.rx1DM(f, b)
+		}
+	case OpTST:
+		if m.forMe(f.Dst, ccmGroup(m.cfg.Level)) {
+			m.rxTST(h, f)
+		}
+	case OpCSF:
+		if m.forMe(f.Dst, ccmGroup(m.cfg.Level)) {
+			m.rxCSF(h, f)
+		}
+	case OpLMM:
+		m.rxLMM(h, f)
+	case OpLMR:
+		m.rxLMR(h, f)
 	case OpAIS, OpLCK:
 		period := time.Second
 		if h.Flags&7 == 6 {
@@ -572,6 +628,7 @@ func (m *mep) rxCCM(h header, f *pkt.Frame) {
 	}
 	r.lastSeq, r.haveSeq = c.Seq, true
 	r.mac, r.lastRx, r.rdi, r.portStatus, r.intfStatus, r.interval = f.Src, now, c.RDI, c.PortStatus, c.IntfStatus, c.Interval
+	r.senderID, r.org, r.padding = c.SenderID, c.Org, c.Padding
 	r.ccmRx++
 	if r.state != rmepOK {
 		r.state, r.since = rmepOK, now
@@ -595,6 +652,9 @@ type RMEPStatus struct {
 	SeqErrors       uint64    `json:"seq_errors"`
 	LastRx          time.Time `json:"last_rx,omitempty"`
 	StateSince      time.Time `json:"state_since"`
+	SenderID        string    `json:"sender_id,omitempty"` // chassis ID from its Sender ID TLV
+	OrgTLV          string    `json:"org_tlv,omitempty"`
+	Padding         int       `json:"ccm_padding,omitempty"` // Data TLV bytes in its CCMs
 }
 
 type Status struct {
@@ -616,6 +676,14 @@ type Status struct {
 	Rx            map[string]uint64 `json:"rx"`
 	RxErrors      uint64            `json:"rx_errors"`
 	Faults        map[string]any    `json:"faults,omitempty"`
+
+	AISSending  bool            `json:"ais_sending"`
+	LCKSending  bool            `json:"lck_sending"`
+	CSFSending  string          `json:"csf_sending,omitempty"`
+	CSFReceived *CSFStatus      `json:"csf_received,omitempty"`
+	OneWayDelay []OWDStatus     `json:"one_way_delay"` // 1DMs received, per sender
+	TestSignal  []TSTStatus     `json:"test_signal"`   // TSTs received, per sender
+	Sessions    []SessionStatus `json:"sessions,omitempty"`
 }
 
 func (m *mep) Status() any {
@@ -642,7 +710,7 @@ func (m *mep) Status() any {
 	for _, r := range m.rmeps {
 		rs := RMEPStatus{MEPID: r.id, State: r.state, Configured: r.configured, RDI: r.rdi,
 			PortStatus: portStatusNames[r.portStatus], InterfaceStatus: intfStatusNames[r.intfStatus],
-			CCMRx: r.ccmRx, SeqErrors: r.seqErrors, LastRx: r.lastRx, StateSince: r.since}
+			CCMRx: r.ccmRx, SeqErrors: r.seqErrors, LastRx: r.lastRx, StateSince: r.since, SenderID: r.senderID, OrgTLV: r.org, Padding: r.padding}
 		if !r.mac.IsZero() {
 			rs.MAC = r.mac.String()
 		}
@@ -671,8 +739,21 @@ func (m *mep) Status() any {
 	if m.intfStatus != 1 {
 		f["interface_status"] = intfStatusNames[m.intfStatus]
 	}
+	if m.forceAIS {
+		f["force_ais"] = true
+	}
+	if m.lock {
+		f["lock"] = true
+	}
+	if m.csf != "" {
+		f["csf"] = m.csf
+	}
 	if len(f) > 0 {
 		s.Faults = f
+	}
+	m.y1731StatusLocked(&s, now)
+	for _, x := range m.sessions {
+		s.Sessions = append(s.Sessions, x.statusLocked())
 	}
 	return s
 }
@@ -689,6 +770,12 @@ func (m *mep) Action(ctx context.Context, name string, args any) (any, error) {
 		return m.delay(ctx, args.(*DelayArgs))
 	case "synthetic-loss":
 		return m.syntheticLoss(ctx, args.(*SyntheticLossArgs))
+	case "one-way-delay":
+		return m.oneWayDelay(ctx, args.(*OneWayDelayArgs))
+	case "loss":
+		return m.loss(ctx, args.(*LossArgs))
+	case "test-signal":
+		return m.testSignal(ctx, args.(*TestSignalArgs))
 	case "fault":
 		return m.fault(args.(*FaultArgs))
 	case "clear":
@@ -810,7 +897,7 @@ func (m *mep) loopback(ctx context.Context, a *LoopbackArgs) (any, error) {
 		m.lbWait[id] = ch
 		m.mu.Unlock()
 		start := time.Now()
-		if err := m.send(dst, encodeLBM(m.cfg.Level, id, a.DataSize), m.prio(a.Target)); err != nil {
+		if err := m.send(dst, withTLVs(encodeLBM(m.cfg.Level, id, a.DataSize), m.senderTLVs), m.prio(a.Target)); err != nil {
 			m.mu.Lock()
 			delete(m.lbWait, id)
 			m.mu.Unlock()
@@ -915,7 +1002,7 @@ func (m *mep) linktrace(ctx context.Context, a *LinktraceArgs) (any, error) {
 	}()
 	l := &ltm{Level: m.cfg.Level, Flags: flagUseFDBOnly, TransID: id, TTL: a.TTL, Orig: mac, Target: dst,
 		EgressID: append([]byte{0, 0}, mac[:]...)}
-	if err := m.send(ltmGroup(m.cfg.Level), l.encode(), m.prio(a.Target)); err != nil {
+	if err := m.send(ltmGroup(m.cfg.Level), withTLVs(l.encode(), m.senderTLVs), m.prio(a.Target)); err != nil {
 		return nil, fmt.Errorf("send LTM: %w", err)
 	}
 	m.count(OpLTM)
@@ -1170,15 +1257,29 @@ func (m *mep) fault(a *FaultArgs) (any, error) {
 	if a.LevelOverride != nil {
 		m.levelOverride = *a.LevelOverride
 	}
+	if a.ForceAIS != nil {
+		m.forceAIS = *a.ForceAIS
+	}
+	if a.Lock != nil {
+		m.lock = *a.Lock
+		go m.env.Emit("lck-tx", map[bool]string{true: "locked: sending LCK", false: "unlocked"}[m.lock], nil)
+	}
+	if a.CSF != nil {
+		m.csf = *a.CSF
+		if m.csf == "none" {
+			m.csf = ""
+		}
+	}
 	m.mu.Unlock()
 	st := m.Status().(Status)
-	return map[string]any{"ccm_enabled": st.CCMEnabled, "present_rdi": st.PresentRDI, "faults": st.Faults}, nil
+	return map[string]any{"ccm_enabled": st.CCMEnabled, "present_rdi": st.PresentRDI, "faults": st.Faults, "ais_sending": st.AISSending}, nil
 }
 
 func (m *mep) clear() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.txCnt, m.rxCnt, m.rxErrors = map[uint8]uint64{}, map[uint8]uint64{}, 0
+	m.owds, m.tsts = map[pkt.MAC]*owd{}, map[pkt.MAC]*tstRx{}
 	for id, r := range m.rmeps {
 		if !r.configured && r.state == rmepFailed {
 			delete(m.rmeps, id)

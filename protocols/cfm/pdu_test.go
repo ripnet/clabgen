@@ -1,7 +1,10 @@
 package cfm
 
 import (
+	"bytes"
+	"encoding/hex"
 	"testing"
+	"time"
 )
 
 func TestMAIDFormats(t *testing.T) {
@@ -111,5 +114,67 @@ func TestConfigValidate(t *testing.T) {
 	c.CCMInterval = "2s"
 	if c.Validate() == nil {
 		t.Error("expected error for bad interval")
+	}
+}
+
+func TestY1731Codecs(t *testing.T) {
+	// TST: CRC and null patterns check out; a flipped bit is caught.
+	for _, c := range []struct{ prbs, crc bool }{{false, false}, {false, true}, {true, true}} {
+		b := encodeTST(3, 7, 64, c.prbs, c.crc)
+		h, _ := parseHeader(b)
+		x, err := parseTST(h, b)
+		if err != nil || x.Seq != 7 || x.Bytes != 64 || !x.Checked || x.BitError {
+			t.Fatalf("%+v: %+v %v", c, x, err)
+		}
+		b[20] ^= 1
+		if x, _ := parseTST(h, b); !x.BitError {
+			t.Errorf("%+v: bit error not caught", c)
+		}
+	}
+	if b := encodeTST(3, 1, 16, true, false); func() bool { h, _ := parseHeader(b); x, _ := parseTST(h, b); return x.Checked }() {
+		t.Error("PRBS without CRC claimed checked")
+	}
+	// A TST from SR OS (64 zero bytes, CRC TLV) checks out, and ours
+	// carries the same CRC.
+	sr, _ := hex.DecodeString("a025000400000003200045010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006d6f784")
+	h0, _ := parseHeader(sr)
+	if x, err := parseTST(h0, sr); err != nil || !x.Checked || x.BitError || x.Bytes != 64 {
+		t.Fatalf("SR OS TST: %+v %v", x, err)
+	}
+	ours := encodeTST(5, 3, 64, false, true)
+	if !bytes.Equal(ours[:len(sr)], sr) {
+		t.Errorf("our TST differs from SR OS's:\n%x\n%x", ours, sr)
+	}
+
+	// LMM round trip, 1DM timestamp, CSF type and period.
+	l := &lm{Level: 2, Opcode: OpLMM, TxFCf: 10, RxFCf: 20, TxFCb: 30}
+	b := l.encode()
+	h, _ := parseHeader(b)
+	if x, err := parseLM(h, b); err != nil || *x != *l {
+		t.Fatalf("LM %+v %v", x, err)
+	}
+	now := time.Unix(1700000000, 123456789)
+	if got := getTimestamp(encode1DM(1, now)[4:]); !got.Equal(now) {
+		t.Errorf("1DM timestamp %v", got)
+	}
+	c := encodeSignal(4, OpCSF, csfTypes["rdi"]<<3|periodCode(time.Second))
+	if h, _ := parseHeader(c); h.Opcode != OpCSF || h.Flags>>3&7 != 2 || periodOf(h.Flags) != time.Second {
+		t.Errorf("CSF header %+v", h)
+	}
+
+	// Loss between two LMRs.
+	ft, nt, far, near := lossBetween(lmReply{lm{TxFCf: 100, RxFCf: 50, TxFCb: 10}, 5}, lmReply{lm{TxFCf: 200, RxFCf: 140, TxFCb: 30}, 24})
+	if ft != 100 || nt != 20 || far != 10 || near != 1 {
+		t.Errorf("loss %d %d %d %d", ft, nt, far, near)
+	}
+
+	// Sender ID and Organization-Specific TLVs in a CCM.
+	org, _ := (&OrgTLV{OUI: "00:16:4d", Subtype: 9, Value: "0102"}).encode()
+	cc := (&ccm{Level: 1, Interval: 4, MEPID: 3}).encode()
+	cc = withTLVs(cc, append(append(senderIDTLV("r1"), org...), dataTLV(8)...))
+	h, _ = parseHeader(cc)
+	x, err := parseCCM(h, cc)
+	if err != nil || x.SenderID != "r1" || x.Org != "00:16:4d/9 0102" || x.Padding != 8 {
+		t.Fatalf("CCM TLVs %+v %v", x, err)
 	}
 }

@@ -107,7 +107,7 @@ function Status({ status }: { status: JsonObject }) {
             <tbody>
               {s.neighbors.map((n) => (
                 <tr key={`${n.chassis_id}/${n.port_id}`}>
-                  <td>
+                  <td className="cell-wrap">
                     {n.system_name || "—"}
                     {n.system_description && <div className="muted small-note">{n.system_description}</div>}
                   </td>

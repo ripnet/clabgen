@@ -23,6 +23,7 @@ type wire struct {
 	peer  *core.Engine
 	up    bool
 	admin map[string]bool
+	drop  func(b []byte) bool // frames lost on the way (nil: none)
 
 	// Frames to the peer, delivered in order by one goroutine (a real
 	// wire doesn't reorder; MD5 sequence numbers notice).
@@ -34,9 +35,9 @@ type wire struct {
 
 func (w *wire) Send(port string, b []byte) error {
 	w.mu.Lock()
-	p, up := w.peer, w.up
+	p, up, drop := w.peer, w.up, w.drop
 	w.mu.Unlock()
-	if !up || p == nil {
+	if !up || p == nil || drop != nil && drop(b) {
 		return nil
 	}
 	w.once.Do(func() {
