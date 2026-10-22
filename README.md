@@ -1,25 +1,39 @@
 # clabgen
 
-A protocol emulator and packet generator for [containerlab](https://containerlab.dev)
-labs, aimed at control-plane testing. A small agent runs as a clab node,
-takes over the node's data interfaces, and emulates endpoints on them. You
-drive it over an API, with `clabgenctl`, or with scenario files.
+A web UI for emulating protocols and generating traffic in
+[containerlab](https://containerlab.dev) labs, aimed at control-plane
+testing: build emulated routers, MEPs and traffic endpoints, watch their
+state live, and break them on purpose, from the browser, `clabgenctl` or
+YAML scenarios. A small agent runs as a clab node, takes over the node's
+data interfaces and emulates endpoints on them.
 
-Devices can carry IPv4/IPv6 addresses: they answer ARP, ND and ping, and
-resolve neighbors on demand. Currently implemented protocols: **ETH-CFM /
-Y.1731 down MEPs** and **IS-IS** (point-to-point or broadcast with DIS election and
-pseudonode; LSDB sync, route injection at scale, overload/metric/flap
-actions). Traffic flows: **ICMP** (continuous, counted or timed
-ping, or any crafted ICMP/ICMPv6 packet) and **UDP** (one way, or echoed
-back by a `udp-echo` responder or any echo service), with loss, outage
-time, RTT and jitter, and ICMP errors matched to the flow. Every clabgen
-device measures signed flows it receives one way (loss, reordering,
-duplicates, latency, outages) with no setup. That covers CCM with
-defect detection; loopback, linktrace, delay (DMM, 1DM), synthetic loss
-(SLM), frame loss (LMM) and test signal (TST) as both initiator and
-responder; AIS, LCK and CSF; proactive measurement sessions; and fault
-injection. MEPs can be untagged,
-dot1q or QinQ. Interop with Nokia SR-SIM is verified.
+![Protocols on one agent](docs/images/protocols.png)
+
+- **Web UI**: every lab and agent on the machine in one place; a
+  schema-driven config editor (sections, field search, review of changes
+  before applying, errors placed on the fields); live status per protocol;
+  enable/disable, flap and fault-injection actions.
+- **Devices**: many emulated endpoints per port (MAC, VLAN or QinQ,
+  IPv4/IPv6 answering ARP, ND and ping); device groups of thousands with
+  stepped VLANs and addresses.
+- **ETH-CFM / Y.1731**: down MEPs with CCM and defects, loopback,
+  linktrace, delay (DMM, 1DM), loss (SLM, LMM), test signal, AIS/LCK/CSF,
+  proactive measurement sessions and fault injection.
+- **IS-IS**: point-to-point and LAN, L1/L2, multi-topology, SR-MPLS,
+  SRv6 and flex-algo, keychain authentication, BFD, graceful restart.
+- **OSPFv2 / OSPFv3**: areas (stub, NSSA, virtual links), segment routing,
+  BFD, graceful restart.
+- **BGP**: IPv4/IPv6 unicast, VPNv4/v6, EVPN and L2VPN, with route
+  injection at scale.
+- **Emulated topologies** behind IS-IS and OSPF routers (grids, rings,
+  custom graphs) with link and node failure actions.
+- **LLDP**, and **traffic flows** (ICMP, UDP one way or echoed) with loss,
+  outages and RTT; every device measures the signed flows it receives.
+- **Scenarios** in YAML, loaded at boot and exported at any time.
+
+Interop is verified against Nokia SR-SIM.
+
+![A BGP speaker's peers and routes](docs/images/bgp.png)
 
 ## Quick start
 

@@ -263,6 +263,10 @@ function AdjExtras({ a }: { a: Adj }) {
 
 const multi = (s: ISISStatus) => (s.interfaces?.length ?? 1) > 1;
 
+// lspCount is the live LSDB size; compact (list) statuses carry only the
+// total, not the rows.
+const lspCount = (s: ISISStatus) => (s.lsdb.length ? s.lsdb.filter((l) => l.lifetime > 0).length : (s.lsdb_total ?? 0));
+
 function summary(st: JsonObject): { health: Health; text: string } {
   const s = as(st);
   if (multi(s)) {
@@ -270,7 +274,7 @@ function summary(st: JsonObject): { health: Health; text: string } {
     const up = (s.adjacencies ?? []).filter((x) => x.state === "up").length;
     const active = ifs.filter((i) => !i.passive);
     const live = active.filter((i) => i.adjacencies_up > 0).length;
-    const tail = `${s.lsdb.filter((l) => l.lifetime > 0).length} LSPs${s.overload ? " · overload" : ""}${s.graceful_restart?.restarting ? " · restarting" : ""}`;
+    const tail = `${lspCount(s)} LSPs${s.overload ? " · overload" : ""}${s.graceful_restart?.restarting ? " · restarting" : ""}`;
     if (!up) return { health: "bad", text: `no adjacencies on ${ifs.length} interfaces` };
     return {
       health: live < active.length || s.overload ? "warn" : "ok",
@@ -280,13 +284,13 @@ function summary(st: JsonObject): { health: Health; text: string } {
   if (s.lan) {
     const up = (s.adjacencies ?? []).filter((x) => x.state === "up").length;
     const disNames = s.lan.map((l) => (l.we_are_dis ? "us" : hostOf(s, l.dis))).join("/");
-    const tail = `${s.lsdb.filter((l) => l.lifetime > 0).length} LSPs${s.overload ? " · overload" : ""}`;
+    const tail = `${lspCount(s)} LSPs${s.overload ? " · overload" : ""}`;
     if (up) return { health: s.overload ? "warn" : "ok", text: `${up} neighbor${up > 1 ? "s" : ""} · DIS ${disNames} · ${tail}` };
     return { health: "bad", text: s.flapping ? "down (flap)" : "no LAN neighbors" };
   }
   const a = s.adjacency;
   const who = a.hostname || a.neighbor;
-  const tail = `${s.lsdb.filter((l) => l.lifetime > 0).length} LSPs${s.overload ? " · overload" : ""}`;
+  const tail = `${lspCount(s)} LSPs${s.overload ? " · overload" : ""}`;
   if (a.state === "up") return { health: s.overload ? "warn" : "ok", text: `up with ${who} · ${tail}` };
   if (a.state === "initializing") return { health: "warn", text: `initializing with ${who}` };
   return { health: "bad", text: s.flapping ? "down (flap)" : "adjacency down" };
