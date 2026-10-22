@@ -40,6 +40,7 @@ bin/clabgenctl -s clab-cfm-b2b-gen1 events &                        # live event
 bin/clabgenctl -s clab-cfm-b2b-gen2 port down eth1                  # gen1 raises LOC
 bin/clabgenctl -s clab-cfm-b2b-gen1 proto run mep-v100 loopback target_mep_id=102 count=5
 bin/clabgenctl -s clab-cfm-b2b-gen1 proto run mep-v100 fault ccm_enabled=false
+bin/clabgenctl -s clab-cfm-b2b-gen1 proto disable mep-v100      # stop it, keep its config (enable starts it)
 bin/clabgenctl -s clab-cfm-b2b-gen1 types cfm-mep                   # config + action schemas
 bin/clabgenctl -s clab-cfm-b2b-gen1 device set v100 --ip 10.0.100.1/24 --gw 10.0.100.254
 bin/clabgenctl -s clab-cfm-b2b-gen1 device resolve untagged 192.0.2.2  # ARP / ND

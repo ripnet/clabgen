@@ -839,6 +839,25 @@ func protoCmd() *cobra.Command {
 			return nil
 		}}
 
+	toggle := func(use, short string, disabled bool) *cobra.Command {
+		return &cobra.Command{
+			Use: use + " NAME...", Short: short, Args: cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c, cancel := ctx()
+				defer cancel()
+				for _, n := range args {
+					r, err := client().SetProtocolDisabled(c, connect.NewRequest(&v1.SetProtocolDisabledRequest{Name: n, Disabled: disabled}))
+					if err != nil {
+						return err
+					}
+					fmt.Printf("%s: %s\n", n, r.Msg.Protocol.State)
+				}
+				return nil
+			}}
+	}
+	disable := toggle("disable", "Stop protocol instances, keeping them and their config", true)
+	enable := toggle("enable", "Start disabled protocol instances again", false)
+
 	var argsJSON string
 	run := &cobra.Command{
 		Use: "run NAME ACTION [key=value...]", Short: "Run an action (see `types TYPE` for actions and arguments)", Args: cobra.MinimumNArgs(2),
@@ -858,7 +877,7 @@ func protoCmd() *cobra.Command {
 		}}
 	run.Flags().StringVar(&argsJSON, "args", "", "arguments as JSON/YAML, or @file")
 
-	cmd.AddCommand(add, show, set, del, run)
+	cmd.AddCommand(add, show, set, disable, enable, del, run)
 	return cmd
 }
 

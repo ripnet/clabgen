@@ -287,7 +287,7 @@ func protocolPB(v core.ProtocolView) (*v1.Protocol, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &v1.Protocol{Name: v.Name, Type: v.Type, Device: v.Device, Config: cfg, State: v.State, Error: v.Error, Status: st, Group: v.Group}, nil
+	return &v1.Protocol{Name: v.Name, Type: v.Type, Device: v.Device, Config: cfg, State: v.State, Error: v.Error, Status: st, Group: v.Group, Disabled: v.Disabled}, nil
 }
 
 func (s *Server) ListProtocols(ctx context.Context, r *connect.Request[v1.ListProtocolsRequest]) (*connect.Response[v1.ListProtocolsResponse], error) {
@@ -323,7 +323,7 @@ func (s *Server) CreateProtocol(ctx context.Context, r *connect.Request[v1.Creat
 	if err != nil {
 		return nil, connectErr(err)
 	}
-	v, err := s.eng.CreateProtocol(core.ProtocolSpec{Name: p.Name, Type: p.Type, Device: p.Device, Config: raw})
+	v, err := s.eng.CreateProtocol(core.ProtocolSpec{Name: p.Name, Type: p.Type, Device: p.Device, Config: raw, Disabled: p.Disabled})
 	if err != nil {
 		return nil, connectErr(err)
 	}
@@ -352,6 +352,18 @@ func (s *Server) UpdateProtocol(ctx context.Context, r *connect.Request[v1.Updat
 
 func (s *Server) DeleteProtocol(ctx context.Context, r *connect.Request[v1.DeleteProtocolRequest]) (*connect.Response[v1.DeleteProtocolResponse], error) {
 	return connect.NewResponse(&v1.DeleteProtocolResponse{}), connectErr(s.eng.DeleteProtocol(r.Msg.Name))
+}
+
+func (s *Server) SetProtocolDisabled(ctx context.Context, r *connect.Request[v1.SetProtocolDisabledRequest]) (*connect.Response[v1.SetProtocolDisabledResponse], error) {
+	v, err := s.eng.SetProtocolDisabled(r.Msg.Name, r.Msg.Disabled)
+	if err != nil {
+		return nil, connectErr(err)
+	}
+	out, err := protocolPB(v)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&v1.SetProtocolDisabledResponse{Protocol: out}), nil
 }
 
 func (s *Server) RunProtocolAction(ctx context.Context, r *connect.Request[v1.RunProtocolActionRequest]) (*connect.Response[v1.RunProtocolActionResponse], error) {

@@ -47,6 +47,8 @@ service AgentService {
   rpc UpdateProtocol(UpdateProtocolRequest) returns (UpdateProtocolResponse);
   rpc DeleteProtocol(DeleteProtocolRequest) returns (DeleteProtocolResponse);
   rpc RunProtocolAction(RunProtocolActionRequest) returns (RunProtocolActionResponse);
+  // Stops an instance keeping its config, or starts it again.
+  rpc SetProtocolDisabled(SetProtocolDisabledRequest) returns (SetProtocolDisabledResponse);
 
   // Device groups are many devices from one template, each with the same
   // set of protocol instances. Members are listed as ordinary devices and
@@ -220,6 +222,8 @@ message Protocol {
   google.protobuf.Struct status = 7;
   // Output only: the device group this instance is a member of.
   string group = 8;
+  // Kept with its config but not running (state "disabled").
+  bool disabled = 9;
 }
 
 message ListProtocolsRequest {
@@ -243,6 +247,12 @@ message UpdateProtocolRequest {
 message UpdateProtocolResponse { Protocol protocol = 1; }
 message DeleteProtocolRequest { string name = 1; }
 message DeleteProtocolResponse {}
+
+message SetProtocolDisabledRequest {
+  string name = 1;
+  bool disabled = 2;
+}
+message SetProtocolDisabledResponse { Protocol protocol = 1; }
 
 message RunProtocolActionRequest {
   string name = 1;

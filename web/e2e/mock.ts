@@ -7,7 +7,7 @@ const types = JSON.parse(readFileSync(new URL("./fixtures/protocol-types.json", 
 
 const svc = "clabgen.v1.AgentService";
 
-export type Protocol = { name: string; type: string; device: string; state: string; config: Record<string, unknown> };
+export type Protocol = { name: string; type: string; device: string; state: string; config: Record<string, unknown>; disabled?: boolean };
 
 // mockAgent serves one agent "a1" holding protocol p. Unary calls answer
 // with Connect JSON: update decides UpdateProtocol (an error message
@@ -26,6 +26,13 @@ export async function mockAgent(page: Page, p: Protocol, update: (config: Record
   });
   await page.route(`**/agents/a1/${svc}/ListProtocolTypes`, (r) => ok(r, types));
   await page.route(`**/agents/a1/${svc}/GetProtocol`, (r) => ok(r, { protocol: p }));
+  await page.route(`**/agents/a1/${svc}/ListProtocols`, (r) => ok(r, { protocols: [p] }));
+  await page.route(`**/agents/a1/${svc}/SetProtocolDisabled`, (r) => {
+    const req = r.request().postDataJSON() as { disabled?: boolean };
+    p.disabled = !!req.disabled;
+    p.state = p.disabled ? "disabled" : "running";
+    return ok(r, { protocol: p });
+  });
   await page.route(`**/agents/a1/${svc}/UpdateProtocol`, (r) => {
     const req = r.request().postDataJSON() as { config: Record<string, unknown> };
     const err = update(req.config);

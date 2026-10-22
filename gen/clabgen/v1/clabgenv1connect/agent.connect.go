@@ -88,6 +88,9 @@ const (
 	// AgentServiceRunProtocolActionProcedure is the fully-qualified name of the AgentService's
 	// RunProtocolAction RPC.
 	AgentServiceRunProtocolActionProcedure = "/clabgen.v1.AgentService/RunProtocolAction"
+	// AgentServiceSetProtocolDisabledProcedure is the fully-qualified name of the AgentService's
+	// SetProtocolDisabled RPC.
+	AgentServiceSetProtocolDisabledProcedure = "/clabgen.v1.AgentService/SetProtocolDisabled"
 	// AgentServiceListDeviceGroupsProcedure is the fully-qualified name of the AgentService's
 	// ListDeviceGroups RPC.
 	AgentServiceListDeviceGroupsProcedure = "/clabgen.v1.AgentService/ListDeviceGroups"
@@ -151,6 +154,8 @@ type AgentServiceClient interface {
 	UpdateProtocol(context.Context, *connect.Request[v1.UpdateProtocolRequest]) (*connect.Response[v1.UpdateProtocolResponse], error)
 	DeleteProtocol(context.Context, *connect.Request[v1.DeleteProtocolRequest]) (*connect.Response[v1.DeleteProtocolResponse], error)
 	RunProtocolAction(context.Context, *connect.Request[v1.RunProtocolActionRequest]) (*connect.Response[v1.RunProtocolActionResponse], error)
+	// Stops an instance keeping its config, or starts it again.
+	SetProtocolDisabled(context.Context, *connect.Request[v1.SetProtocolDisabledRequest]) (*connect.Response[v1.SetProtocolDisabledResponse], error)
 	// Device groups are many devices from one template, each with the same
 	// set of protocol instances. Members are listed as ordinary devices and
 	// protocols (with group set) and change only through their group.
@@ -294,6 +299,12 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(agentServiceMethods.ByName("RunProtocolAction")),
 			connect.WithClientOptions(opts...),
 		),
+		setProtocolDisabled: connect.NewClient[v1.SetProtocolDisabledRequest, v1.SetProtocolDisabledResponse](
+			httpClient,
+			baseURL+AgentServiceSetProtocolDisabledProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("SetProtocolDisabled")),
+			connect.WithClientOptions(opts...),
+		),
 		listDeviceGroups: connect.NewClient[v1.ListDeviceGroupsRequest, v1.ListDeviceGroupsResponse](
 			httpClient,
 			baseURL+AgentServiceListDeviceGroupsProcedure,
@@ -353,34 +364,35 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 
 // agentServiceClient implements AgentServiceClient.
 type agentServiceClient struct {
-	getInfo            *connect.Client[v1.GetInfoRequest, v1.GetInfoResponse]
-	listPorts          *connect.Client[v1.ListPortsRequest, v1.ListPortsResponse]
-	setPortAdmin       *connect.Client[v1.SetPortAdminRequest, v1.SetPortAdminResponse]
-	listDevices        *connect.Client[v1.ListDevicesRequest, v1.ListDevicesResponse]
-	createDevice       *connect.Client[v1.CreateDeviceRequest, v1.CreateDeviceResponse]
-	updateDevice       *connect.Client[v1.UpdateDeviceRequest, v1.UpdateDeviceResponse]
-	deleteDevice       *connect.Client[v1.DeleteDeviceRequest, v1.DeleteDeviceResponse]
-	getDeviceIP        *connect.Client[v1.GetDeviceIPRequest, v1.GetDeviceIPResponse]
-	resolveNeighbor    *connect.Client[v1.ResolveNeighborRequest, v1.ResolveNeighborResponse]
-	clearNeighbors     *connect.Client[v1.ClearNeighborsRequest, v1.ClearNeighborsResponse]
-	listReceivedFlows  *connect.Client[v1.ListReceivedFlowsRequest, v1.ListReceivedFlowsResponse]
-	clearReceivedFlows *connect.Client[v1.ClearReceivedFlowsRequest, v1.ClearReceivedFlowsResponse]
-	listProtocolTypes  *connect.Client[v1.ListProtocolTypesRequest, v1.ListProtocolTypesResponse]
-	listProtocols      *connect.Client[v1.ListProtocolsRequest, v1.ListProtocolsResponse]
-	getProtocol        *connect.Client[v1.GetProtocolRequest, v1.GetProtocolResponse]
-	createProtocol     *connect.Client[v1.CreateProtocolRequest, v1.CreateProtocolResponse]
-	updateProtocol     *connect.Client[v1.UpdateProtocolRequest, v1.UpdateProtocolResponse]
-	deleteProtocol     *connect.Client[v1.DeleteProtocolRequest, v1.DeleteProtocolResponse]
-	runProtocolAction  *connect.Client[v1.RunProtocolActionRequest, v1.RunProtocolActionResponse]
-	listDeviceGroups   *connect.Client[v1.ListDeviceGroupsRequest, v1.ListDeviceGroupsResponse]
-	getDeviceGroup     *connect.Client[v1.GetDeviceGroupRequest, v1.GetDeviceGroupResponse]
-	createDeviceGroup  *connect.Client[v1.CreateDeviceGroupRequest, v1.CreateDeviceGroupResponse]
-	updateDeviceGroup  *connect.Client[v1.UpdateDeviceGroupRequest, v1.UpdateDeviceGroupResponse]
-	deleteDeviceGroup  *connect.Client[v1.DeleteDeviceGroupRequest, v1.DeleteDeviceGroupResponse]
-	runGroupAction     *connect.Client[v1.RunGroupActionRequest, v1.RunGroupActionResponse]
-	watchEvents        *connect.Client[v1.WatchEventsRequest, v1.Event]
-	getScenario        *connect.Client[v1.GetScenarioRequest, v1.GetScenarioResponse]
-	applyScenario      *connect.Client[v1.ApplyScenarioRequest, v1.ApplyScenarioResponse]
+	getInfo             *connect.Client[v1.GetInfoRequest, v1.GetInfoResponse]
+	listPorts           *connect.Client[v1.ListPortsRequest, v1.ListPortsResponse]
+	setPortAdmin        *connect.Client[v1.SetPortAdminRequest, v1.SetPortAdminResponse]
+	listDevices         *connect.Client[v1.ListDevicesRequest, v1.ListDevicesResponse]
+	createDevice        *connect.Client[v1.CreateDeviceRequest, v1.CreateDeviceResponse]
+	updateDevice        *connect.Client[v1.UpdateDeviceRequest, v1.UpdateDeviceResponse]
+	deleteDevice        *connect.Client[v1.DeleteDeviceRequest, v1.DeleteDeviceResponse]
+	getDeviceIP         *connect.Client[v1.GetDeviceIPRequest, v1.GetDeviceIPResponse]
+	resolveNeighbor     *connect.Client[v1.ResolveNeighborRequest, v1.ResolveNeighborResponse]
+	clearNeighbors      *connect.Client[v1.ClearNeighborsRequest, v1.ClearNeighborsResponse]
+	listReceivedFlows   *connect.Client[v1.ListReceivedFlowsRequest, v1.ListReceivedFlowsResponse]
+	clearReceivedFlows  *connect.Client[v1.ClearReceivedFlowsRequest, v1.ClearReceivedFlowsResponse]
+	listProtocolTypes   *connect.Client[v1.ListProtocolTypesRequest, v1.ListProtocolTypesResponse]
+	listProtocols       *connect.Client[v1.ListProtocolsRequest, v1.ListProtocolsResponse]
+	getProtocol         *connect.Client[v1.GetProtocolRequest, v1.GetProtocolResponse]
+	createProtocol      *connect.Client[v1.CreateProtocolRequest, v1.CreateProtocolResponse]
+	updateProtocol      *connect.Client[v1.UpdateProtocolRequest, v1.UpdateProtocolResponse]
+	deleteProtocol      *connect.Client[v1.DeleteProtocolRequest, v1.DeleteProtocolResponse]
+	runProtocolAction   *connect.Client[v1.RunProtocolActionRequest, v1.RunProtocolActionResponse]
+	setProtocolDisabled *connect.Client[v1.SetProtocolDisabledRequest, v1.SetProtocolDisabledResponse]
+	listDeviceGroups    *connect.Client[v1.ListDeviceGroupsRequest, v1.ListDeviceGroupsResponse]
+	getDeviceGroup      *connect.Client[v1.GetDeviceGroupRequest, v1.GetDeviceGroupResponse]
+	createDeviceGroup   *connect.Client[v1.CreateDeviceGroupRequest, v1.CreateDeviceGroupResponse]
+	updateDeviceGroup   *connect.Client[v1.UpdateDeviceGroupRequest, v1.UpdateDeviceGroupResponse]
+	deleteDeviceGroup   *connect.Client[v1.DeleteDeviceGroupRequest, v1.DeleteDeviceGroupResponse]
+	runGroupAction      *connect.Client[v1.RunGroupActionRequest, v1.RunGroupActionResponse]
+	watchEvents         *connect.Client[v1.WatchEventsRequest, v1.Event]
+	getScenario         *connect.Client[v1.GetScenarioRequest, v1.GetScenarioResponse]
+	applyScenario       *connect.Client[v1.ApplyScenarioRequest, v1.ApplyScenarioResponse]
 }
 
 // GetInfo calls clabgen.v1.AgentService.GetInfo.
@@ -478,6 +490,11 @@ func (c *agentServiceClient) RunProtocolAction(ctx context.Context, req *connect
 	return c.runProtocolAction.CallUnary(ctx, req)
 }
 
+// SetProtocolDisabled calls clabgen.v1.AgentService.SetProtocolDisabled.
+func (c *agentServiceClient) SetProtocolDisabled(ctx context.Context, req *connect.Request[v1.SetProtocolDisabledRequest]) (*connect.Response[v1.SetProtocolDisabledResponse], error) {
+	return c.setProtocolDisabled.CallUnary(ctx, req)
+}
+
 // ListDeviceGroups calls clabgen.v1.AgentService.ListDeviceGroups.
 func (c *agentServiceClient) ListDeviceGroups(ctx context.Context, req *connect.Request[v1.ListDeviceGroupsRequest]) (*connect.Response[v1.ListDeviceGroupsResponse], error) {
 	return c.listDeviceGroups.CallUnary(ctx, req)
@@ -557,6 +574,8 @@ type AgentServiceHandler interface {
 	UpdateProtocol(context.Context, *connect.Request[v1.UpdateProtocolRequest]) (*connect.Response[v1.UpdateProtocolResponse], error)
 	DeleteProtocol(context.Context, *connect.Request[v1.DeleteProtocolRequest]) (*connect.Response[v1.DeleteProtocolResponse], error)
 	RunProtocolAction(context.Context, *connect.Request[v1.RunProtocolActionRequest]) (*connect.Response[v1.RunProtocolActionResponse], error)
+	// Stops an instance keeping its config, or starts it again.
+	SetProtocolDisabled(context.Context, *connect.Request[v1.SetProtocolDisabledRequest]) (*connect.Response[v1.SetProtocolDisabledResponse], error)
 	// Device groups are many devices from one template, each with the same
 	// set of protocol instances. Members are listed as ordinary devices and
 	// protocols (with group set) and change only through their group.
@@ -696,6 +715,12 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(agentServiceMethods.ByName("RunProtocolAction")),
 		connect.WithHandlerOptions(opts...),
 	)
+	agentServiceSetProtocolDisabledHandler := connect.NewUnaryHandler(
+		AgentServiceSetProtocolDisabledProcedure,
+		svc.SetProtocolDisabled,
+		connect.WithSchema(agentServiceMethods.ByName("SetProtocolDisabled")),
+		connect.WithHandlerOptions(opts...),
+	)
 	agentServiceListDeviceGroupsHandler := connect.NewUnaryHandler(
 		AgentServiceListDeviceGroupsProcedure,
 		svc.ListDeviceGroups,
@@ -790,6 +815,8 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 			agentServiceDeleteProtocolHandler.ServeHTTP(w, r)
 		case AgentServiceRunProtocolActionProcedure:
 			agentServiceRunProtocolActionHandler.ServeHTTP(w, r)
+		case AgentServiceSetProtocolDisabledProcedure:
+			agentServiceSetProtocolDisabledHandler.ServeHTTP(w, r)
 		case AgentServiceListDeviceGroupsProcedure:
 			agentServiceListDeviceGroupsHandler.ServeHTTP(w, r)
 		case AgentServiceGetDeviceGroupProcedure:
@@ -891,6 +918,10 @@ func (UnimplementedAgentServiceHandler) DeleteProtocol(context.Context, *connect
 
 func (UnimplementedAgentServiceHandler) RunProtocolAction(context.Context, *connect.Request[v1.RunProtocolActionRequest]) (*connect.Response[v1.RunProtocolActionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.RunProtocolAction is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) SetProtocolDisabled(context.Context, *connect.Request[v1.SetProtocolDisabledRequest]) (*connect.Response[v1.SetProtocolDisabledResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.SetProtocolDisabled is not implemented"))
 }
 
 func (UnimplementedAgentServiceHandler) ListDeviceGroups(context.Context, *connect.Request[v1.ListDeviceGroupsRequest]) (*connect.Response[v1.ListDeviceGroupsResponse], error) {

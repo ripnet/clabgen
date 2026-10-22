@@ -9,6 +9,7 @@ import { Empty, ErrorBox, HealthText, Modal, useBusy, useToast } from "../ui";
 import { AgentHeader } from "./AgentPage";
 import type { Event as AgentEvent } from "../gen/clabgen/v1/agent_pb";
 import { EventRow } from "./EventsTab";
+import { EnableToggle } from "./ProtocolsTab";
 
 type Result = { id: number; action: string; args: Obj; at: Date; ms: number; result?: JsonObject; error?: string };
 
@@ -55,8 +56,13 @@ export function ProtocolDetail({ agentId, name }: { agentId: string; name: strin
                 )}
               </div>
             </div>
-            <div className="proto-state">{s && <HealthText health={s.health}>{proto.state === "running" ? s.text : `${proto.state}: ${proto.error}`}</HealthText>}</div>
+            <div className="proto-state">{s && <HealthText health={s.health}>{proto.state === "running" ? s.text : proto.error ? `${proto.state}: ${proto.error}` : proto.state}</HealthText>}</div>
             <div className="btn-row" hidden={!!proto.group} title="Group members change through their group">
+              <EnableToggle
+                disabled={proto.disabled}
+                busy={busy}
+                onToggle={() => run(() => c.setProtocolDisabled({ name: proto.name, disabled: !proto.disabled }), `${proto.disabled ? "Enabled" : "Disabled"} ${proto.name}`).then(p.refresh)}
+              />
               <button className="btn" onClick={() => setEditing(true)} disabled={!type}>
                 Edit config
               </button>
@@ -78,7 +84,7 @@ export function ProtocolDetail({ agentId, name }: { agentId: string; name: strin
               <h2>Status</h2>
               <span className="live on">live</span>
             </div>
-            {proto.status ? view.Status ? <view.Status status={proto.status} agentId={agentId} name={proto.name} /> : <ValueView value={proto.status} /> : <div className="muted">Not running.</div>}
+            {proto.status ? view.Status ? <view.Status status={proto.status} agentId={agentId} name={proto.name} /> : <ValueView value={proto.status} /> : <div className="muted">{proto.disabled ? "Disabled: the configuration is kept; turn it on to start it again." : "Not running."}</div>}
           </div>
 
           <div className="detail-grid">

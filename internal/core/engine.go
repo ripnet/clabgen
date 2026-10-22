@@ -66,12 +66,15 @@ type ProtocolSpec struct {
 	Type   string          `json:"type"`
 	Device string          `json:"device"`
 	Config json.RawMessage `json:"config,omitempty"`
+	// Disabled instances keep their config but don't run.
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 const (
-	StateRunning = "running"
-	StateWaiting = "waiting"
-	StateError   = "error"
+	StateRunning  = "running"
+	StateWaiting  = "waiting"
+	StateError    = "error"
+	StateDisabled = "disabled"
 )
 
 type ProtocolView struct {
@@ -345,7 +348,7 @@ func (e *Engine) createDevice(s DeviceSpec, group string) (DeviceSpec, error) {
 	e.byPort[s.Port] = append(e.byPort[s.Port], d)
 	var waiting []*instance
 	for _, in := range e.insts {
-		if in.spec.Device == s.Name {
+		if in.spec.Device == s.Name && !in.spec.Disabled {
 			waiting = append(waiting, in)
 		}
 	}
@@ -529,6 +532,9 @@ func (e *Engine) createProtocol(s ProtocolSpec, group string) (ProtocolView, err
 	}
 	s.Config, _ = json.Marshal(cfg) // normalised, defaults filled in
 	in := &instance{spec: s, typ: t, cfg: cfg, state: StateWaiting, err: "device does not exist", ets: map[uint16]bool{}, group: group}
+	if s.Disabled {
+		in.state, in.err = StateDisabled, ""
+	}
 	for _, et := range t.EtherTypes() {
 		in.ets[et] = true
 	}
@@ -540,7 +546,7 @@ func (e *Engine) createProtocol(s ProtocolSpec, group string) (ProtocolView, err
 	e.insts[s.Name] = in
 	d := e.devices[s.Device]
 	e.mu.Unlock()
-	if d != nil {
+	if d != nil && !s.Disabled {
 		e.startInstance(in, d)
 	}
 	return e.GetProtocol(s.Name)
@@ -550,6 +556,14 @@ func (e *Engine) startInstance(in *instance, d *device) {
 	env := &env{e: e, in: in, dev: d, log: e.log.With("protocol", in.spec.Name)}
 	sess, err := in.typ.Start(env, in.cfg)
 	e.mu.Lock()
+	if e.insts[in.spec.Name] != in || in.spec.Disabled {
+		// Deleted or disabled while starting.
+		e.mu.Unlock()
+		if sess != nil {
+			sess.Stop()
+		}
+		return
+	}
 	defer e.mu.Unlock()
 	if err != nil {
 		in.state, in.err = StateError, err.Error()
@@ -600,6 +614,16 @@ func (e *Engine) deleteProtocol(name, group string) error {
 		return err
 	}
 	delete(e.insts, name)
+	sess := e.detachLocked(in)
+	e.mu.Unlock()
+	if sess != nil {
+		sess.Stop()
+	}
+	return nil
+}
+
+// detachLocked takes in off its device and returns its session to stop.
+func (e *Engine) detachLocked(in *instance) protocol.Session {
 	if in.dev != nil {
 		l := in.dev.insts
 		for i, x := range l {
@@ -610,13 +634,51 @@ func (e *Engine) deleteProtocol(name, group string) error {
 		}
 	}
 	sess := in.sess
-	in.sess = nil
+	in.sess, in.dev = nil, nil
 	e.closeInstanceTapsLocked(in)
+	return sess
+}
+
+// SetProtocolDisabled stops an instance and keeps it with its config
+// (disabled), or starts it again. Group members follow their group.
+func (e *Engine) SetProtocolDisabled(name string, disabled bool) (ProtocolView, error) {
+	e.mu.Lock()
+	in, ok := e.insts[name]
+	if !ok {
+		e.mu.Unlock()
+		return ProtocolView{}, fmt.Errorf("protocol %s: %w", name, ErrNotFound)
+	}
+	if err := memberErr("protocol", name, in.group, ""); err != nil {
+		e.mu.Unlock()
+		return ProtocolView{}, err
+	}
+	if in.spec.Disabled == disabled {
+		e.mu.Unlock()
+		return e.GetProtocol(name)
+	}
+	in.spec.Disabled = disabled
+	var sess protocol.Session
+	var d *device
+	if disabled {
+		sess = e.detachLocked(in)
+		in.state, in.err = StateDisabled, ""
+	} else {
+		in.state, in.err = StateWaiting, "device does not exist"
+		d = e.devices[in.spec.Device]
+	}
 	e.mu.Unlock()
 	if sess != nil {
 		sess.Stop()
 	}
-	return nil
+	if d != nil {
+		e.startInstance(in, d)
+	}
+	if disabled {
+		e.publish("protocol/"+name, "protocol-disabled", "protocol disabled", nil)
+	} else {
+		e.publish("protocol/"+name, "protocol-enabled", "protocol enabled", nil)
+	}
+	return e.GetProtocol(name)
 }
 
 func (e *Engine) GetProtocol(name string) (ProtocolView, error) {

@@ -357,3 +357,71 @@ func TestLocalDelivery(t *testing.T) {
 		t.Fatal("resolved a device in another VLAN")
 	}
 }
+
+func TestEngineDisableProtocol(t *testing.T) {
+	a, b, _, _ := newPair()
+	for _, e := range []*core.Engine{a, b} {
+		if _, err := e.CreateDevice(core.DeviceSpec{Name: "d", Port: "eth1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.CreateProtocol(core.ProtocolSpec{Name: "m", Type: "cfm-mep", Device: "d", Config: json.RawMessage(`{"mep_id":1,"remote_meps":[2],"ccm_interval":"10ms"}`)})
+	b.CreateProtocol(core.ProtocolSpec{Name: "m", Type: "cfm-mep", Device: "d", Config: json.RawMessage(`{"mep_id":2,"remote_meps":[1],"ccm_interval":"10ms"}`)})
+	eventually(t, "up", func() bool { return rmepOK(t, a, "m") && rmepOK(t, b, "m") })
+
+	// Disabled: stopped, config kept, a loses its peer.
+	v, err := b.SetProtocolDisabled("m", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.State != core.StateDisabled || !v.Disabled || v.Status != nil || len(v.Config) == 0 {
+		t.Fatalf("disabled view: %+v", v)
+	}
+	eventually(t, "LOC while disabled", func() bool { return mepStatus(t, a, "m")["highest_defect"] == "DefRemoteCCM" })
+	if _, err := b.RunAction(context.Background(), "m", "loopback", nil); err == nil {
+		t.Error("action ran on a disabled protocol")
+	}
+
+	// It stays disabled through a config change, a device change and an
+	// export / apply.
+	if v, err := b.UpdateProtocol("m", json.RawMessage(`{"mep_id":2,"remote_meps":[1],"ccm_interval":"10ms","level":0}`)); err != nil || v.State != core.StateDisabled {
+		t.Fatalf("update: %v %+v", err, v)
+	}
+	if _, err := b.UpdateDevice(core.DeviceSpec{Name: "d", Port: "eth1", VLANs: []pkt.VLANTag{{VID: 5}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.UpdateDevice(core.DeviceSpec{Name: "d", Port: "eth1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.DeleteDevice("d"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CreateDevice(core.DeviceSpec{Name: "d", Port: "eth1"}); err != nil {
+		t.Fatal(err)
+	}
+	sc := b.Export()
+	if len(sc.Protocols) != 1 || !sc.Protocols[0].Disabled {
+		t.Fatalf("export: %+v", sc.Protocols)
+	}
+	if err := b.Apply(sc, true); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := b.GetProtocol("m"); v.State != core.StateDisabled {
+		t.Fatalf("after changes: %s %s", v.State, v.Error)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if rmepOK(t, a, "m") {
+		t.Fatal("disabled protocol is sending")
+	}
+
+	// Enabled again: running, a recovers. Twice is a no-op.
+	for range 2 {
+		if v, err := b.SetProtocolDisabled("m", false); err != nil || v.State != core.StateRunning || v.Disabled {
+			t.Fatalf("enable: %v %+v", err, v)
+		}
+	}
+	eventually(t, "recovery", func() bool { return rmepOK(t, a, "m") })
+	if _, err := b.SetProtocolDisabled("nope", true); err == nil {
+		t.Error("disabled a protocol that doesn't exist")
+	}
+}

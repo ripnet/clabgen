@@ -33,6 +33,7 @@ export function ProtocolsTab({ agentId }: { agentId: string }) {
             <thead>
               <tr>
                 <th>Name</th>
+                <th title="Disabled protocols keep their config but don't run">Enabled</th>
                 <th>Type</th>
                 <th>Device</th>
                 <th>State</th>
@@ -48,6 +49,13 @@ export function ProtocolsTab({ agentId }: { agentId: string }) {
                       <a href={href({ page: "protocol", agent: agentId, protocol: p.name })} onClick={(e) => e.stopPropagation()}>
                         {p.name}
                       </a>
+                    </td>
+                    <td>
+                      <EnableToggle
+                        disabled={p.disabled}
+                        busy={busy}
+                        onToggle={() => run(() => c.setProtocolDisabled({ name: p.name, disabled: !p.disabled }), `${p.disabled ? "Enabled" : "Disabled"} ${p.name}`).then(list.refresh)}
+                      />
                     </td>
                     <td className="mono">{p.type}</td>
                     <td className="mono">{p.device}</td>
@@ -76,6 +84,26 @@ export function ProtocolsTab({ agentId }: { agentId: string }) {
       )}
       {creating && <CreateProtocol agentId={agentId} category="protocol" onClose={() => setCreating(false)} onDone={list.refresh} />}
     </div>
+  );
+}
+
+// EnableToggle switches a protocol instance on (running) or off (disabled,
+// config kept).
+export function EnableToggle({ disabled, busy, onToggle }: { disabled: boolean; busy: boolean; onToggle: () => void }) {
+  return (
+    <button
+      className={`toggle ${disabled ? "" : "on"}`}
+      disabled={busy}
+      aria-pressed={!disabled}
+      title={disabled ? "Enable: start it again" : "Disable: stop it, keeping its config"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+    >
+      <span className="toggle-knob" />
+      <span>{disabled ? "off" : "on"}</span>
+    </button>
   );
 }
 
