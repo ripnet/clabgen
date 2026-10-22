@@ -555,7 +555,20 @@ func summary(p *v1.Protocol) string {
 			nbr = h
 		}
 		out := fmt.Sprintf("%v %v adj=%v", m["system_id"], m["level"], adj["state"])
-		if lan, ok := m["lan"].([]any); ok {
+		if ifs, _ := m["interfaces"].([]any); len(ifs) > 1 {
+			var per []string
+			for _, x := range ifs {
+				i := x.(map[string]any)
+				st := fmt.Sprint(i["adjacencies_up"])
+				if i["attached"] != true {
+					st = "detached"
+				} else if i["passive"] == true {
+					st = "passive"
+				}
+				per = append(per, fmt.Sprintf("%v:%s", i["name"], st))
+			}
+			out = fmt.Sprintf("%v %v interfaces=[%s]", m["system_id"], m["level"], strings.Join(per, " "))
+		} else if lan, ok := m["lan"].([]any); ok {
 			up := 0
 			if as, ok := m["adjacencies"].([]any); ok {
 				for _, a := range as {

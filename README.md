@@ -192,6 +192,17 @@ Segment routing (SR-MPLS): `segment_routing: {enabled: true, srgb_base:
 Adj-SIDs; the topology's `node_sid_base` / `node_sid6_base` give the
 simulated routers node SIDs, so the real routers build SR tunnels across them.
 
+A router can have several interfaces: the instance's own device plus
+`interfaces`, each a device with optional `circuit`, `metric`, `priority`,
+`passive` and `hello_auth` (unset fields take the router's settings). It
+floods between them and advertises every interface's neighbor and
+subnets in one LSP; `metric` and `flap` take `interface=…` to act on one.
+
+```yaml
+    config: {system_id: 0000.0000.0050, level: L2,
+             interfaces: [{device: i502, metric: 50}, {device: lan1, circuit: broadcast, priority: 100}]}
+```
+
 Kinds are `grid`, `ring`, `line`, `full` and `custom` (named nodes with
 links and prefixes). `topology-link a=r1-1 b=r1-2 up=false` (or `metric=…`)
 and `topology-node node=r2-2 up=false` (or `overload=true`) fail parts of

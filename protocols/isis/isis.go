@@ -1,8 +1,9 @@
 // Package isis is an emulated IS-IS router (ISO 10589, RFC 1195/5305/5308)
-// with one interface, point-to-point (3-way adjacency, RFC 5303) or
-// broadcast (LAN adjacencies, DIS election, pseudonode; see lan.go): LSDB
-// synchronisation with CSNP/PSNP and flooding, our own LSPs (fragmented as
-// needed) carrying the device's addresses and injected prefixes, and
+// with one or more interfaces (circuits; see circuit.go), each
+// point-to-point (3-way adjacency, RFC 5303) or broadcast (LAN adjacencies,
+// DIS election, pseudonode; see lan.go): LSDB synchronisation with
+// CSNP/PSNP and flooding between circuits, our own LSPs (fragmented as
+// needed) carrying the interfaces' addresses and injected prefixes, and
 // actions to overload, change metrics, advertise/withdraw prefixes and flap.
 package isis
 
@@ -31,17 +32,17 @@ type isisType struct{}
 
 func (isisType) Name() string { return TypeName }
 func (isisType) Description() string {
-	return "IS-IS router (point-to-point or broadcast/LAN with DIS): adjacencies, LSDB sync, LSP origination with route injection, overload/metric/flap actions"
+	return "IS-IS router with one or more interfaces (point-to-point or broadcast/LAN with DIS): adjacencies, LSDB sync and flooding, LSP origination with route injection, overload/metric/flap actions"
 }
 func (isisType) NewConfig() any       { return defaultConfig() }
 func (isisType) EtherTypes() []uint16 { return []uint16{pkt.EtherTypeLLC} }
 func (isisType) Actions() []protocol.Action {
 	return []protocol.Action{
 		{Name: "overload", Description: "Set or clear the overload bit", NewArgs: func() any { return &OverloadArgs{Set: true} }},
-		{Name: "metric", Description: "Change the metric toward the neighbor", NewArgs: func() any { return &MetricArgs{Metric: 10} }},
+		{Name: "metric", Description: "Change an interface's metric (default: every interface)", NewArgs: func() any { return &MetricArgs{Metric: 10} }},
 		{Name: "advertise", Description: "Advertise more prefixes (until withdrawn or restarted)", NewArgs: func() any { return &PrefixArgs{} }},
 		{Name: "withdraw", Description: "Stop advertising prefixes (injected or from config)", NewArgs: func() any { return &PrefixArgs{} }},
-		{Name: "flap", Description: "Bring the adjacency down for a while, then let it come back", NewArgs: func() any { return &FlapArgs{Seconds: 10, Mode: "reset"} }},
+		{Name: "flap", Description: "Bring adjacencies down for a while (one interface or all), then let them come back", NewArgs: func() any { return &FlapArgs{Seconds: 10, Mode: "reset"} }},
 		{Name: "topology-link", Description: "Take a simulated link down or up, or change its metric", NewArgs: func() any { return &TopoLinkArgs{} }},
 		{Name: "topology-node", Description: "Take a simulated router down or up, or set its overload bit", NewArgs: func() any { return &TopoNodeArgs{} }},
 		{Name: "lsp", Description: "Show one LSP's full content (neighbors, prefixes, addresses)", NewArgs: func() any { return &LSPArgs{} }},
@@ -53,14 +54,16 @@ type OverloadArgs struct {
 	Set bool `json:"set"`
 }
 type MetricArgs struct {
-	Metric uint32 `json:"metric" jsonschema:"minimum=1,maximum=16777214"`
+	Metric    uint32 `json:"metric" jsonschema:"minimum=1,maximum=16777214"`
+	Interface string `json:"interface,omitempty" jsonschema:"description=Device name; empty: every interface"`
 }
 type PrefixArgs struct {
 	Prefixes []Prefix `json:"prefixes" jsonschema:"description=Prefixes to add or remove; each with an optional count of consecutive prefixes and a metric"`
 }
 type FlapArgs struct {
-	Seconds int    `json:"seconds" jsonschema:"minimum=1,maximum=3600,description=How long the adjacency stays down"`
-	Mode    string `json:"mode" jsonschema:"enum=reset,enum=silent,description=reset: keep sending hellos saying Down (the neighbor drops at once); silent: stop hellos (the neighbor's hold timer expires)"`
+	Seconds   int    `json:"seconds" jsonschema:"minimum=1,maximum=3600,description=How long the adjacency stays down"`
+	Mode      string `json:"mode" jsonschema:"enum=reset,enum=silent,description=reset: keep sending hellos saying Down (the neighbor drops at once); silent: stop hellos (the neighbor's hold timer expires)"`
+	Interface string `json:"interface,omitempty" jsonschema:"description=Device name; empty: every interface"`
 }
 
 func (a *FlapArgs) Validate() error {
@@ -97,19 +100,18 @@ const (
 )
 
 type adjacency struct {
-	state       string
-	sys         SysID
-	mac         pkt.MAC
-	extCircuit  uint32
-	levels      []int // levels the adjacency runs at
-	hold        time.Duration
-	lastHello   time.Time
-	since       time.Time
-	areas       []string
-	addrs       []string
-	mts         []uint16 // topologies in common
-	threeWay    bool
-	transitions int
+	state      string
+	sys        SysID
+	mac        pkt.MAC
+	extCircuit uint32
+	levels     []int // levels the adjacency runs at
+	hold       time.Duration
+	lastHello  time.Time
+	since      time.Time
+	areas      []string
+	addrs      []string
+	mts        []uint16 // topologies in common
+	threeWay   bool
 }
 
 type dbEntry struct {
@@ -117,10 +119,9 @@ type dbEntry struct {
 	rxAt    time.Time // when the current copy arrived (or was originated)
 	life    uint16    // remaining lifetime at rxAt
 	own     bool
-	srm     bool      // send to the neighbor
-	srmAt   time.Time // last sent (for retransmission)
-	purgeAt time.Time // zero-age entries are removed after ZeroAgeLifetime
-	info    *LSPInfo  // decoded content, cached for status
+	srm     map[int]time.Time // circuits to send it on → last sent (retransmission on p2p)
+	purgeAt time.Time         // zero-age entries are removed after ZeroAgeLifetime
+	info    *LSPInfo          // decoded content, cached for status
 }
 
 // infoLocked returns the entry's decoded content (cached).
@@ -145,7 +146,6 @@ type level struct {
 	db map[LSPID]*dbEntry
 	// LSPs we originate, per system: us and any simulated routers.
 	orig      map[SysID]*origin
-	lastCSNP  time.Time
 	dirty     bool // regenerate our LSPs
 	refreshAt time.Time
 }
@@ -155,18 +155,13 @@ type session struct {
 	cfg  Config
 	sys  SysID
 	host string
-	mac  pkt.MAC
 
 	mu       sync.Mutex
 	areas    [][]byte
-	metric   uint32
 	overload bool
 	prefixes map[netip.Prefix]IPReach // configured + advertised
-	adj      adjacency                // point-to-point
-	lan      map[int]*lanLevel        // broadcast circuits, per level (nil for p2p)
+	circs    []*circuit               // [0]: the instance's own device
 	lv       map[int]*level
-
-	adjTransitions int // LAN adjacency ups and downs
 
 	mts []uint16 // multi-topology: 0 plus the configured MTs (nil: single topology)
 
@@ -176,9 +171,6 @@ type session struct {
 	sr        srState                      // what we advertise, for status
 
 	topo     *topology // simulated routers behind us (nil: none)
-	flapTill time.Time
-	flapMode string
-	nextHelo time.Time
 	counters map[string]uint64
 	events   []string
 
@@ -188,13 +180,13 @@ type session struct {
 
 func (isisType) Start(env protocol.Env, c any) (protocol.Session, error) {
 	cfg := *c.(*Config)
-	s := &session{env: env, cfg: cfg, mac: env.Device().MAC(), metric: cfg.Metric, overload: cfg.Overload,
+	s := &session{env: env, cfg: cfg, overload: cfg.Overload,
 		prefixes: map[netip.Prefix]IPReach{}, lv: map[int]*level{}, counters: map[string]uint64{},
 		stop: make(chan struct{}), done: make(chan struct{})}
 	if cfg.SystemID != "" {
 		s.sys, _ = ParseSysID(cfg.SystemID)
 	} else {
-		h := sha256.Sum256([]byte(env.InstanceName() + "/" + s.mac.String()))
+		h := sha256.Sum256([]byte(env.InstanceName() + "/" + env.Device().MAC().String()))
 		s.sys = SysID{0x02, 0x00, h[0], h[1], h[2], h[3]}
 	}
 	s.host = cfg.Hostname
@@ -214,7 +206,6 @@ func (isisType) Start(env protocol.Env, c any) (protocol.Session, error) {
 	for _, n := range cfg.levels() {
 		s.lv[n] = &level{n: n, db: map[LSPID]*dbEntry{}, orig: map[SysID]*origin{}, dirty: true}
 	}
-	s.adj.state = stDown
 	if len(cfg.Topologies) > 0 {
 		s.mts = []uint16{MTIPv4Unicast}
 		for _, t := range cfg.Topologies {
@@ -228,11 +219,20 @@ func (isisType) Start(env protocol.Env, c any) (protocol.Session, error) {
 		}
 		s.topo = t
 	}
-	if cfg.Circuit == "broadcast" {
-		s.lan = map[int]*lanLevel{}
+	first := Interface{Circuit: cfg.Circuit, Metric: cfg.Metric, Passive: cfg.Passive}
+	s.circs = []*circuit{s.newCircuit(0, env.Device().Name(), first)}
+	s.circs[0].mac = env.Device().MAC()
+	for i, ic := range cfg.Interfaces {
+		s.circs = append(s.circs, s.newCircuit(i+1, ic.Device, ic))
+	}
+	for _, c := range s.circs {
+		if !c.attached() {
+			c.attErr = "not attached yet"
+		}
 		for _, n := range cfg.levels() {
-			s.lan[n] = &lanLevel{n: n, adjs: map[pkt.MAC]*lanAdj{}}
-			s.electLocked(n, time.Now())
+			if c.lan {
+				s.electLocked(c, n, time.Now())
+			}
 		}
 	}
 	go s.run()
@@ -246,6 +246,18 @@ func (s *session) Stop() {
 		close(s.stop)
 	}
 	<-s.done
+	var atts []protocol.Attachment
+	s.mu.Lock()
+	for _, c := range s.circs {
+		if c.att != nil {
+			atts = append(atts, c.att)
+			c.att = nil
+		}
+	}
+	s.mu.Unlock()
+	for _, a := range atts {
+		a.Close() // engine call: without mu
+	}
 }
 
 func (s *session) count(k string) { s.counters[k]++ }
@@ -256,10 +268,18 @@ func (s *session) event(kind, msg string) {
 
 // ---- sending ----
 
-func (s *session) send(pdu []byte, what string) { s.sendTo(AllISs, pdu, what) }
-
-func (s *session) sendTo(dst pkt.MAC, pdu []byte, what string) {
-	if err := s.env.Send(dst, pkt.EtherTypeLLC, frame(pdu), protocol.SendOpts{SetPCP: true, PCP: 7}); err != nil {
+func (s *session) sendTo(c *circuit, dst pkt.MAC, pdu []byte, what string) {
+	send := s.env.Send
+	if c.idx != 0 {
+		s.mu.Lock()
+		att := c.att
+		s.mu.Unlock()
+		if att == nil {
+			return
+		}
+		send = att.Send
+	}
+	if err := send(dst, pkt.EtherTypeLLC, frame(pdu), protocol.SendOpts{SetPCP: true, PCP: 7}); err != nil {
 		s.mu.Lock()
 		s.count("tx_errors")
 		s.mu.Unlock()
@@ -270,8 +290,8 @@ func (s *session) sendTo(dst pkt.MAC, pdu []byte, what string) {
 	s.mu.Unlock()
 }
 
-func (s *session) addrs() (v4, v6ll, v6glob []netip.Prefix) {
-	ip := s.env.IP()
+func (s *session) addrs(c *circuit) (v4, v6ll, v6glob []netip.Prefix) {
+	ip := s.circuitIP(c)
 	if ip == nil {
 		return
 	}
@@ -289,9 +309,9 @@ func (s *session) addrs() (v4, v6ll, v6glob []netip.Prefix) {
 	return v4, v6ll, v6glob
 }
 
-// hello builds our point-to-point hello. Caller holds mu.
-func (s *session) helloLocked() []byte {
-	v4, v6ll, _ := s.addrs()
+// hello builds our point-to-point hello for a circuit. Caller holds mu.
+func (s *session) helloLocked(c *circuit) []byte {
+	v4, v6ll, _ := s.addrs(c)
 	var a4, a6 []netip.Addr
 	for _, p := range v4 {
 		a4 = append(a4, p.Addr())
@@ -299,23 +319,23 @@ func (s *session) helloLocked() []byte {
 	for _, p := range v6ll {
 		a6 = append(a6, p.Addr())
 	}
-	tw := ThreeWay{State: AdjDown, ExtCircuit: 1}
-	switch s.adj.state {
+	tw := ThreeWay{State: AdjDown, ExtCircuit: uint32(c.idx + 1)}
+	switch c.adj.state {
 	case stInitializing:
 		tw.State = AdjInitializing
 	case stUp:
 		tw.State = AdjUp
 	}
-	if s.adj.state != stDown {
-		tw.NeighborSys, tw.NeighborExtCircuit, tw.HasNeighbor = s.adj.sys, s.adj.extCircuit, true
+	if c.adj.state != stDown {
+		tw.NeighborSys, tw.NeighborExtCircuit, tw.HasNeighbor = c.adj.sys, c.adj.extCircuit, true
 	}
 	padTo := 0
 	if s.cfg.HelloPadding {
 		// 1500 − LLC (ports are ≥ 1500), leaving room for authentication.
-		padTo = 1497 - s.cfg.HelloAuth.tlvLen()
+		padTo = 1497 - c.helloAuth.tlvLen()
 	}
 	hold := uint16(s.cfg.HelloInterval * s.cfg.HelloMultiplier)
-	return s.cfg.HelloAuth.sign(EncodeP2PHello(s.cfg.circuitType(), s.sys, hold, 1, s.areas, a4, a6, s.mts, tw, padTo))
+	return c.helloAuth.sign(EncodeP2PHello(s.cfg.circuitType(), s.sys, hold, byte(c.idx+1), s.areas, a4, a6, s.mts, tw, padTo))
 }
 
 // ---- main loop ----
@@ -329,6 +349,9 @@ func (s *session) run() {
 		case <-s.stop:
 			return
 		case now := <-t.C:
+			if len(s.circs) > 1 {
+				s.attachLoop(now)
+			}
 			s.tick(now)
 		}
 	}
@@ -336,30 +359,37 @@ func (s *session) run() {
 
 func (s *session) tick(now time.Time) {
 	type pdu struct {
+		c    *circuit
 		dst  pkt.MAC
 		b    []byte
 		kind string
 	}
 	var out []pdu // sent after unlocking
-	add := func(dst pkt.MAC, b []byte, kind string) { out = append(out, pdu{dst, b, kind}) }
+	add := func(c *circuit, dst pkt.MAC, b []byte, kind string) { out = append(out, pdu{c, dst, b, kind}) }
 	s.mu.Lock()
 	s.keyRolloverLocked(now)
-	flapping := now.Before(s.flapTill)
-	if s.lan != nil {
-		s.tickLANLocked(now, flapping, add)
-	} else {
+	for _, c := range s.circs {
+		if !c.attached() || c.passive {
+			continue
+		}
+		flapping := now.Before(c.flapTill)
+		if c.lan {
+			s.tickLANLocked(c, now, flapping, add)
+			continue
+		}
 		// Hold timer.
-		if s.adj.state != stDown && now.Sub(s.adj.lastHello) > s.adj.hold {
-			s.adjDownLocked(now, "hold time expired")
+		if c.adj.state != stDown && now.Sub(c.adj.lastHello) > c.adj.hold {
+			s.adjDownLocked(c, now, "hold time expired")
 		}
 		// Hellos (jittered by up to 25%). A silent flap sends none; a reset
 		// flap keeps sending them with state Down (we ignore the neighbor's).
-		if !(flapping && s.flapMode == "silent") && !now.Before(s.nextHelo) {
-			add(AllISs, s.helloLocked(), "hello")
+		if !(flapping && c.flapMode == "silent") && !now.Before(c.nextHelo) {
+			add(c, AllISs, s.helloLocked(c), "hello")
 			iv := time.Duration(s.cfg.HelloInterval) * time.Second
-			s.nextHelo = now.Add(iv - time.Duration(rand.Int63n(int64(iv)/4+1)))
+			c.nextHelo = now.Add(iv - time.Duration(rand.Int63n(int64(iv)/4+1)))
 		}
 	}
+	csnpEvery := time.Duration(s.cfg.CSNPInterval) * time.Second
 	for _, n := range s.sortedLevels() {
 		l := s.lv[n]
 		// Our LSPs.
@@ -367,46 +397,57 @@ func (s *session) tick(now time.Time) {
 			s.originateLocked(l, now)
 		}
 		s.ageLocked(l, now)
-		if !s.adjUpAt(n) {
-			continue
-		}
-		if s.lan != nil {
-			dst := s.lanDst(n)
-			// Only the DIS sends CSNPs on a LAN.
-			if s.lan[n].isDIS && now.Sub(l.lastCSNP) >= time.Duration(s.cfg.CSNPInterval)*time.Second {
-				for _, c := range s.csnpsLocked(l, now) {
-					add(dst, c, "csnp")
+		var csnps [][]byte // the same on every circuit
+		ids := sortedIDs(l.db)
+		for _, c := range s.circs {
+			if !c.adjUpAt(n) {
+				continue
+			}
+			if c.lan {
+				dst, ll := s.lanDst(n), c.lans[n]
+				// Only the DIS sends CSNPs on a LAN.
+				if ll.isDIS && now.Sub(ll.lastCSNP) >= csnpEvery {
+					if csnps == nil {
+						csnps = s.csnpsLocked(l, now)
+					}
+					for _, b := range csnps {
+						add(c, dst, b, "csnp")
+					}
+					ll.lastCSNP = now
 				}
-				l.lastCSNP = now
-			}
-			// Flood once to the LAN; the DIS's CSNPs catch losses.
-			for _, id := range sortedIDs(l.db) {
-				if e := l.db[id]; e.srm {
-					add(dst, lspWithLifetime(e.lsp.Raw, e.remaining(now)), "lsp")
-					e.srm = false
+				// Flood once to the LAN; the DIS's CSNPs catch losses.
+				for _, id := range ids {
+					e := l.db[id]
+					if _, ok := e.srm[c.idx]; ok {
+						add(c, dst, lspWithLifetime(e.lsp.Raw, e.remaining(now)), "lsp")
+						delete(e.srm, c.idx)
+					}
 				}
+				continue
 			}
-			continue
-		}
-		// Periodic CSNP.
-		if now.Sub(l.lastCSNP) >= time.Duration(s.cfg.CSNPInterval)*time.Second {
-			for _, c := range s.csnpsLocked(l, now) {
-				add(AllISs, c, "csnp")
+			// Periodic CSNP.
+			if now.Sub(c.lastCSNP[n]) >= csnpEvery {
+				if csnps == nil {
+					csnps = s.csnpsLocked(l, now)
+				}
+				for _, b := range csnps {
+					add(c, AllISs, b, "csnp")
+				}
+				c.lastCSNP[n] = now
 			}
-			l.lastCSNP = now
-		}
-		// Flood / retransmit (every 5 s until acknowledged).
-		for _, id := range sortedIDs(l.db) {
-			e := l.db[id]
-			if e.srm && now.Sub(e.srmAt) >= 5*time.Second {
-				add(AllISs, lspWithLifetime(e.lsp.Raw, e.remaining(now)), "lsp")
-				e.srmAt = now
+			// Flood / retransmit (every 5 s until acknowledged).
+			for _, id := range ids {
+				e := l.db[id]
+				if at, ok := e.srm[c.idx]; ok && now.Sub(at) >= 5*time.Second {
+					add(c, AllISs, lspWithLifetime(e.lsp.Raw, e.remaining(now)), "lsp")
+					e.srm[c.idx] = now
+				}
 			}
 		}
 	}
 	s.mu.Unlock()
 	for _, o := range out {
-		s.sendTo(o.dst, o.b, o.kind)
+		s.sendTo(o.c, o.dst, o.b, o.kind)
 	}
 }
 
@@ -419,14 +460,18 @@ func (s *session) sortedLevels() []int {
 	return ls
 }
 
-func (s *session) adjUpAt(n int) bool {
-	if s.lan != nil {
-		return s.lanAdjUp(n)
-	}
-	if s.adj.state != stUp {
+// adjUpAt reports whether the circuit has an Up adjacency at level n.
+func (c *circuit) adjUpAt(n int) bool {
+	if !c.attached() {
 		return false
 	}
-	for _, x := range s.adj.levels {
+	if c.lan {
+		return c.lanAdjUp(n)
+	}
+	if c.adj.state != stUp {
+		return false
+	}
+	for _, x := range c.adj.levels {
 		if x == n {
 			return true
 		}
@@ -453,46 +498,51 @@ func lspWithLifetime(raw []byte, life uint16) []byte {
 
 // ---- adjacency ----
 
-func (s *session) adjDownLocked(now time.Time, why string) {
-	if s.lan != nil {
+func (s *session) adjDownLocked(c *circuit, now time.Time, why string) {
+	if c.lan {
 		for _, n := range s.sortedLevels() {
-			ll := s.lan[n]
+			ll := c.lans[n]
 			for m, a := range ll.adjs {
 				if a.state == stUp {
-					s.adjTransitions++
-					go s.event("adjacency-down", fmt.Sprintf("L%d adjacency with %s down: %s", n, a.sys, why))
+					c.transitions++
+					go s.event("adjacency-down", fmt.Sprintf("%s L%d adjacency with %s down: %s", c.device, n, a.sys, why))
 				}
 				delete(ll.adjs, m)
 			}
-			s.electLocked(n, now)
+			s.electLocked(c, n, now)
 			s.lv[n].dirty = true
 		}
 		return
 	}
-	if s.adj.state == stDown {
+	if c.adj.state == stDown {
 		return
 	}
-	wasUp := s.adj.state == stUp
-	nb := s.adj.sys
-	s.adj = adjacency{state: stDown, since: now, transitions: s.adj.transitions + 1}
+	wasUp := c.adj.state == stUp
+	nb := c.adj.sys
+	c.adj = adjacency{state: stDown, since: now}
+	c.transitions++
 	for _, l := range s.lv {
 		l.dirty = true
 		for _, e := range l.db {
-			e.srm = false
+			delete(e.srm, c.idx)
 		}
 	}
 	if wasUp {
-		go s.event("adjacency-down", fmt.Sprintf("adjacency with %s down: %s", nb, why))
+		go s.event("adjacency-down", fmt.Sprintf("%s adjacency with %s down: %s", c.device, nb, why))
 	}
 }
 
-func (s *session) rxHello(f *pkt.Frame, p *PDU) {
+func (s *session) rxHello(c *circuit, f *pkt.Frame, p *PDU) {
 	h := p.P2P
 	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.count("rx_hello")
-	if now.Before(s.flapTill) {
+	if now.Before(c.flapTill) {
+		return
+	}
+	if h.Source == s.sys {
+		s.count("rx_hello_duplicate_system_id")
 		return
 	}
 	// Level compatibility.
@@ -529,37 +579,37 @@ func (s *session) rxHello(f *pkt.Frame, p *PDU) {
 		s.count("rx_hello_mt_mismatch")
 		return
 	}
-	s.adj.mts = mts
-	if s.adj.state != stDown && s.adj.sys != h.Source {
+	c.adj.mts = mts
+	if c.adj.state != stDown && c.adj.sys != h.Source {
 		s.count("rx_hello_other_neighbor")
 		return
 	}
-	prev := s.adj.state
-	s.adj.sys, s.adj.mac, s.adj.levels = h.Source, f.Src, levels
-	s.adj.hold = time.Duration(h.Hold) * time.Second
-	s.adj.lastHello = now
-	s.adj.areas = nil // fresh slices: Status hands these out
+	prev := c.adj.state
+	c.adj.sys, c.adj.mac, c.adj.levels = h.Source, f.Src, levels
+	c.adj.hold = time.Duration(h.Hold) * time.Second
+	c.adj.lastHello = now
+	c.adj.areas = nil // fresh slices: Status hands these out
 	for _, a := range p.Areas {
-		s.adj.areas = append(s.adj.areas, AreaString(a))
+		c.adj.areas = append(c.adj.areas, AreaString(a))
 	}
-	s.adj.addrs = nil
+	c.adj.addrs = nil
 	for _, v := range p.TLVs.All(TLVIPAddresses) {
 		for ; len(v) >= 4; v = v[4:] {
-			s.adj.addrs = append(s.adj.addrs, netip.AddrFrom4([4]byte(v[:4])).String())
+			c.adj.addrs = append(c.adj.addrs, netip.AddrFrom4([4]byte(v[:4])).String())
 		}
 	}
 	for _, v := range p.TLVs.All(TLVIPv6Addresses) {
 		for ; len(v) >= 16; v = v[16:] {
-			s.adj.addrs = append(s.adj.addrs, netip.AddrFrom16([16]byte(v[:16])).String())
+			c.adj.addrs = append(c.adj.addrs, netip.AddrFrom16([16]byte(v[:16])).String())
 		}
 	}
 	next := stUp
 	if tw := h.ThreeWay; tw != nil {
-		s.adj.threeWay = true
-		s.adj.extCircuit = tw.ExtCircuit
+		c.adj.threeWay = true
+		c.adj.extCircuit = tw.ExtCircuit
 		switch {
 		case tw.HasNeighbor && tw.NeighborSys != s.sys:
-			s.adjDownLocked(now, "neighbor reports a different system")
+			s.adjDownLocked(c, now, "neighbor reports a different system")
 			return
 		case tw.State == AdjDown:
 			next = stInitializing
@@ -569,28 +619,28 @@ func (s *session) rxHello(f *pkt.Frame, p *PDU) {
 			}
 		}
 		if prev == stUp && tw.State == AdjDown {
-			s.adjDownLocked(now, "neighbor reset the adjacency")
-			s.adj.sys, s.adj.mac, s.adj.lastHello, s.adj.hold, s.adj.levels = h.Source, f.Src, now, time.Duration(h.Hold)*time.Second, levels
-			s.adj.state = stInitializing
-			s.nextHelo = now
+			s.adjDownLocked(c, now, "neighbor reset the adjacency")
+			c.adj.sys, c.adj.mac, c.adj.lastHello, c.adj.hold, c.adj.levels = h.Source, f.Src, now, time.Duration(h.Hold)*time.Second, levels
+			c.adj.state = stInitializing
+			c.nextHelo = now
 			return
 		}
 	}
 	if next != prev {
-		s.adj.state = next
-		s.adj.since = now
-		s.nextHelo = now // answer right away so the 3-way handshake is quick
+		c.adj.state = next
+		c.adj.since = now
+		c.nextHelo = now // answer right away so the 3-way handshake is quick
 		if next == stUp {
-			s.adj.transitions++
+			c.transitions++
 			for _, n := range levels {
 				l := s.lv[n]
 				l.dirty = true
-				l.lastCSNP = time.Time{} // send a CSNP now
+				c.lastCSNP[n] = time.Time{} // send a CSNP now
 				for _, e := range l.db {
-					e.srm = true // flood everything we have
+					e.flag(c.idx) // send everything we have
 				}
 			}
-			go s.event("adjacency-up", fmt.Sprintf("adjacency with %s up (level %v)", h.Source, levels))
+			go s.event("adjacency-up", fmt.Sprintf("%s adjacency with %s up (level %v)", c.device, h.Source, levels))
 		}
 	}
 }
@@ -615,14 +665,14 @@ func newer(seq uint32, life uint16, csum uint16, e *dbEntry, now time.Time) int 
 	return 0
 }
 
-func (s *session) rxLSP(p *PDU) {
+func (s *session) rxLSP(c *circuit, p *PDU) {
 	l := p.LSP
 	now := time.Now()
 	var out [][]byte
 	s.mu.Lock()
 	s.count("rx_lsp")
 	lv := s.lv[l.Level]
-	if lv == nil || !s.adjUpAt(l.Level) {
+	if lv == nil || !c.adjUpAt(l.Level) {
 		s.mu.Unlock()
 		return
 	}
@@ -649,14 +699,14 @@ func (s *session) rxLSP(p *PDU) {
 		// (someone purged our current copy).
 		if o := lv.orig[l.ID.Node().Sys()]; l.ID[6] == 0 && o != nil && int(frag) < o.frags {
 			s.bumpOwnLocked(lv, l.ID, l.Seq)
-		} else if s.lan != nil && l.ID[6] == pnID && frag == 0 && s.lan[l.Level].isDIS {
+		} else if l.ID[6] != 0 && frag == 0 && s.pnCircuit(l.ID[6], l.Level) != nil {
 			// Our pseudonode (purged, or from before a restart).
 			s.bumpOwnLocked(lv, l.ID, l.Seq)
 		} else {
 			// A fragment we no longer originate: purge it.
-			lv.db[l.ID] = &dbEntry{lsp: mustLSP(s.signLSP(purgeRaw(l.Level, l.ID, l.Seq, l.Flags&3))), rxAt: now, own: true, srm: true, purgeAt: now.Add(60 * time.Second)}
+			lv.db[l.ID] = &dbEntry{lsp: mustLSP(s.signLSP(purgeRaw(l.Level, l.ID, l.Seq, l.Flags&3))), rxAt: now, own: true, srm: s.allSRM(), purgeAt: now.Add(60 * time.Second)}
 		}
-		if s.lan == nil {
+		if !c.lan {
 			out = append(out, s.signSNP(EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}})))
 		}
 	case cmp > 0:
@@ -669,30 +719,31 @@ func (s *session) rxLSP(p *PDU) {
 			ne.purgeAt = now.Add(60 * time.Second)
 		}
 		lv.db[l.ID] = ne
+		s.floodLocked(ne, c.idx)
 		s.count("lsdb_updates")
 		// Acknowledge (p2p: PSNP; on a LAN the DIS's CSNPs do).
-		if s.lan == nil {
+		if !c.lan {
 			out = append(out, s.signSNP(EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}})))
 		}
 	case cmp == 0:
 		if e != nil {
-			e.srm = false
+			delete(e.srm, c.idx)
 			if own && e.own && l.Lifetime != 0 && l.Checksum != e.lsp.Checksum {
 				// Same sequence, different content: a copy from before a
 				// restart. Move past it (ISO 10589 7.3.16.1).
 				s.bumpOwnLocked(lv, l.ID, l.Seq)
 			}
 		}
-		if s.lan == nil {
+		if !c.lan {
 			out = append(out, s.signSNP(EncodePSNP(l.Level, s.nodeID(), []LSPEntry{{l.Lifetime, l.ID, l.Seq, l.Checksum}})))
 		}
 	default:
 		// Ours is newer: send it.
-		e.srm, e.srmAt = true, time.Time{}
+		e.flag(c.idx)
 	}
 	s.mu.Unlock()
 	for _, b := range out {
-		s.send(b, "psnp")
+		s.sendTo(c, AllISs, b, "psnp")
 	}
 }
 
@@ -702,7 +753,7 @@ func (s *session) nodeID() NodeID {
 	return n
 }
 
-func (s *session) rxSNP(p *PDU) {
+func (s *session) rxSNP(c *circuit, p *PDU) {
 	sn := p.SNP
 	now := time.Now()
 	var reqs []LSPEntry
@@ -713,7 +764,7 @@ func (s *session) rxSNP(p *PDU) {
 		s.count("rx_psnp")
 	}
 	lv := s.lv[sn.Level]
-	if lv == nil || !s.adjUpAt(sn.Level) {
+	if lv == nil || !c.adjUpAt(sn.Level) {
 		s.mu.Unlock()
 		return
 	}
@@ -729,7 +780,7 @@ func (s *session) rxSNP(p *PDU) {
 		default:
 			switch newer(x.Seq, x.Lifetime, x.Checksum, e, now) {
 			case 0:
-				e.srm = false // acknowledged / in sync
+				delete(e.srm, c.idx) // acknowledged / in sync
 				if e.own && x.Lifetime != 0 && x.Checksum != e.lsp.Checksum && s.originates(x.ID.Node().Sys()) {
 					s.bumpOwnLocked(lv, x.ID, x.Seq)
 				}
@@ -738,14 +789,14 @@ func (s *session) rxSNP(p *PDU) {
 					// Neighbor has a newer copy of an LSP we originate.
 					if o, f := lv.orig[x.ID.Node().Sys()], x.ID[7]; x.ID[6] == 0 && o != nil && int(f) < o.frags {
 						s.bumpOwnLocked(lv, x.ID, x.Seq)
-					} else if s.lan != nil && x.ID[6] == pnID && s.lan[sn.Level].isDIS {
+					} else if x.ID[6] != 0 && s.pnCircuit(x.ID[6], sn.Level) != nil {
 						s.bumpOwnLocked(lv, x.ID, x.Seq)
 					}
 				} else {
 					reqs = append(reqs, LSPEntry{x.Lifetime, x.ID, 0, 0})
 				}
 			case -1:
-				e.srm, e.srmAt = true, time.Time{}
+				e.flag(c.idx)
 			}
 		}
 	}
@@ -753,22 +804,29 @@ func (s *session) rxSNP(p *PDU) {
 		// LSPs in the range the neighbor doesn't have: send them.
 		for id, e := range lv.db {
 			if !listed[id] && bytes.Compare(id[:], sn.Start[:]) >= 0 && bytes.Compare(id[:], sn.End[:]) <= 0 && e.remaining(now) > 0 {
-				e.srm, e.srmAt = true, time.Time{}
+				e.flag(c.idx)
 			}
 		}
 	}
 	s.mu.Unlock()
 	if len(reqs) > 0 {
 		dst := AllISs
-		if s.lan != nil {
+		if c.lan {
 			dst = s.lanDst(sn.Level)
 		}
-		s.sendTo(dst, s.signSNP(EncodePSNP(sn.Level, s.nodeID(), reqs)), "psnp")
+		s.sendTo(c, dst, s.signSNP(EncodePSNP(sn.Level, s.nodeID(), reqs)), "psnp")
 	}
 }
 
-func (s *session) HandleRx(f *pkt.Frame) {
-	if f.Src == s.mac || (f.Dst != AllISs && f.Dst != AllL1ISs && f.Dst != AllL2ISs && f.Dst != s.mac) {
+func (s *session) HandleRx(f *pkt.Frame) { s.rx(s.circs[0], f) }
+
+// rx handles a frame received on a circuit.
+func (s *session) rx(c *circuit, f *pkt.Frame) {
+	s.mu.Lock()
+	ok := c.attached() && !c.passive
+	mac := c.mac
+	s.mu.Unlock()
+	if !ok || f.Src == mac || (f.Dst != AllISs && f.Dst != AllL1ISs && f.Dst != AllL2ISs && f.Dst != mac) {
 		return
 	}
 	p, err := Decode(f.Payload)
@@ -785,7 +843,7 @@ func (s *session) HandleRx(f *pkt.Frame) {
 	var kind string
 	switch {
 	case p.P2P != nil || p.LAN != nil:
-		kind, err = "hello", s.cfg.HelloAuth.verify(p.Raw)
+		kind, err = "hello", c.helloAuth.verify(p.Raw)
 	case p.LSP != nil:
 		kind, err = "lsp", s.cfg.LSPAuth.verify(p.Raw)
 	case p.SNP != nil && s.cfg.SNPAuth:
@@ -797,31 +855,31 @@ func (s *session) HandleRx(f *pkt.Frame) {
 		first := s.counters["rx_auth_failures_"+kind] == 1
 		s.mu.Unlock()
 		if first {
-			go s.event("auth-failure", fmt.Sprintf("%s from %s: %v", kind, f.Src, err))
+			go s.event("auth-failure", fmt.Sprintf("%s from %s on %s: %v", kind, f.Src, c.device, err))
 		}
 		return
 	}
 	switch {
 	case p.P2P != nil:
-		if s.lan != nil {
+		if c.lan {
 			s.mu.Lock()
 			s.count("rx_p2p_hello_ignored")
 			s.mu.Unlock()
 			return
 		}
-		s.rxHello(f, p)
+		s.rxHello(c, f, p)
 	case p.LSP != nil:
-		s.rxLSP(p)
+		s.rxLSP(c, p)
 	case p.SNP != nil:
-		s.rxSNP(p)
+		s.rxSNP(c, p)
 	case p.LAN != nil:
-		if s.lan == nil {
+		if !c.lan {
 			s.mu.Lock()
 			s.count("rx_lan_hello_ignored")
 			s.mu.Unlock()
 			return
 		}
-		s.rxLANHello(f, p)
+		s.rxLANHello(c, f, p)
 	}
 }
 
@@ -873,7 +931,7 @@ func (s *session) csnpsLocked(l *level, now time.Time) [][]byte {
 
 // originateLocked (re)builds our LSP fragments for a level.
 func (s *session) originateLocked(l *level, now time.Time) {
-	v4, _, v6g := s.addrs()
+	v4, v6g, connMetric := s.interfaceAddrs()
 	body := lspBody{Areas: s.areas, Hostname: s.host, Overload: s.overload}
 	if len(v4) > 0 {
 		body.Protocols = append(body.Protocols, NLPIDIPv4)
@@ -888,15 +946,29 @@ func (s *session) originateLocked(l *level, now time.Time) {
 	for _, p := range v6g {
 		body.V6Addrs = append(body.V6Addrs, p.Addr())
 	}
-	if s.lan != nil {
-		// On a LAN we point at the pseudonode (once a DIS is up).
-		if ll := s.lan[l.n]; s.lanAdjUp(l.n) {
-			body.Neighbors = []ISReach{{Neighbor: ll.lanID, Metric: s.metric}}
+	// A neighbor per point-to-point adjacency; on a LAN, the pseudonode
+	// (once a DIS is up), with the Up neighbors for LAN-Adj-SIDs.
+	lanNbrs := map[NodeID][]SysID{}
+	for _, c := range s.circs {
+		if !c.adjUpAt(l.n) {
+			continue
 		}
-	} else if s.adjUpAt(l.n) {
-		var nb NodeID
-		copy(nb[:], s.adj.sys[:])
-		body.Neighbors = []ISReach{{Neighbor: nb, Metric: s.metric}}
+		if !c.lan {
+			var nb NodeID
+			copy(nb[:], c.adj.sys[:])
+			body.Neighbors = append(body.Neighbors, ISReach{Neighbor: nb, Metric: c.metric})
+			continue
+		}
+		ll := c.lans[l.n]
+		body.Neighbors = append(body.Neighbors, ISReach{Neighbor: ll.lanID, Metric: c.metric})
+		var up []SysID
+		for _, a := range ll.adjs {
+			if a.state == stUp {
+				up = append(up, a.sys)
+			}
+		}
+		sort.Slice(up, func(i, j int) bool { return bytes.Compare(up[i][:], up[j][:]) < 0 })
+		lanNbrs[ll.lanID] = up
 	}
 	// Connected subnets, then injected prefixes.
 	var pfx []IPReach
@@ -905,7 +977,7 @@ func (s *session) originateLocked(l *level, now time.Time) {
 		m := p.Masked()
 		if !seen[m] {
 			seen[m] = true
-			pfx = append(pfx, IPReach{Prefix: m, Metric: s.metric})
+			pfx = append(pfx, IPReach{Prefix: m, Metric: connMetric[m]})
 		}
 	}
 	keys := make([]netip.Prefix, 0, len(s.prefixes))
@@ -933,15 +1005,6 @@ func (s *session) originateLocked(l *level, now time.Time) {
 		body.SR = s.srCap(body.RouterID, len(v6g) > 0)
 	}
 	pfx = s.mtify(&body, pfx)
-	var lanNbrs []SysID
-	if s.lan != nil {
-		for _, a := range s.lan[l.n].adjs {
-			if a.state == stUp {
-				lanNbrs = append(lanNbrs, a.sys)
-			}
-		}
-		sort.Slice(lanNbrs, func(i, j int) bool { return bytes.Compare(lanNbrs[i][:], lanNbrs[j][:]) < 0 })
-	}
 	st := &srState{}
 	pfx = s.srDecorate("", &body, pfx, sids, lanNbrs, st)
 	if s.cfg.SegmentRouting.Enabled && (l.n == 2 || s.cfg.Level == "L1") {
@@ -951,8 +1014,10 @@ func (s *session) originateLocked(l *level, now time.Time) {
 	if s.topo != nil {
 		s.topo.originateLocked(s, l, isType, now)
 	}
-	if s.lan != nil {
-		s.pseudonodeLocked(l, isType, now)
+	for _, c := range s.circs {
+		if c.lan {
+			s.pseudonodeLocked(c, l, isType, now)
+		}
 	}
 	if now.After(l.refreshAt) || l.refreshAt.IsZero() {
 		l.refreshAt = now.Add(time.Duration(s.cfg.LSPRefresh) * time.Second)
@@ -1035,8 +1100,8 @@ func (s *session) bumpOwnLocked(l *level, id LSPID, seq uint32) {
 			o.seq[id[7]] = seq
 			o.force[id[7]] = true
 		}
-	} else if s.lan != nil && id[6] == pnID {
-		if ll := s.lan[l.n]; ll.pnSeq <= seq {
+	} else if c := s.pnCircuit(id[6], l.n); c != nil {
+		if ll := c.lans[l.n]; ll.pnSeq <= seq {
 			ll.pnSeq = seq
 			ll.pnForce = true
 		}
@@ -1107,7 +1172,7 @@ func (s *session) originateSys(l *level, sys SysID, body lspBody, pfx []IPReach,
 			delete(o.force, byte(i))
 			seq++
 			o.seq[byte(i)] = seq
-			l.db[id] = &dbEntry{lsp: mustLSP(s.signLSP(EncodeLSP(l.n, id, seq, life, isType, b))), rxAt: now, life: life, own: true, srm: s.adjUpAt(l.n)}
+			l.db[id] = &dbEntry{lsp: mustLSP(s.signLSP(EncodeLSP(l.n, id, seq, life, isType, b))), rxAt: now, life: life, own: true, srm: s.allSRM()}
 		}
 	}
 	s.purgeFrags(l, sys, o, len(frags), isType, now)
@@ -1128,7 +1193,7 @@ func (s *session) purgeFrags(l *level, sys SysID, o *origin, from int, isType by
 		if e := l.db[id]; e != nil && e.own && e.purgeAt.IsZero() {
 			seq := o.seq[byte(i)] + 1
 			o.seq[byte(i)] = seq
-			l.db[id] = &dbEntry{lsp: mustLSP(s.signLSP(purgeRaw(l.n, id, seq, isType))), rxAt: now, own: true, srm: true, purgeAt: now.Add(60 * time.Second)}
+			l.db[id] = &dbEntry{lsp: mustLSP(s.signLSP(purgeRaw(l.n, id, seq, isType))), rxAt: now, own: true, srm: s.allSRM(), purgeAt: now.Add(60 * time.Second)}
 		}
 	}
 }
@@ -1215,6 +1280,7 @@ func mustLSP(raw []byte) *LSP {
 // ---- status ----
 
 type AdjStatus struct {
+	Interface   string   `json:"interface,omitempty"`
 	State       string   `json:"state"`
 	Neighbor    string   `json:"neighbor,omitempty"`
 	Hostname    string   `json:"hostname,omitempty"`
@@ -1274,10 +1340,11 @@ type Status struct {
 	Prefixes    int               `json:"advertised_prefixes"`
 	Topologies  []string          `json:"topologies"` // multi-topology (ipv4-unicast alone: single topology)
 	SR          *SRStatus         `json:"segment_routing,omitempty"`
-	HelloAuth   string            `json:"hello_auth"` // type only, never the key
+	HelloAuth   string            `json:"hello_auth"` // the first interface's; type only, never the key
 	LSPAuth     string            `json:"lsp_auth"`
-	Adjacency   AdjStatus         `json:"adjacency"`   // point-to-point (or, on a LAN, the first Up one)
-	Adjacencies []AdjStatus       `json:"adjacencies"` // all neighbors
+	Interfaces  []IfStatus        `json:"interfaces"`
+	Adjacency   AdjStatus         `json:"adjacency"`   // the first interface's (if Up, else the first Up one)
+	Adjacencies []AdjStatus       `json:"adjacencies"` // all neighbors on all interfaces
 	LAN         []LANStatus       `json:"lan,omitempty"`
 	LSDB        []LSPStatus       `json:"lsdb"`
 	LSDBTotal   int               `json:"lsdb_total"` // entries; lsdb lists at most maxStatusLSPs
@@ -1289,9 +1356,10 @@ func (s *session) Status() any {
 	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := Status{SystemID: s.sys.String(), Hostname: s.host, Level: s.cfg.Level, Circuit: s.cfg.Circuit,
-		Areas: s.cfg.Areas, Metric: s.metric, Overload: s.overload, Flapping: now.Before(s.flapTill), Prefixes: len(s.prefixes),
-		LSDB: []LSPStatus{}, Counters: map[string]uint64{}, HelloAuth: authType(s.cfg.HelloAuth), LSPAuth: authType(s.cfg.LSPAuth), Topologies: mtNameList(s.mts)}
+	c0 := s.circs[0]
+	st := Status{SystemID: s.sys.String(), Hostname: s.host, Level: s.cfg.Level, Circuit: c0.circuitName(),
+		Areas: s.cfg.Areas, Metric: c0.metric, Overload: s.overload, Flapping: now.Before(c0.flapTill), Prefixes: len(s.prefixes),
+		LSDB: []LSPStatus{}, Counters: map[string]uint64{}, HelloAuth: authType(c0.helloAuth), LSPAuth: authType(s.cfg.LSPAuth), Topologies: mtNameList(s.mts)}
 	if len(s.mts) == 0 {
 		st.Topologies = []string{"ipv4-unicast (single topology)"}
 	}
@@ -1324,40 +1392,47 @@ func (s *session) Status() any {
 	if s.topo != nil {
 		st.Topology = s.topo.status()
 	}
-	if s.lan != nil {
-		st.Adjacencies, st.LAN = s.lanStatusLocked(now)
-		st.Adjacency = AdjStatus{State: stDown, Transitions: s.adjTransitions}
-		for i := range st.Adjacencies {
-			x := &st.Adjacencies[i]
-			if sys, err := ParseSysID(x.Neighbor); err == nil {
-				x.Hostname = names[sys]
-			}
-			if x.State == stUp && st.Adjacency.State != stUp {
-				st.Adjacency = *x
-				st.Adjacency.Transitions = s.adjTransitions
-			}
+	st.Adjacencies, st.Interfaces = []AdjStatus{}, []IfStatus{}
+	st.Adjacency = AdjStatus{Interface: c0.device, State: stDown}
+	total := 0
+	for _, c := range s.circs {
+		st.Interfaces = append(st.Interfaces, s.ifStatusLocked(c, now))
+		total += c.transitions
+		if c.lan {
+			adjs, lans := s.lanStatusLocked(c, now)
+			st.Adjacencies = append(st.Adjacencies, adjs...)
+			st.LAN = append(st.LAN, lans...)
+			continue
 		}
-		if st.Adjacencies == nil {
-			st.Adjacencies = []AdjStatus{}
+		a := c.adj
+		as := AdjStatus{Interface: c.device, State: a.state, ThreeWay: a.threeWay, Transitions: c.transitions}
+		if a.state != stDown {
+			as.Neighbor, as.MAC, as.Levels = a.sys.String(), a.mac.String(), a.levels
+			as.HoldS = (a.hold - now.Sub(a.lastHello)).Seconds()
+			as.Areas, as.Addresses = a.areas, a.addrs
+			as.Topologies = mtNameList(a.mts)
+			as.Hostname = names[a.sys]
 		}
-		return st
+		if !a.since.IsZero() {
+			as.Since = a.since.Format(time.RFC3339)
+		}
+		if c.idx == 0 {
+			st.Adjacency = as
+		}
+		if a.state != stDown {
+			st.Adjacencies = append(st.Adjacencies, as)
+		}
 	}
-	a := s.adj
-	st.Adjacency = AdjStatus{State: a.state, ThreeWay: a.threeWay, Transitions: a.transitions}
-	if a.state != stDown {
-		st.Adjacency.Neighbor, st.Adjacency.MAC, st.Adjacency.Levels = a.sys.String(), a.mac.String(), a.levels
-		st.Adjacency.HoldS = (a.hold - now.Sub(a.lastHello)).Seconds()
-		st.Adjacency.Areas, st.Adjacency.Addresses = a.areas, a.addrs
-		st.Adjacency.Topologies = mtNameList(a.mts)
-		st.Adjacency.Hostname = names[a.sys]
+	for i := range st.Adjacencies {
+		x := &st.Adjacencies[i]
+		if sys, err := ParseSysID(x.Neighbor); err == nil {
+			x.Hostname = names[sys]
+		}
+		if x.State == stUp && st.Adjacency.State != stUp {
+			st.Adjacency = *x
+		}
 	}
-	if !a.since.IsZero() {
-		st.Adjacency.Since = a.since.Format(time.RFC3339)
-	}
-	st.Adjacencies = []AdjStatus{}
-	if a.state != stDown {
-		st.Adjacencies = append(st.Adjacencies, st.Adjacency)
-	}
+	st.Adjacency.Transitions = total
 	return st
 }
 
@@ -1403,20 +1478,23 @@ const maxStatusLSPs = 500
 func (s *session) Action(_ context.Context, name string, args any) (any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	dirty := func() {
-		for _, l := range s.lv {
-			l.dirty = true
-		}
-	}
+	dirty := s.dirtyLocked
 	switch name {
 	case "overload":
 		s.overload = args.(*OverloadArgs).Set
 		dirty()
 		return map[string]any{"overload": s.overload}, nil
 	case "metric":
-		s.metric = args.(*MetricArgs).Metric
+		ma := args.(*MetricArgs)
+		cs, err := s.circuitsNamed(ma.Interface)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range cs {
+			c.metric = ma.Metric
+		}
 		dirty()
-		return map[string]any{"metric": s.metric}, nil
+		return map[string]any{"metric": ma.Metric, "interfaces": len(cs)}, nil
 	case "advertise", "withdraw":
 		n := 0
 		for _, p := range args.(*PrefixArgs).Prefixes {
@@ -1436,11 +1514,20 @@ func (s *session) Action(_ context.Context, name string, args any) (any, error) 
 		return map[string]any{name + "d": n, "advertised_prefixes": len(s.prefixes)}, nil
 	case "flap":
 		fa := args.(*FlapArgs)
+		cs, err := s.circuitsNamed(fa.Interface)
+		if err != nil {
+			return nil, err
+		}
 		now := time.Now()
-		s.flapTill, s.flapMode = now.Add(time.Duration(fa.Seconds)*time.Second), fa.Mode
-		s.nextHelo = now
-		s.adjDownLocked(now, "flap action")
-		return map[string]any{"down_until": s.flapTill.Format(time.RFC3339)}, nil
+		till := now.Add(time.Duration(fa.Seconds) * time.Second)
+		for _, c := range cs {
+			c.flapTill, c.flapMode, c.nextHelo = till, fa.Mode, now
+			for _, ll := range c.lans {
+				ll.nextHello = now
+			}
+			s.adjDownLocked(c, now, "flap action")
+		}
+		return map[string]any{"down_until": till.Format(time.RFC3339), "interfaces": len(cs)}, nil
 	case "lsp":
 		return s.lspDetailLocked(args.(*LSPArgs))
 	case "topology-link":
@@ -1477,10 +1564,15 @@ func authType(a Auth) string {
 // re-signs (and so re-originates, with new sequence numbers) all our LSPs,
 // so no neighbor keeps copies signed with a retired key.
 func (s *session) keyRolloverLocked(now time.Time) {
-	for _, sc := range []struct {
+	type scope struct {
 		name string
 		a    Auth
-	}{{"hello", s.cfg.HelloAuth}, {"lsp", s.cfg.LSPAuth}} {
+	}
+	scopes := []scope{{"hello", s.circs[0].helloAuth}, {"lsp", s.cfg.LSPAuth}}
+	for _, c := range s.circs[1:] {
+		scopes = append(scopes, scope{"hello on " + c.device, c.helloAuth})
+	}
+	for _, sc := range scopes {
 		if sc.a.Type != "keychain" {
 			continue
 		}
@@ -1508,8 +1600,8 @@ func (s *session) keyRolloverLocked(now time.Time) {
 					}
 				}
 			}
-			if s.lan != nil {
-				for _, ll := range s.lan {
+			for _, c := range s.circs {
+				for _, ll := range c.lans {
 					ll.pnForce = true
 				}
 			}

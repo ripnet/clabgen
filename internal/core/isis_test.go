@@ -14,6 +14,7 @@ import (
 
 	"github.com/ripnet/clabgen/internal/core"
 	"github.com/ripnet/clabgen/internal/events"
+	"github.com/ripnet/clabgen/internal/pkt"
 	_ "github.com/ripnet/clabgen/protocols/isis"
 )
 
@@ -649,4 +650,113 @@ func mustTime(t *testing.T, s string) time.Time {
 		t.Fatal(err)
 	}
 	return v
+}
+
+// A router with two interfaces (point-to-point toward a, a LAN toward c,
+// on VLANs of one segment) floods between them and advertises both.
+func TestISISMultipleInterfaces(t *testing.T) {
+	h := &hub{}
+	eng := func() *core.Engine {
+		p := &hubPort{h: h}
+		e := core.New(p, events.NewBus(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+		p.eng = e
+		h.mu.Lock()
+		h.ports = append(h.ports, p)
+		h.mu.Unlock()
+		return e
+	}
+	dev := func(e *core.Engine, name, mac string, vid uint16, addr string) {
+		t.Helper()
+		if _, err := e.CreateDevice(core.DeviceSpec{Name: name, Port: "eth1", MAC: mac, VLANs: []pkt.VLANTag{{VID: vid}}, Addresses: []string{addr}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	proto := func(e *core.Engine, cfg string) {
+		t.Helper()
+		if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "isis", Type: "isis", Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a, b, c := eng(), eng(), eng()
+	dev(a, "d", "02:00:00:00:0a:01", 10, "10.0.0.1/24")
+	dev(b, "d", "02:00:00:00:0b:01", 10, "10.0.0.2/24")
+	dev(b, "d2", "02:00:00:00:0b:02", 20, "10.2.0.2/24")
+	dev(c, "d", "02:00:00:00:0c:01", 20, "10.2.0.3/24")
+	proto(a, `{"system_id":"0000.0000.000a","hostname":"ra","hello_interval":1,"csnp_interval":1}`)
+	proto(b, `{"system_id":"0000.0000.000b","hostname":"rb","hello_interval":1,"csnp_interval":1,
+		"interfaces":[{"device":"d2","circuit":"broadcast","metric":30,"priority":100}]}`)
+	proto(c, `{"system_id":"0000.0000.000c","hostname":"rc","circuit":"broadcast","hello_interval":1,"csnp_interval":1,
+		"prefixes":[{"prefix":"198.51.100.0/24"}]}`)
+
+	eventually(t, "both adjacencies up", func() bool { return upCount(isisStatus(t, b)) == 2 })
+	eventually(t, "c's LSP reaches a through b", func() bool {
+		l := lspOf(isisStatus(t, a), "0000.0000.000c")
+		return l != nil && prefixes(l)["198.51.100.0/24"]
+	})
+	eventually(t, "a's LSP reaches c through b", func() bool { return lspOf(isisStatus(t, c), "0000.0000.000a") != nil })
+	st := isisStatus(t, b)
+	ifs, _ := st["interfaces"].([]any)
+	if len(ifs) != 2 || ifs[1].(map[string]any)["name"] != "d2" || ifs[1].(map[string]any)["attached"] != true || ifs[1].(map[string]any)["circuit"] != "broadcast" {
+		t.Fatalf("interfaces %v", ifs)
+	}
+	if dis, lanID := lanDIS(st); dis != "0000.0000.000b" || lanID != "0000.0000.000b.02" {
+		t.Fatalf("DIS %s, LAN ID %s (b's second circuit has pseudonode 2)", dis, lanID)
+	}
+	eventually(t, "b's LSP lists both circuits", func() bool {
+		l := lspOf(isisStatus(t, a), "0000.0000.000b")
+		p := prefixes(l)
+		return l != nil && fmt.Sprint(lspNeighbors(l)) == "[0000.0000.000a.00 0000.0000.000b.02]" && p["10.0.0.0/24"] && p["10.2.0.0/24"]
+	})
+	pn := func(e *core.Engine) []string {
+		for _, l := range lsdb(isisStatus(t, e)) {
+			if l["lsp_id"] == "0000.0000.000b.02-00" {
+				return lspNeighbors(l)
+			}
+		}
+		return nil
+	}
+	if got := fmt.Sprint(pn(b)); got != "[0000.0000.000b.00 0000.0000.000c.00]" {
+		t.Fatalf("pseudonode %s", got)
+	}
+	eventually(t, "a has b's pseudonode", func() bool { return len(pn(a)) == 2 })
+
+	// A per-interface metric change touches that interface only.
+	act(t, b, "metric", `{"metric":55,"interface":"d2"}`)
+	eventually(t, "metric", func() bool {
+		l := lspOf(isisStatus(t, a), "0000.0000.000b")
+		ms := map[string]float64{}
+		nb, _ := l["neighbors"].([]any)
+		for _, x := range nb {
+			ms[x.(map[string]any)["id"].(string)] = num(x.(map[string]any), "metric")
+		}
+		return ms["0000.0000.000b.02"] == 55 && ms["0000.0000.000a.00"] == 10
+	})
+	if _, err := b.RunAction(context.Background(), "isis", "metric", json.RawMessage(`{"metric":5,"interface":"nope"}`)); err == nil {
+		t.Fatal("metric on an unknown interface")
+	}
+
+	// Flapping one interface leaves the other up.
+	act(t, b, "flap", `{"seconds":1,"mode":"reset","interface":"d"}`)
+	eventually(t, "a drops", func() bool { return upCount(isisStatus(t, a)) == 0 })
+	if upCount(isisStatus(t, c)) != 1 {
+		t.Fatal("LAN adjacency dropped by flapping the other interface")
+	}
+	eventually(t, "a back", func() bool { return upCount(isisStatus(t, a)) == 1 })
+
+	// Deleting the device detaches the interface; recreating it re-attaches.
+	if err := b.DeleteDevice("d2"); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "detached", func() bool {
+		st := isisStatus(t, b)
+		ifs, _ := st["interfaces"].([]any)
+		return ifs[1].(map[string]any)["attached"] == false && upCount(st) == 1
+	})
+	eventually(t, "b's LSP without the LAN", func() bool {
+		l := lspOf(isisStatus(t, a), "0000.0000.000b")
+		return fmt.Sprint(lspNeighbors(l)) == "[0000.0000.000a.00]" && !prefixes(l)["10.2.0.0/24"]
+	})
+	dev(b, "d2", "02:00:00:00:0b:02", 20, "10.2.0.2/24")
+	eventually(t, "re-attached", func() bool { return upCount(isisStatus(t, b)) == 2 })
+	eventually(t, "c's LSP still at a", func() bool { return lspOf(isisStatus(t, a), "0000.0000.000c") != nil })
 }

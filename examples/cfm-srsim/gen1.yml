@@ -10,6 +10,8 @@ devices:
   # v400 and v401 are routed by the SR.
   # IS-IS peer of the SR (eth3 VLAN 500, point-to-point).
   - {name: i500, port: eth3, vlans: [{vid: 500}], addresses: [10.0.50.2/30, 2001:db8:50::2/64, 192.0.2.50/32]}
+  # Its second interface toward the SR (eth3 VLAN 502, point-to-point).
+  - {name: i502, port: eth3, vlans: [{vid: 502}], addresses: [10.0.52.2/30, 2001:db8:52::2/64]}
   # Two IS-IS routers on the SR's broadcast interface (eth3 VLAN 501).
   - {name: l501a, port: eth3, vlans: [{vid: 501}], addresses: [10.0.60.2/24]}
   - {name: l501b, port: eth3, vlans: [{vid: 501}], addresses: [10.0.60.3/24]}
@@ -65,10 +67,12 @@ protocols:
     type: udp
     device: v400
     config: {destination: 10.0.4.1, dst_port: 9, rate: 1}
-  # IS-IS with the SR on eth3 VLAN 500 (level 2, area 49.0001). It
-  # advertises i500's addresses (incl. the 192.0.2.50/32 loopback), injects
-  # 10 prefixes and emulates a 3×3 grid of routers behind it; ping-isis is
-  # routed by the SR over that adjacency.
+  # IS-IS with the SR on eth3 VLANs 500 and 502 (two parallel point-to-point
+  # interfaces; level 2, area 49.0001). It advertises both interfaces'
+  # addresses (incl. the 192.0.2.50/32 loopback on i500), injects 10
+  # prefixes and emulates a 3×3 grid of routers behind it; ping-isis is
+  # routed by the SR over the VLAN 500 adjacency (i502 costs more, as the
+  # loopback lives on i500).
   - name: isis
     type: isis
     device: i500
@@ -76,6 +80,8 @@ protocols:
              # HMAC-SHA (RFC 5310) as on the SR: keychain isis-hello entry 2 for
              # hellos on isis-p2p, keychain isis-l2 entry 1 for level 2.
              hello_auth: {type: hmac-sha1, key: clabgen-sha1, key_id: 2},
+             # The second interface, with the same hello key; a higher metric.
+             interfaces: [{device: i502, metric: 50}],
              lsp_auth: {type: hmac-sha256, key: clabgen-sha256, key_id: 1},
              prefixes: [{prefix: 198.18.0.0/24, count: 10, metric: 20}],
              # Multi-topology: IPv6 unicast (MT 2) as on the SR.

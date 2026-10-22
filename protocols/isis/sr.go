@@ -332,8 +332,8 @@ func srPrefixes(nodeSIDs []NodeSID, pfx []IPReach) ([]IPReach, map[netip.Prefix]
 }
 
 // srDecorate adds Prefix-SIDs and Adj-SIDs to an LSP body after mtify.
-// lanNbrs are the Up LAN neighbors when body points at a pseudonode.
-func (s *session) srDecorate(owner string, body *lspBody, pfx []IPReach, sids map[netip.Prefix]PrefixSID, lanNbrs []SysID, st *srState) []IPReach {
+// lanNbrs are the Up neighbors on each LAN (by pseudonode) body points at.
+func (s *session) srDecorate(owner string, body *lspBody, pfx []IPReach, sids map[netip.Prefix]PrefixSID, lanNbrs map[NodeID][]SysID, st *srState) []IPReach {
 	sr := s.cfg.SegmentRouting
 	if !sr.Enabled {
 		return pfx
@@ -360,8 +360,14 @@ func (s *session) srDecorate(owner string, body *lspBody, pfx []IPReach, sids ma
 	singleV6 := len(s.mts) == 0 && hasV6 // one topology carrying both families
 	decorate := func(list []ISReach, mt uint16) []ISReach {
 		out := make([]ISReach, len(list))
+		dup := map[NodeID]int{} // parallel adjacencies to one neighbor get their own labels
 		for i, n := range list {
 			n.AdjSIDs = nil
+			key := n.Neighbor.String()
+			if k := dup[n.Neighbor]; k > 0 {
+				key += fmt.Sprintf("#%d", k)
+			}
+			dup[n.Neighbor]++
 			fams := []bool{false}
 			switch {
 			case mt == MTIPv6Unicast || mt == MTIPv6Multicast:
@@ -374,11 +380,11 @@ func (s *session) srDecorate(owner string, body *lspBody, pfx []IPReach, sids ma
 				if v6 {
 					fl = ASIDAddrFamily
 				}
-				if n.Neighbor[6] != 0 && lanNbrs != nil {
+				if nbrs, ok := lanNbrs[n.Neighbor]; ok && n.Neighbor[6] != 0 {
 					// Pseudonode: one LAN-Adj-SID per neighbor on the LAN.
-					for _, nb := range lanNbrs {
+					for _, nb := range nbrs {
 						nb := nb
-						l := s.adjLabel(owner, fmt.Sprintf("lan/%s/%d/%v", nb, mt, v6))
+						l := s.adjLabel(owner, fmt.Sprintf("lan/%s/%s/%d/%v", key, nb, mt, v6))
 						n.AdjSIDs = append(n.AdjSIDs, AdjSID{Label: l, Flags: fl, Neighbor: &nb})
 						if st != nil {
 							st.AdjSIDs = append(st.AdjSIDs, SRAdjSID{Neighbor: nb.String(), Label: l, IPv6: v6, MT: mt, LAN: true})
@@ -386,7 +392,7 @@ func (s *session) srDecorate(owner string, body *lspBody, pfx []IPReach, sids ma
 					}
 					continue
 				}
-				l := s.adjLabel(owner, fmt.Sprintf("%s/%d/%v", n.Neighbor, mt, v6))
+				l := s.adjLabel(owner, fmt.Sprintf("%s/%d/%v", key, mt, v6))
 				n.AdjSIDs = append(n.AdjSIDs, AdjSID{Label: l, Flags: fl})
 				if st != nil {
 					st.AdjSIDs = append(st.AdjSIDs, SRAdjSID{Neighbor: n.Neighbor.String(), Label: l, IPv6: v6, MT: mt})

@@ -66,6 +66,22 @@ type Env interface {
 	Log() *slog.Logger
 	// Siblings returns the other sessions of the same type on the same device.
 	Siblings() []Session
+	// Attach makes the session also receive, on another device, the frames
+	// of its type's ethertypes (rx is called like HandleRx) and send from
+	// it, e.g. for a router's further interfaces. It fails if the device
+	// doesn't exist; the attachment closes if the device is deleted or its
+	// port, MAC or VLANs change (attach again once it is back).
+	Attach(device string, rx func(*pkt.Frame)) (Attachment, error)
+}
+
+// Attachment is another device a session sends and receives on.
+type Attachment interface {
+	Device() Device
+	IP() IP
+	Send(dst pkt.MAC, etherType uint16, payload []byte, opt SendOpts) error
+	// Closed is closed when the attachment ends.
+	Closed() <-chan struct{}
+	Close()
 }
 
 // Session is one running protocol instance. HandleRx, Status and Action may

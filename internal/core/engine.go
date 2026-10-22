@@ -91,6 +91,7 @@ type device struct {
 	spec  DeviceSpec
 	ip    *ipstack.Stack
 	insts []*instance
+	taps  []*tap // sessions of other devices attached here
 	e     *Engine
 }
 
@@ -127,6 +128,7 @@ type instance struct {
 	state string
 	err   string
 	ets   map[uint16]bool
+	taps  []*tap // devices this instance attached to (Env.Attach)
 }
 
 type Engine struct {
@@ -206,6 +208,7 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 	}
 	f.Port, f.RxTime = port, ts
 	var targets []protocol.Session
+	var tapRx []func(*pkt.Frame)
 	var stacks []*ipstack.Stack
 	isIP := f.EtherType == pkt.EtherTypeARP || f.EtherType == pkt.EtherTypeIPv4 || f.EtherType == pkt.EtherTypeIPv6
 	e.mu.RLock()
@@ -227,6 +230,11 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 				targets = append(targets, in.sess)
 			}
 		}
+		for _, t := range d.taps {
+			if t.in.ets[f.EtherType] {
+				tapRx = append(tapRx, t.rx)
+			}
+		}
 	}
 	e.mu.RUnlock()
 	used := false
@@ -238,7 +246,10 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 	for _, s := range targets {
 		s.HandleRx(f)
 	}
-	return used || len(targets) > 0
+	for _, rx := range tapRx {
+		rx(f)
+	}
+	return used || len(targets) > 0 || len(tapRx) > 0
 }
 
 func (e *Engine) deriveMAC(name string) pkt.MAC {
@@ -352,6 +363,7 @@ func (e *Engine) UpdateDevice(s DeviceSpec) (DeviceSpec, error) {
 	}
 	e.unindex(old)
 	old.ip.Close()
+	e.closeDeviceTapsLocked(old)
 	d := e.newDevice(s, mac, cfg)
 	e.devices[s.Name] = d
 	e.byPort[s.Port] = append(e.byPort[s.Port], d)
@@ -363,6 +375,7 @@ func (e *Engine) UpdateDevice(s DeviceSpec) (DeviceSpec, error) {
 			stop = append(stop, in.sess)
 		}
 		in.sess, in.dev, in.state, in.err = nil, nil, StateWaiting, "restarting after device change"
+		e.closeInstanceTapsLocked(in)
 	}
 	// Instances that failed to start on the old device get another try.
 	for _, in := range e.insts {
@@ -431,6 +444,7 @@ func (e *Engine) DeleteDevice(name string) error {
 	delete(e.devices, name)
 	e.unindex(d)
 	d.ip.Close()
+	e.closeDeviceTapsLocked(d)
 	insts := d.insts
 	d.insts = nil
 	var stop []protocol.Session
@@ -439,6 +453,7 @@ func (e *Engine) DeleteDevice(name string) error {
 			stop = append(stop, in.sess)
 		}
 		in.sess, in.dev, in.state, in.err = nil, nil, StateWaiting, "device does not exist"
+		e.closeInstanceTapsLocked(in)
 	}
 	e.mu.Unlock()
 	for _, s := range stop {
@@ -547,6 +562,7 @@ func (e *Engine) DeleteProtocol(name string) error {
 	}
 	sess := in.sess
 	in.sess = nil
+	e.closeInstanceTapsLocked(in)
 	e.mu.Unlock()
 	if sess != nil {
 		sess.Stop()
@@ -767,15 +783,20 @@ func (v *env) Device() protocol.Device { return v.dev }
 func (v *env) Log() *slog.Logger       { return v.log }
 
 func (v *env) Send(dst pkt.MAC, et uint16, payload []byte, opt protocol.SendOpts) error {
-	tags := v.dev.vlans
+	return v.e.sendFrom(v.dev, dst, et, payload, opt)
+}
+
+// sendFrom transmits a payload from a device, adding its MAC and VLANs.
+func (e *Engine) sendFrom(d *device, dst pkt.MAC, et uint16, payload []byte, opt protocol.SendOpts) error {
+	tags := d.vlans
 	if opt.SetPCP && len(tags) > 0 {
 		tags = append([]pkt.VLANTag(nil), tags...)
 		for i := range tags {
 			tags[i].PCP = opt.PCP
 		}
 	}
-	f := pkt.Frame{Dst: dst, Src: v.dev.mac, Tags: tags, EtherType: et, Payload: payload}
-	return v.e.transmit(v.dev, f.Encode())
+	f := pkt.Frame{Dst: dst, Src: d.mac, Tags: tags, EtherType: et, Payload: payload}
+	return e.transmit(d, f.Encode())
 }
 
 func (v *env) Emit(kind, msg string, data map[string]any) {

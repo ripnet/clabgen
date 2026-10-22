@@ -15,9 +15,6 @@ import (
 // multicast address listing the neighbors we hear, an adjacency per
 // neighbor, DIS election, and (as DIS) a pseudonode LSP and periodic CSNPs.
 
-// pnID is our pseudonode number on this (only) circuit.
-const pnID byte = 1
-
 type lanAdj struct {
 	sys       SysID
 	mac       pkt.MAC
@@ -42,6 +39,7 @@ type lanLevel struct {
 	pnSeq     uint32
 	pnForce   bool // re-originate the pseudonode even if unchanged
 	nextHello time.Time
+	lastCSNP  time.Time
 	elections int
 }
 
@@ -52,17 +50,17 @@ func (s *session) lanDst(n int) pkt.MAC {
 	return AllL2ISs
 }
 
-func (s *session) ourLANID() NodeID {
+func (s *session) ourLANID(c *circuit) NodeID {
 	var id NodeID
 	copy(id[:], s.sys[:])
-	id[6] = pnID
+	id[6] = c.pn
 	return id
 }
 
 // lanHelloLocked builds our LAN hello for level n.
-func (s *session) lanHelloLocked(n int, flapping bool) []byte {
-	ll := s.lan[n]
-	v4, v6ll, _ := s.addrs()
+func (s *session) lanHelloLocked(c *circuit, n int, flapping bool) []byte {
+	ll := c.lans[n]
+	v4, v6ll, _ := s.addrs(c)
 	var a4, a6 []netip.Addr
 	for _, p := range v4 {
 		a4 = append(a4, p.Addr())
@@ -83,15 +81,15 @@ func (s *session) lanHelloLocked(n int, flapping bool) []byte {
 	}
 	padTo := 0
 	if s.cfg.HelloPadding {
-		padTo = 1497 - s.cfg.HelloAuth.tlvLen()
+		padTo = 1497 - c.helloAuth.tlvLen()
 	}
-	return s.cfg.HelloAuth.sign(EncodeLANHello(n, s.cfg.circuitType(), s.sys, uint16(hold), s.cfg.Priority, ll.lanID, s.areas, a4, a6, s.mts, nbrs, padTo))
+	return c.helloAuth.sign(EncodeLANHello(n, s.cfg.circuitType(), s.sys, uint16(hold), c.priority, ll.lanID, s.areas, a4, a6, s.mts, nbrs, padTo))
 }
 
 // tickLANLocked sends due hellos and expires LAN adjacencies.
-func (s *session) tickLANLocked(now time.Time, flapping bool, add func(dst pkt.MAC, b []byte, kind string)) {
+func (s *session) tickLANLocked(c *circuit, now time.Time, flapping bool, add func(c *circuit, dst pkt.MAC, b []byte, kind string)) {
 	for _, n := range s.sortedLevels() {
-		ll := s.lan[n]
+		ll := c.lans[n]
 		changed := false
 		for m, a := range ll.adjs {
 			if now.Sub(a.lastHello) > a.hold {
@@ -99,18 +97,19 @@ func (s *session) tickLANLocked(now time.Time, flapping bool, add func(dst pkt.M
 				changed = true
 				s.lv[n].dirty = true
 				if a.state == stUp {
-					go s.event("adjacency-down", fmt.Sprintf("L%d adjacency with %s down: hold time expired", n, a.sys))
+					c.transitions++
+					go s.event("adjacency-down", fmt.Sprintf("%s L%d adjacency with %s down: hold time expired", c.device, n, a.sys))
 				}
 			}
 		}
 		if changed {
-			s.electLocked(n, now)
+			s.electLocked(c, n, now)
 		}
-		if flapping && s.flapMode == "silent" {
+		if flapping && c.flapMode == "silent" {
 			continue
 		}
 		if !now.Before(ll.nextHello) {
-			add(s.lanDst(n), s.lanHelloLocked(n, flapping), "hello")
+			add(c, s.lanDst(n), s.lanHelloLocked(c, n, flapping), "hello")
 			iv := time.Duration(s.cfg.HelloInterval) * time.Second
 			if ll.isDIS {
 				iv /= 3
@@ -120,18 +119,18 @@ func (s *session) tickLANLocked(now time.Time, flapping bool, add func(dst pkt.M
 	}
 }
 
-func (s *session) rxLANHello(f *pkt.Frame, p *PDU) {
+func (s *session) rxLANHello(c *circuit, f *pkt.Frame, p *PDU) {
 	h := p.LAN
 	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.count("rx_hello")
-	ll := s.lan[h.Level]
+	ll := c.lans[h.Level]
 	if ll == nil {
 		s.count("rx_hello_level_mismatch")
 		return
 	}
-	if now.Before(s.flapTill) {
+	if now.Before(c.flapTill) {
 		return
 	}
 	if h.Source == s.sys {
@@ -184,7 +183,7 @@ func (s *session) rxLANHello(f *pkt.Frame, p *PDU) {
 	// Up once the neighbor lists our MAC.
 	seesUs := false
 	for _, m := range h.Neighbors {
-		if m == s.mac {
+		if m == c.mac {
 			seesUs = true
 		}
 	}
@@ -198,27 +197,26 @@ func (s *session) rxLANHello(f *pkt.Frame, p *PDU) {
 		ll.nextHello = now         // tell it we hear it, quickly
 		s.lv[h.Level].dirty = true // our LSP and (as DIS) the pseudonode change
 		if next == stUp {
-			s.adjTransitions++
-			go s.event("adjacency-up", fmt.Sprintf("L%d adjacency with %s up", h.Level, h.Source))
-			l := s.lv[h.Level]
-			l.lastCSNP = time.Time{}
-			for _, e := range l.db {
-				e.srm = true
+			c.transitions++
+			go s.event("adjacency-up", fmt.Sprintf("%s L%d adjacency with %s up", c.device, h.Level, h.Source))
+			ll.lastCSNP = time.Time{}
+			for _, e := range s.lv[h.Level].db {
+				e.flag(c.idx)
 			}
 		} else if prev == stUp {
-			s.adjTransitions++
-			go s.event("adjacency-down", fmt.Sprintf("L%d adjacency with %s down: it no longer lists us", h.Level, h.Source))
+			c.transitions++
+			go s.event("adjacency-down", fmt.Sprintf("%s L%d adjacency with %s down: it no longer lists us", c.device, h.Level, h.Source))
 		}
 	}
-	s.electLocked(h.Level, now)
+	s.electLocked(c, h.Level, now)
 }
 
 // electLocked runs the DIS election for level n (ISO 10589 8.4.5): the
 // highest priority, then the highest MAC, among us and Up neighbors. The
 // LAN ID is ours if we win, else the one the winner announces.
-func (s *session) electLocked(n int, now time.Time) {
-	ll := s.lan[n]
-	bestMAC, bestPrio, us := s.mac, s.cfg.Priority, true
+func (s *session) electLocked(c *circuit, n int, now time.Time) {
+	ll := c.lans[n]
+	bestMAC, bestPrio, us := c.mac, c.priority, true
 	anyUp := false
 	for m, a := range ll.adjs {
 		if a.state != stUp {
@@ -235,7 +233,7 @@ func (s *session) electLocked(n int, now time.Time) {
 	ll.isDIS = us
 	ll.disMAC = bestMAC
 	if us {
-		ll.lanID = s.ourLANID()
+		ll.lanID = s.ourLANID(c)
 	} else {
 		ll.lanID = ll.adjs[bestMAC].lanID
 		// Until the winner names itself, use its system ID.
@@ -254,14 +252,14 @@ func (s *session) electLocked(n int, now time.Time) {
 			if !us {
 				who = ll.adjs[bestMAC].sys.String()
 			}
-			go s.event("dis-changed", fmt.Sprintf("L%d DIS is %s (LAN ID %s)", n, who, ll.lanID))
+			go s.event("dis-changed", fmt.Sprintf("%s L%d DIS is %s (LAN ID %s)", c.device, n, who, ll.lanID))
 		}
 	}
 }
 
-// lanAdjUp reports whether level n has any Up neighbor.
-func (s *session) lanAdjUp(n int) bool {
-	ll := s.lan[n]
+// lanAdjUp reports whether level n of a LAN circuit has any Up neighbor.
+func (c *circuit) lanAdjUp(n int) bool {
+	ll := c.lans[n]
 	if ll == nil {
 		return false
 	}
@@ -273,15 +271,16 @@ func (s *session) lanAdjUp(n int) bool {
 	return false
 }
 
-// pseudonodeLocked originates (or purges) our pseudonode LSP for level n.
-func (s *session) pseudonodeLocked(l *level, isType byte, now time.Time) {
-	ll := s.lan[l.n]
-	id := MakeLSPID(s.sys, pnID, 0)
+// pseudonodeLocked originates (or purges) our pseudonode LSP for a LAN
+// circuit at level n.
+func (s *session) pseudonodeLocked(c *circuit, l *level, isType byte, now time.Time) {
+	ll := c.lans[l.n]
+	id := MakeLSPID(s.sys, c.pn, 0)
 	old := l.db[id]
-	if !ll.isDIS || !s.lanAdjUp(l.n) {
+	if !ll.isDIS || !c.lanAdjUp(l.n) {
 		if old != nil && old.own && old.purgeAt.IsZero() {
 			ll.pnSeq++
-			l.db[id] = &dbEntry{lsp: mustLSP(s.signLSP(purgeRaw(l.n, id, ll.pnSeq, isType))), rxAt: now, own: true, srm: true, purgeAt: now.Add(60 * time.Second)}
+			l.db[id] = &dbEntry{lsp: mustLSP(s.signLSP(purgeRaw(l.n, id, ll.pnSeq, isType))), rxAt: now, own: true, srm: s.allSRM(), purgeAt: now.Add(60 * time.Second)}
 		}
 		return
 	}
@@ -304,12 +303,13 @@ func (s *session) pseudonodeLocked(l *level, isType byte, now time.Time) {
 		ll.pnForce = false
 		ll.pnSeq++
 		raw = s.signLSP(EncodeLSP(l.n, id, ll.pnSeq, life, isType, body))
-		l.db[id] = &dbEntry{lsp: mustLSP(raw), rxAt: now, life: life, own: true, srm: true}
+		l.db[id] = &dbEntry{lsp: mustLSP(raw), rxAt: now, life: life, own: true, srm: s.allSRM()}
 	}
 }
 
 // LANStatus is per-level DIS state.
 type LANStatus struct {
+	Interface string `json:"interface"`
 	Level     int    `json:"level"`
 	WeAreDIS  bool   `json:"we_are_dis"`
 	DIS       string `json:"dis"`
@@ -318,12 +318,12 @@ type LANStatus struct {
 	Elections int    `json:"elections"`
 }
 
-func (s *session) lanStatusLocked(now time.Time) ([]AdjStatus, []LANStatus) {
+func (s *session) lanStatusLocked(c *circuit, now time.Time) ([]AdjStatus, []LANStatus) {
 	var adjs []AdjStatus
 	var lans []LANStatus
 	for _, n := range s.sortedLevels() {
-		ll := s.lan[n]
-		ls := LANStatus{Level: n, WeAreDIS: ll.isDIS, LANID: ll.lanID.String(), Priority: s.cfg.Priority, Elections: ll.elections, DIS: s.sys.String()}
+		ll := c.lans[n]
+		ls := LANStatus{Interface: c.device, Level: n, WeAreDIS: ll.isDIS, LANID: ll.lanID.String(), Priority: c.priority, Elections: ll.elections, DIS: s.sys.String()}
 		if !ll.isDIS {
 			if a := ll.adjs[ll.disMAC]; a != nil {
 				ls.DIS = a.sys.String()
@@ -337,7 +337,7 @@ func (s *session) lanStatusLocked(now time.Time) ([]AdjStatus, []LANStatus) {
 		sort.Slice(macs, func(i, j int) bool { return bytes.Compare(macs[i][:], macs[j][:]) < 0 })
 		for _, m := range macs {
 			a := ll.adjs[m]
-			adjs = append(adjs, AdjStatus{State: a.state, Neighbor: a.sys.String(), MAC: m.String(), Levels: []int{n},
+			adjs = append(adjs, AdjStatus{Interface: c.device, State: a.state, Neighbor: a.sys.String(), MAC: m.String(), Levels: []int{n}, Transitions: c.transitions,
 				HoldS: (a.hold - now.Sub(a.lastHello)).Seconds(), Since: a.since.Format(time.RFC3339), Areas: a.areas, Addresses: a.addrs,
 				Priority: a.priority, DIS: ll.disMAC == m && !ll.isDIS, Topologies: mtNameList(a.mts)})
 		}

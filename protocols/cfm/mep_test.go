@@ -2,6 +2,7 @@ package cfm
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"slices"
@@ -37,7 +38,10 @@ func (e *fakeEnv) PortUp() bool            { return true }
 func (e *fakeEnv) Device() protocol.Device { return e }
 func (e *fakeEnv) InstanceName() string    { return "test" }
 func (e *fakeEnv) IP() protocol.IP         { return nil }
-func (e *fakeEnv) Log() *slog.Logger       { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+func (e *fakeEnv) Attach(string, func(*pkt.Frame)) (protocol.Attachment, error) {
+	return nil, errors.New("no devices")
+}
+func (e *fakeEnv) Log() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func (e *fakeEnv) Send(dst pkt.MAC, et uint16, payload []byte, opt protocol.SendOpts) error {
 	if e.drop.Load() {

@@ -1,6 +1,7 @@
 package isis
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"sync"
@@ -17,9 +18,12 @@ type fakeEnv struct {
 	sent []*PDU
 }
 
-func (e *fakeEnv) InstanceName() string                { return "t" }
-func (e *fakeEnv) Device() protocol.Device             { return e }
-func (e *fakeEnv) IP() protocol.IP                     { return nil }
+func (e *fakeEnv) InstanceName() string    { return "t" }
+func (e *fakeEnv) Device() protocol.Device { return e }
+func (e *fakeEnv) IP() protocol.IP         { return nil }
+func (e *fakeEnv) Attach(string, func(*pkt.Frame)) (protocol.Attachment, error) {
+	return nil, errors.New("no devices")
+}
 func (e *fakeEnv) Log() *slog.Logger                   { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 func (e *fakeEnv) Emit(string, string, map[string]any) {}
 func (e *fakeEnv) Siblings() []protocol.Session        { return nil }
@@ -86,7 +90,7 @@ func TestPurgeOfOwnLSPAtSameSeq(t *testing.T) {
 		}
 		rx(s, hello(AdjDown))
 		rx(s, hello(AdjUp))
-		wait(t, "adjacency up", func() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.adj.state == stUp })
+		wait(t, "adjacency up", func() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.circs[0].adj.state == stUp })
 		for _, sys := range []SysID{s.sys, s.topo.nodes[0].sys} {
 			id := MakeLSPID(sys, 0, 0)
 			wait(t, "our LSP sent", func() bool { return env.lastLSP(id) != nil })

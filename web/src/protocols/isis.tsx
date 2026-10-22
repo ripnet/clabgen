@@ -94,7 +94,21 @@ function LSPDetailRow({ agentId, name, row, nameOf }: { agentId?: string; name?:
   );
 }
 type Adj = ISISStatus["adjacency"];
-type LANRow = { level: number; we_are_dis: boolean; dis: string; lan_id: string; priority: number; elections: number };
+type LANRow = { interface?: string; level: number; we_are_dis: boolean; dis: string; lan_id: string; priority: number; elections: number };
+type IfRow = {
+  name: string;
+  circuit: string;
+  metric: number;
+  priority?: number;
+  passive?: boolean;
+  attached: boolean;
+  error?: string;
+  mac?: string;
+  addresses?: string[];
+  hello_auth: string;
+  adjacencies_up: number;
+  flapping?: boolean;
+};
 type ISISStatus = {
   system_id: string;
   hostname: string;
@@ -114,7 +128,9 @@ type ISISStatus = {
     node_sids: { prefix: string; index: number; label: number; flags?: string }[];
     adj_sids: { neighbor: string; label: number; ipv6?: boolean; mt?: number; lan?: boolean }[];
   };
+  interfaces?: IfRow[];
   adjacency: {
+    interface?: string;
     state: string;
     neighbor?: string;
     hostname?: string;
@@ -149,8 +165,22 @@ type ISISStatus = {
 
 const as = (s: JsonObject) => s as unknown as ISISStatus;
 
+const multi = (s: ISISStatus) => (s.interfaces?.length ?? 1) > 1;
+
 function summary(st: JsonObject): { health: Health; text: string } {
   const s = as(st);
+  if (multi(s)) {
+    const ifs = s.interfaces!;
+    const up = (s.adjacencies ?? []).filter((x) => x.state === "up").length;
+    const active = ifs.filter((i) => !i.passive);
+    const live = active.filter((i) => i.adjacencies_up > 0).length;
+    const tail = `${s.lsdb.filter((l) => l.lifetime > 0).length} LSPs${s.overload ? " · overload" : ""}`;
+    if (!up) return { health: "bad", text: `no adjacencies on ${ifs.length} interfaces` };
+    return {
+      health: live < active.length || s.overload ? "warn" : "ok",
+      text: `${up} neighbor${up > 1 ? "s" : ""} on ${live}/${active.length} interfaces · ${tail}`,
+    };
+  }
   if (s.lan) {
     const up = (s.adjacencies ?? []).filter((x) => x.state === "up").length;
     const disNames = s.lan.map((l) => (l.we_are_dis ? "us" : hostOf(s, l.dis))).join("/");
@@ -171,22 +201,63 @@ function hostOf(s: ISISStatus, sys: string): string {
   return l?.hostname ?? sys;
 }
 
+function Interfaces({ s }: { s: ISISStatus }) {
+  return (
+    <div className="table-wrap">
+      <table className="table dense">
+        <thead>
+          <tr>
+            <th>Interface</th>
+            <th>Circuit</th>
+            <th className="num">Metric</th>
+            <th className="num">Up</th>
+            <th>Addresses</th>
+            <th>Hello auth</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(s.interfaces ?? []).map((i) => (
+            <tr key={i.name}>
+              <td className="mono">
+                {i.name}
+                {!i.attached && <span className="tag tag-warn" title={i.error}>detached</span>}
+                {i.passive && <span className="tag">passive</span>}
+                {i.flapping && <span className="tag tag-warn">flapping</span>}
+              </td>
+              <td>
+                {i.circuit}
+                {i.circuit === "broadcast" && <span className="muted"> · prio {i.priority ?? 0}</span>}
+              </td>
+              <td className="num mono">{i.metric}</td>
+              <td className="num mono">{i.passive ? "—" : i.adjacencies_up}</td>
+              <td className="mono">{i.addresses?.join(", ") || (i.attached ? "—" : i.error)}</td>
+              <td className="mono">{i.hello_auth}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function LANAdjacencies({ s }: { s: ISISStatus }) {
+  const m = multi(s);
   return (
     <>
       {(s.lan ?? []).map((l) => (
-        <div key={l.level} className="flow-path mono small-note">
-          L{l.level} DIS: <b>{l.we_are_dis ? `us (${s.hostname})` : hostOf(s, l.dis)}</b> · LAN ID {l.lan_id} · our priority {l.priority} · {l.elections} election
+        <div key={`${l.interface}/${l.level}`} className="flow-path mono small-note">
+          {m && `${l.interface} `}L{l.level} DIS: <b>{l.we_are_dis ? `us (${s.hostname})` : hostOf(s, l.dis)}</b> · LAN ID {l.lan_id} · our priority {l.priority} · {l.elections} election
           {l.elections === 1 ? "" : "s"}
         </div>
       ))}
       {(s.adjacencies ?? []).length === 0 ? (
-        <div className="muted">No neighbors heard on the LAN.</div>
+        <div className="muted">{m ? "No neighbors heard on any interface." : "No neighbors heard on the LAN."}</div>
       ) : (
         <div className="table-wrap">
           <table className="table dense">
             <thead>
               <tr>
+                {m && <th>Interface</th>}
                 <th>Neighbor</th>
                 <th>State</th>
                 <th>Level</th>
@@ -198,7 +269,8 @@ function LANAdjacencies({ s }: { s: ISISStatus }) {
             </thead>
             <tbody>
               {(s.adjacencies ?? []).map((a: Adj) => (
-                <tr key={`${a.levels?.[0]}/${a.mac}`}>
+                <tr key={`${a.interface}/${a.levels?.[0]}/${a.mac}`}>
+                  {m && <td className="mono">{a.interface}</td>}
                   <td className="mono">
                     {a.hostname ? `${a.hostname} · ` : ""}
                     {a.neighbor}
@@ -298,8 +370,14 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
         </div>
       </dl>
 
-      <h4>{s.lan ? "LAN adjacencies" : "Adjacency"}</h4>
-      {s.lan ? (
+      {multi(s) && (
+        <>
+          <h4>Interfaces</h4>
+          <Interfaces s={s} />
+        </>
+      )}
+      <h4>{multi(s) ? "Adjacencies" : s.lan ? "LAN adjacencies" : "Adjacency"}</h4>
+      {multi(s) || s.lan ? (
         <LANAdjacencies s={s} />
       ) : (
         <>

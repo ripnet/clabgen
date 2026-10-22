@@ -15,7 +15,12 @@ type Config struct {
 	Level    string   `json:"level" jsonschema:"enum=L1,enum=L2,enum=L1L2,description=Levels this router runs"`
 	Circuit  string   `json:"circuit" jsonschema:"enum=point-to-point,enum=broadcast,description=Interface type"`
 	Priority uint8    `json:"priority" jsonschema:"minimum=0,maximum=127,description=DIS election priority (broadcast circuits)"`
-	Metric   uint32   `json:"metric" jsonschema:"minimum=1,maximum=16777214,description=Wide metric toward the neighbor"`
+	Passive  bool     `json:"passive,omitempty" jsonschema:"description=Advertise this interface's subnets without hellos (no adjacency)"`
+
+	// Interfaces are further devices of this router (the instance's own
+	// device is its first interface, with the settings above).
+	Interfaces []Interface `json:"interfaces,omitempty" jsonschema:"description=Further interfaces: devices of this router besides the instance's own"`
+	Metric     uint32      `json:"metric" jsonschema:"minimum=1,maximum=16777214,description=Wide metric toward the neighbor"`
 
 	Topologies []string `json:"topologies,omitempty" jsonschema:"description=Multi-topology (RFC 5120) besides IPv4 unicast: ipv6-unicast / ipv4-multicast / ipv6-multicast. Empty: single topology"`
 
@@ -38,6 +43,17 @@ type Config struct {
 	SegmentRouting SegmentRouting `json:"segment_routing" jsonschema:"description=Segment routing (RFC 8667; MPLS): SRGB, node SIDs, adjacency SIDs"`
 
 	Topology Topology `json:"topology" jsonschema:"description=Simulated routers behind this one; their LSPs are originated here"`
+}
+
+// Interface is one more circuit of the router. Empty fields take the
+// router-wide value.
+type Interface struct {
+	Device    string `json:"device" jsonschema:"description=Device name"`
+	Circuit   string `json:"circuit,omitempty" jsonschema:"enum=point-to-point,enum=broadcast"`
+	Metric    uint32 `json:"metric,omitempty" jsonschema:"minimum=1,maximum=16777214"`
+	Priority  *uint8 `json:"priority,omitempty" jsonschema:"minimum=0,maximum=127"`
+	Passive   bool   `json:"passive,omitempty" jsonschema:"description=Advertise the subnets without hellos"`
+	HelloAuth *Auth  `json:"hello_auth,omitempty" jsonschema:"description=Default: the router's hello_auth"`
 }
 
 // SegmentRouting configures SR-MPLS advertisements.
@@ -199,6 +215,31 @@ func (c *Config) Validate() error {
 	}
 	if err := c.HelloAuth.validate("hello_auth"); err != nil {
 		return err
+	}
+	if len(c.Interfaces) > 254 {
+		return fmt.Errorf("at most 254 further interfaces")
+	}
+	seenDev := map[string]bool{}
+	for i, f := range c.Interfaces {
+		scope := fmt.Sprintf("interfaces[%d]", i)
+		if f.Device == "" || seenDev[f.Device] {
+			return fmt.Errorf("%s: device missing or repeated", scope)
+		}
+		seenDev[f.Device] = true
+		if f.Circuit != "" && f.Circuit != "point-to-point" && f.Circuit != "broadcast" {
+			return fmt.Errorf("%s: invalid circuit %q", scope, f.Circuit)
+		}
+		if f.Metric > 0xfffffe {
+			return fmt.Errorf("%s: metric must be 1-16777214", scope)
+		}
+		if f.Priority != nil && *f.Priority > 127 {
+			return fmt.Errorf("%s: priority must be 0-127", scope)
+		}
+		if f.HelloAuth != nil {
+			if err := f.HelloAuth.validate(scope + ".hello_auth"); err != nil {
+				return err
+			}
+		}
 	}
 	if err := c.LSPAuth.validate("lsp_auth"); err != nil {
 		return err
