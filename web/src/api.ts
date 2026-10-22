@@ -41,6 +41,11 @@ async function json<T>(r: Response): Promise<T> {
   return r.json();
 }
 
+// UIInfo is /api/info: the version serving the UI and a newer release.
+export type UIInfo = { version: string; latest?: string; latest_url?: string; update_available: boolean };
+
+export const uiInfoApi = () => fetch("api/info").then((r) => json<UIInfo>(r));
+
 export const agentsApi = {
   list: () => fetch("api/agents").then((r) => json<AgentList>(r)),
   add: (a: { id: string; name?: string; url: string }) =>

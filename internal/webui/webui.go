@@ -174,11 +174,23 @@ func (r *Registry) List() []Agent {
 type Options struct {
 	// AllowManual lets the browser add and remove agents.
 	AllowManual bool
+	// Version is the version serving the UI (shown in its header).
+	Version string
+	// Updates, when set, tells the UI about newer releases.
+	Updates *UpdateChecker
 }
 
-// Handler serves /api/agents, /agents/{id}/... and the UI itself.
+// Handler serves /api/info, /api/agents, /agents/{id}/... and the UI
+// itself.
 func Handler(reg *Registry, opt Options) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/info", func(w http.ResponseWriter, r *http.Request) {
+		in := Info{Version: opt.Version}
+		if v, u := opt.Updates.Latest(); Newer(v, opt.Version) {
+			in.Latest, in.LatestURL, in.Update = v, u, true
+		}
+		writeJSON(w, http.StatusOK, in)
+	})
 	mux.HandleFunc("GET /api/agents", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"agents": reg.List(), "allow_manual": opt.AllowManual})
 	})

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { agentsApi, client, usePoll, type AgentRef } from "./api";
+import { agentsApi, client, uiInfoApi, usePoll, type AgentRef, type UIInfo } from "./api";
 
 export type AgentInfo = { reachable: boolean; hostname?: string; version?: string; started?: Date; error?: string };
 
@@ -7,6 +7,7 @@ type Ctx = {
   agents: AgentRef[];
   allowManual: boolean;
   info: Record<string, AgentInfo>;
+  ui?: UIInfo; // the UI's own version (and a newer release)
   error?: string;
   refresh: () => void;
 };
@@ -15,6 +16,8 @@ const AgentsCtx = createContext<Ctx>({ agents: [], allowManual: false, info: {},
 
 export function AgentsProvider({ children }: { children: ReactNode }) {
   const list = usePoll(() => agentsApi.list(), [], 5000);
+  // Servers from before /api/info answer with the page: no version.
+  const ui = usePoll(() => uiInfoApi().catch(() => undefined), [], 30 * 60 * 1000);
   const agents = list.data?.agents ?? [];
   const ids = agents.map((a) => a.id).join("|");
   const [info, setInfo] = useState<Record<string, AgentInfo>>({});
@@ -42,7 +45,7 @@ export function AgentsProvider({ children }: { children: ReactNode }) {
   }, [ids]);
 
   return (
-    <AgentsCtx.Provider value={{ agents, allowManual: list.data?.allow_manual ?? false, info, error: list.error, refresh: list.refresh }}>
+    <AgentsCtx.Provider value={{ agents, allowManual: list.data?.allow_manual ?? false, info, ui: ui.data, error: list.error, refresh: list.refresh }}>
       {children}
     </AgentsCtx.Provider>
   );

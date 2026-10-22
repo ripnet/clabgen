@@ -1,3 +1,4 @@
+import { skew, type Skew } from "../version";
 import { useEffect, useState } from "react";
 import type { DeviceGroup, Port, Protocol } from "../gen/clabgen/v1/agent_pb";
 import { client, errorText } from "../api";
@@ -14,7 +15,7 @@ const rank: Record<Health, number> = { bad: 0, warn: 1, idle: 2, ok: 3 };
 // Overview polls every agent and shows each protocol's health in one table,
 // worst first, so a lab-wide fault is visible at a glance.
 export function Overview() {
-  const { agents, info } = useAgents();
+  const { agents, info, ui } = useAgents();
   const [snap, setSnap] = useState<Record<string, Snapshot>>({});
   const ids = agents.map((a) => a.id).join("|");
 
@@ -96,6 +97,8 @@ export function Overview() {
         </div>
       </div>
 
+      <VersionNote agents={agents.map((a) => skew(info[a.id]?.reachable ? info[a.id]?.version : undefined, ui?.version))} />
+
       <div className="agent-cards">
         {agents.map((a) => {
           const s = snap[a.id];
@@ -167,6 +170,19 @@ function Stat({ label, n, h }: { label: string; n: number; h: Health }) {
       <div className="stat-l">
         <Dot health={h} /> {label}
       </div>
+    </div>
+  );
+}
+
+// VersionNote says how many agents run another release than the UI.
+function VersionNote({ agents }: { agents: (Skew | undefined)[] }) {
+  const older = agents.filter((k) => k?.kind === "older").length;
+  const newer = agents.filter((k) => k?.kind === "newer").length;
+  if (!older && !newer) return null;
+  return (
+    <div className="warn-box">
+      {older > 0 && `${older} agent${older > 1 ? "s run" : " runs"} an older clabgen than this UI: some features may fail there until the lab is redeployed with the newer image. `}
+      {newer > 0 && `${newer} agent${newer > 1 ? "s run" : " runs"} a newer clabgen than this UI: update clabgen-ui to see everything.`}
     </div>
   );
 }

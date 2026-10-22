@@ -13,6 +13,8 @@ export type MockOpts = {
   more?: Protocol[]; // further protocols on the agent
   refuseToggle?: string[]; // names SetProtocolDisabled fails for
   group?: MockGroup;
+  agentVersion?: string; // GetInfo's version
+  ui?: { version: string; latest?: string; latest_url?: string; update_available: boolean }; // /api/info
 };
 
 // MockGroup is a device group "name" of count members running one bgp
@@ -58,6 +60,8 @@ export async function mockAgent(page: Page, p: Protocol, update: (config: Record
   const ok = (r: Route, body: unknown) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   await page.route("**/api/agents", (r) => ok(r, { agents: [{ id: "a1", name: "a1", source: "test" }], allow_manual: false }));
   await page.route(`**/agents/a1/${svc}/*`, (r) => ok(r, {}));
+  await page.route(`**/agents/a1/${svc}/GetInfo`, (r) => ok(r, { hostname: "a1", version: opts.agentVersion ?? "" }));
+  await page.route("**/api/info", (r) => (opts.ui ? ok(r, opts.ui) : r.fulfill({ status: 404, body: "" })));
   // A server stream that ends at once: an end-of-stream envelope.
   await page.route(`**/agents/a1/${svc}/WatchEvents`, (r) => {
     const end = Buffer.from("{}");

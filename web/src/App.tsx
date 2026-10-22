@@ -4,6 +4,7 @@ import { agentLabel, useAgents } from "./agents";
 import { href, useRoute } from "./router";
 import { Dot, ErrorBox, Modal, useBusy, useTheme, type Theme } from "./ui";
 import { Overview } from "./pages/Overview";
+import { displayVersion, skew } from "./version";
 import { AgentPage } from "./pages/AgentPage";
 import { ProtocolDetail } from "./pages/ProtocolDetail";
 import { GroupDetail } from "./pages/GroupsTab";
@@ -27,6 +28,7 @@ export function App() {
           </svg>
           clabgen
         </a>
+        <UIVersion />
         <div className="grow" />
         <ThemeSwitch theme={theme} setTheme={setTheme} />
       </header>
@@ -43,6 +45,28 @@ export function App() {
   );
 }
 
+// UIVersion shows the version serving the UI, and a newer release.
+function UIVersion() {
+  const { ui } = useAgents();
+  if (!ui?.version) return null;
+  return (
+    <>
+      <span className="brand-version muted">{displayVersion(ui.version)}</span>
+      {ui.update_available && ui.latest && (
+        <a
+          className="update-link"
+          href={ui.latest_url}
+          target="_blank"
+          rel="noreferrer"
+          title="Update: docker pull ghcr.io/ripnet/clabgen-ui and recreate the container; redeploy labs to update their agents"
+        >
+          {displayVersion(ui.latest)} available
+        </a>
+      )}
+    </>
+  );
+}
+
 function ThemeSwitch({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void }) {
   return (
     <div className="seg small" role="radiogroup" aria-label="Theme">
@@ -56,7 +80,7 @@ function ThemeSwitch({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) =
 }
 
 function Sidebar({ current, overview }: { current?: string; overview: boolean }) {
-  const { agents, info, allowManual, error, refresh } = useAgents();
+  const { agents, info, ui, allowManual, error, refresh } = useAgents();
   const [adding, setAdding] = useState(false);
   const groups = new Map<string, AgentRef[]>();
   for (const a of agents) {
@@ -74,15 +98,18 @@ function Sidebar({ current, overview }: { current?: string; overview: boolean })
           <div className="side-group-title">{g}</div>
           {list.map((a) => {
             const i = info[a.id];
+            const k = i?.reachable ? skew(i.version, ui?.version) : undefined;
             return (
               <a
                 key={a.id}
                 className={`side-link ${current === a.id ? "active" : ""}`}
                 href={href({ page: "agent", agent: a.id, tab: "protocols" })}
-                title={i?.reachable ? `${i.hostname} · ${i.version} · ${a.url ?? "local"}` : i?.error}
+                title={i?.reachable ? `${i.hostname} · ${displayVersion(i.version)} · ${a.url ?? "local"}${k && k.kind !== "differs" ? `\n${k.text}` : ""}` : i?.error}
               >
                 <Dot health={i?.reachable ? "ok" : i ? "bad" : "idle"} />
                 <span className="side-name">{agentLabel(a, i)}</span>
+                {k?.kind === "older" && <span className="side-ver warn">update</span>}
+                {k?.kind === "newer" && <span className="side-ver">newer</span>}
                 {a.source === "manual" && <RemoveAgent id={a.id} onDone={refresh} />}
               </a>
             );

@@ -34,6 +34,7 @@ func main() {
 	docker := flag.String("docker", "auto", "discover running containerlab containers via the Docker socket: auto, on or off")
 	image := flag.String("image", "clabgen", "regexp matched against container images during discovery")
 	showVersion := flag.Bool("version", false, "print version and exit")
+	updateCheck := flag.Bool("update-check", true, "ask GitHub for newer releases (every 6 h) and offer them in the UI")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version.Version)
@@ -75,7 +76,12 @@ func main() {
 		go webui.DiscoverDocker(ctx, reg, sock, imageRE, 5*time.Second, log)
 	}
 
-	srv := &http.Server{Addr: *listen, Handler: webui.Handler(reg, webui.Options{AllowManual: true}), ReadHeaderTimeout: 10 * time.Second}
+	opt := webui.Options{AllowManual: true, Version: version.Version}
+	if *updateCheck {
+		opt.Updates = &webui.UpdateChecker{Repo: "ripnet/clabgen", Current: version.Version, Every: 6 * time.Hour, Log: log}
+		go opt.Updates.Run(ctx)
+	}
+	srv := &http.Server{Addr: *listen, Handler: webui.Handler(reg, opt), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

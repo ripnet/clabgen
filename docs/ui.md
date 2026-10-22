@@ -28,7 +28,25 @@ ships in the agent image):
 -agent [name=]host[:port]   an agent to add by address (repeatable)
 -docker auto|on|off         discovery through the Docker socket (default auto)
 -image regexp    container images that count as agents (default "clabgen")
+-update-check=false         don't ask GitHub for newer releases
 ```
+
+## Versions
+
+The header shows the version serving the UI. A release build of
+`clabgen-ui` asks GitHub for the latest release every 6 hours (nothing
+else is sent) and, when there is a newer one, links to it next to the
+version; `-update-check=false` turns that off, for labs without internet
+or that shouldn't call out. To update, `docker pull
+ghcr.io/ripnet/clabgen-ui` and recreate the container.
+
+Agents can run a different version than the UI (a lab deployed before an
+update). An agent on an older release gets an **update** marker in the
+left nav, and the overview says how many there are: a newer UI may use
+things such an agent doesn't have yet. Redeploy the lab with the newer
+image (`docker pull ghcr.io/ripnet/clabgen` first) to update it. An agent
+newer than the UI is marked **newer**. Development builds aren't
+compared; the agent's page shows both versions.
 
 ## Each agent's own UI
 

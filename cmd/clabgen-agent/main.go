@@ -119,7 +119,7 @@ func main() {
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	}
-	mux.Handle("/", webui.Handler(reg, webui.Options{AllowManual: true}))
+	mux.Handle("/", webui.Handler(reg, webui.Options{AllowManual: true, Version: version.Version}))
 	srv := &http.Server{Addr: *listen, Handler: h2c.NewHandler(mux, &http2.Server{}), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()

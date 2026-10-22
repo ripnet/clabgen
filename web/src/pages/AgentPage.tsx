@@ -2,6 +2,7 @@ import { agentLabel, useAgents } from "../agents";
 import { agentTabs, href, type AgentTab } from "../router";
 import { Dot, Empty } from "../ui";
 import { ago } from "../components/ValueView";
+import { displayVersion, skew } from "../version";
 import { ProtocolsTab } from "./ProtocolsTab";
 import { TrafficTab } from "./TrafficTab";
 import { DevicesTab } from "./DevicesTab";
@@ -11,9 +12,10 @@ import { EventsTab } from "./EventsTab";
 import { ScenarioTab } from "./ScenarioTab";
 
 export function AgentHeader({ agentId, children }: { agentId: string; children?: React.ReactNode }) {
-  const { agents, info } = useAgents();
+  const { agents, info, ui } = useAgents();
   const a = agents.find((x) => x.id === agentId);
   const i = info[agentId];
+  const k = i?.reachable ? skew(i.version, ui?.version) : undefined;
   return (
     <div className="agent-head">
       <div className="agent-title">
@@ -24,7 +26,8 @@ export function AgentHeader({ agentId, children }: { agentId: string; children?:
       <div className="agent-meta muted">
         {i?.reachable ? (
           <>
-            {i.hostname} · {i.version}
+            {i.hostname} · {displayVersion(i.version)}
+            {k && <span className={k.kind === "older" ? "warn-text" : ""} title={k.text}> (UI {displayVersion(ui?.version)})</span>}
             {i.started && <> · up since {ago(i.started)}</>}
             {a?.url && <> · {a.url}</>}
           </>
