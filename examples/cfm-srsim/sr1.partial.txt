@@ -71,6 +71,12 @@
 /configure router "Base" interface "isis-p2p-2" ipv6 address 2001:db8:52::1 prefix-length 64
 /configure router "Base" isis 0 interface "isis-p2p-2" interface-type point-to-point
 /configure router "Base" isis 0 interface "isis-p2p-2" hello-authentication-keychain "isis-hello"
+/configure router "Base" isis 0 graceful-restart helper-mode true
+/configure router "Base" interface "isis-p2p-2" ipv4 bfd admin-state enable
+/configure router "Base" interface "isis-p2p-2" ipv4 bfd transmit-interval 100
+/configure router "Base" interface "isis-p2p-2" ipv4 bfd receive 100
+/configure router "Base" interface "isis-p2p-2" ipv4 bfd multiplier 3
+/configure router "Base" isis 0 interface "isis-p2p-2" bfd-liveness ipv4 include-bfd-tlv true
 /configure router "Base" mpls-labels sr-labels start 20000 end 27999
 /configure router "Base" isis 0 advertise-router-capability area
 /configure router "Base" isis 0 segment-routing admin-state enable

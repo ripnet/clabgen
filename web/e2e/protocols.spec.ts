@@ -56,3 +56,34 @@ test("enable all reports the protocols it could not change", async ({ page }) =>
   expect(ps.map((p) => !!p.disabled)).toEqual([false, true]);
   await expect(page.getByRole("button", { name: "Enable all (1)" })).toBeVisible();
 });
+
+test("disable a group protocol on some members, then on all", async ({ page }) => {
+  const group = { name: "ce", count: 4, specDisabled: false, disabled: new Set<number>() };
+  await mockAgent(page, { name: "x", type: "bgp", device: "r1", state: "running", config: {} }, () => undefined, { group });
+  await page.goto("./#/a/a1/g/ce");
+
+  // Some members, from the Actions card: not in the spec.
+  await page.getByRole("tab", { name: "disable" }).click();
+  await page.getByPlaceholder("all (1-4)").fill("1-2");
+  await page.getByRole("button", { name: "Disable", exact: true }).click();
+  await expect(page.locator(".result").first()).toContainText("2 members: 2 ok, 0 failed");
+  expect([...group.disabled].sort()).toEqual([1, 2]);
+  expect(group.specDisabled).toBe(false);
+  // Members turned off on purpose don't make the group unhealthy.
+  await expect(page.locator(".proto-state .group-proto")).toContainText("2 established (2 disabled, 2 running)");
+  await expect(page.locator(".group-proto .dot")).toHaveClass(/ok/);
+  const rows = page.locator(".card", { has: page.getByRole("heading", { name: "Members" }) }).locator("tbody tr");
+  await expect(rows.nth(0)).toContainText("disabled");
+  await expect(rows.nth(2)).toContainText("established");
+
+  // Every member, from the header switch (asks first).
+  page.once("dialog", (d) => d.accept());
+  await page.locator(".group-proto").getByRole("button", { name: "on" }).click();
+  await expect(page.locator(".group-proto").getByRole("button", { name: "off" })).toBeVisible();
+  expect(group.specDisabled).toBe(true);
+  expect(group.disabled.size).toBe(4);
+  await page.locator(".group-proto").getByRole("button", { name: "off" }).click();
+  await expect(page.locator(".group-proto")).toContainText("4 established");
+  expect(group.specDisabled).toBe(false);
+  expect(group.disabled.size).toBe(0);
+});

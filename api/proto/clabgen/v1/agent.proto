@@ -62,6 +62,9 @@ service AgentService {
   rpc DeleteDeviceGroup(DeleteDeviceGroupRequest) returns (DeleteDeviceGroupResponse);
   // RunGroupAction runs a protocol action on some or all members.
   rpc RunGroupAction(RunGroupActionRequest) returns (RunGroupActionResponse);
+  // Disables (stops, keeping config) or enables a group's protocols on
+  // selected members; on all of them it is recorded in the group spec.
+  rpc SetGroupDisabled(SetGroupDisabledRequest) returns (SetGroupDisabledResponse);
 
   rpc WatchEvents(WatchEventsRequest) returns (stream Event);
 
@@ -308,6 +311,19 @@ message GroupActionResult {
   google.protobuf.Struct result = 4;
 }
 message RunGroupActionResponse { repeated GroupActionResult results = 1; }
+
+message SetGroupDisabledRequest {
+  string group = 1;
+  // The group protocol's name; empty for all of them.
+  string protocol = 2;
+  // Empty or "all", or 1-based indices and ranges like "1-10,15".
+  string members = 3;
+  // Only this many of the selected members, picked at random.
+  uint32 random = 4;
+  bool disabled = 5;
+}
+// One result per member instance changed (result unset).
+message SetGroupDisabledResponse { repeated GroupActionResult results = 1; }
 
 message WatchEventsRequest {
   // Replay buffered recent events before streaming live ones.

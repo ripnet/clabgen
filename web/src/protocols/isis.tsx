@@ -183,6 +183,10 @@ type ISISStatus = {
   areas: string[];
   metric: number;
   overload: boolean;
+  overload_on_startup_until?: string;
+  graceful_restart?: { helper: boolean; restarting?: { since: string; remaining_s: number; acked: number; synced: number; pending: number } };
+  bfd?: boolean;
+  inter_level?: { attached: boolean; to_l2: number; leaked_to_l1: number; attached_routers: string[] };
   flapping?: boolean;
   advertised_prefixes: number;
   hello_auth?: string;
@@ -217,6 +221,10 @@ type ISISStatus = {
     priority?: number;
     dis?: boolean;
     topologies?: string[];
+    bfd?: { family: string; address: string; state: string; remote_state?: string; detect_ms?: number }[];
+    waiting_for_bfd?: boolean;
+    restarting?: boolean;
+    suppressed?: boolean;
   };
   adjacencies?: ISISStatus["adjacency"][];
   lan?: LANRow[];
@@ -237,6 +245,22 @@ type ISISStatus = {
 
 const as = (s: JsonObject) => s as unknown as ISISStatus;
 
+// AdjExtras shows an adjacency's BFD sessions and restart state.
+function AdjExtras({ a }: { a: Adj }) {
+  return (
+    <>
+      {(a.bfd ?? []).map((b) => (
+        <span key={b.family} className={b.state === "up" ? "tag" : "tag tag-warn"} title={`BFD with ${b.address}${b.detect_ms ? `, detection ${b.detect_ms} ms` : ""}`}>
+          BFD {b.family} {b.state}
+        </span>
+      ))}
+      {a.waiting_for_bfd && <span className="tag tag-warn">waiting for BFD</span>}
+      {a.restarting && <span className="tag tag-warn">restarting (helping)</span>}
+      {a.suppressed && <span className="tag">SA: not advertised</span>}
+    </>
+  );
+}
+
 const multi = (s: ISISStatus) => (s.interfaces?.length ?? 1) > 1;
 
 function summary(st: JsonObject): { health: Health; text: string } {
@@ -246,7 +270,7 @@ function summary(st: JsonObject): { health: Health; text: string } {
     const up = (s.adjacencies ?? []).filter((x) => x.state === "up").length;
     const active = ifs.filter((i) => !i.passive);
     const live = active.filter((i) => i.adjacencies_up > 0).length;
-    const tail = `${s.lsdb.filter((l) => l.lifetime > 0).length} LSPs${s.overload ? " · overload" : ""}`;
+    const tail = `${s.lsdb.filter((l) => l.lifetime > 0).length} LSPs${s.overload ? " · overload" : ""}${s.graceful_restart?.restarting ? " · restarting" : ""}`;
     if (!up) return { health: "bad", text: `no adjacencies on ${ifs.length} interfaces` };
     return {
       health: live < active.length || s.overload ? "warn" : "ok",
@@ -347,6 +371,7 @@ function LANAdjacencies({ s }: { s: ISISStatus }) {
                     {a.hostname ? `${a.hostname} · ` : ""}
                     {a.neighbor}
                     {a.dis && <span className="tag">DIS</span>}
+                    <AdjExtras a={a} />
                   </td>
                   <td>
                     <span className={a.state === "up" ? "pill pill-on" : "pill pill-warn"}>{a.state}</span>
@@ -406,6 +431,31 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
           <dt>metric · overload</dt>
           <dd className="mono">
             {s.metric} · {s.overload ? <span className="warn-text">set</span> : "clear"}
+            {s.overload_on_startup_until && <span className="muted"> (on startup, until {new Date(s.overload_on_startup_until).toLocaleTimeString()})</span>}
+          </dd>
+        </div>
+        {s.inter_level && (
+          <div className="kv-row">
+            <dt>{s.level === "L1L2" ? "between levels" : "attached routers"}</dt>
+            <dd className="mono">
+              {s.level === "L1L2"
+                ? `ATT ${s.inter_level.attached ? "set" : "clear"} · ${s.inter_level.to_l2} into L2 · ${s.inter_level.leaked_to_l1} leaked into L1`
+                : s.inter_level.attached_routers.map((r) => hostOf(s, r)).join(", ") || "none (no way out of the area)"}
+            </dd>
+          </div>
+        )}
+        <div className="kv-row">
+          <dt>graceful restart · BFD</dt>
+          <dd className="mono">
+            {s.graceful_restart?.restarting ? (
+              <span className="warn-text">
+                restarting: {s.graceful_restart.restarting.acked} acked, {s.graceful_restart.restarting.synced} synced, {s.graceful_restart.restarting.pending} LSPs to go,{" "}
+                {s.graceful_restart.restarting.remaining_s} s left
+              </span>
+            ) : (
+              `helper ${s.graceful_restart?.helper ? "on" : "off"}`
+            )}{" "}
+            · BFD {s.bfd ? "on" : "off"}
           </dd>
         </div>
         <div className="kv-row">
@@ -483,6 +533,7 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
           <span className={pill}>{a.state}</span> {a.neighbor ? `${a.hostname ? a.hostname + " · " : ""}${a.neighbor}` : "no neighbor"}
           {a.levels && <span className="muted"> · L{a.levels.join("/L")}</span>}
           {a.topologies && <span className="muted"> · {a.topologies.join(", ")}</span>}
+          <AdjExtras a={a} />
         </div>
         <div className="muted">
           {a.hold_remaining_s !== undefined && `hold ${Math.max(0, a.hold_remaining_s).toFixed(0)} s · `}

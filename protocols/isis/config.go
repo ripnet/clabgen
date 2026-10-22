@@ -41,6 +41,16 @@ type Config struct {
 	SNPAuth   bool `json:"snp_auth" jsonschema:"description=Also authenticate CSNPs and PSNPs with the LSP key"`
 
 	Overload bool `json:"overload,omitempty" jsonschema:"description=Set the overload bit" jsonschema_extras:"x-group=Router"`
+	// OverloadOnStartup sets the overload bit for a while after starting.
+	OverloadOnStartup int `json:"overload_on_startup_s,omitempty" jsonschema:"minimum=0,maximum=86400,description=Seconds to keep the overload bit set after starting (0: off)" jsonschema_extras:"x-group=Router"`
+
+	// L1/L2 routers (level L1L2).
+	AttachedBit string    `json:"attached_bit,omitempty" jsonschema:"enum=auto,enum=always,enum=never,description=L1L2: the attached bit in our level-1 LSPs. auto: set while level 2 reaches another area. Default auto" jsonschema_extras:"x-group=L1/L2,x-show-if=level=L1L2"`
+	Summaries   []Summary `json:"summaries,omitempty" jsonschema:"description=L1L2: summary addresses for level-1 prefixes advertised into level 2 (the prefixes they cover are replaced by them)" jsonschema_extras:"x-summary={prefix}[ metric {metric}]"`
+	LeakToL1    []string  `json:"leak_to_l1,omitempty" jsonschema:"description=L1L2: level-2 prefixes within these ranges (e.g. 192.0.2.0/24; 0.0.0.0/0 for all IPv4) are leaked into level 1 with the up/down bit" jsonschema_extras:"x-group=L1/L2,x-show-if=level=L1L2"`
+
+	BFD             BFDConfig       `json:"bfd" jsonschema:"description=BFD (RFC 5880/5881) with every neighbor: a failed session drops the adjacency at once"`
+	GracefulRestart GracefulRestart `json:"graceful_restart" jsonschema:"description=Graceful restart (RFC 8706, restart TLV 211)"`
 	// Interface subnets are advertised automatically.
 	Prefixes []Prefix `json:"prefixes,omitempty" jsonschema:"description=Extra prefixes to advertise (route injection)" jsonschema_extras:"x-summary={prefix}[ ×{count}][ metric {metric}]"`
 	// Loopbacks are the router's own addresses, answered on every interface.
@@ -57,6 +67,7 @@ type Config struct {
 // router-wide value.
 type Interface struct {
 	Device    string `json:"device" jsonschema:"required,description=Device name"`
+	BFD       *bool  `json:"bfd,omitempty" jsonschema:"description=BFD on this interface. Default: the router's bfd.enabled"`
 	Circuit   string `json:"circuit,omitempty" jsonschema:"enum=point-to-point,enum=broadcast"`
 	Metric    uint32 `json:"metric,omitempty" jsonschema:"minimum=1,maximum=16777214"`
 	Priority  *uint8 `json:"priority,omitempty" jsonschema:"minimum=0,maximum=127"`
@@ -273,6 +284,20 @@ type AlgoSIDBase struct {
 	NodeSID6Base *uint32 `json:"node_sid6_base,omitempty"`
 }
 
+// Summary is an L1→L2 summary address.
+type Summary struct {
+	Prefix string `json:"prefix" jsonschema:"required,description=e.g. 10.203.0.0/16"`
+	Metric uint32 `json:"metric,omitempty" jsonschema:"maximum=4261412864,description=Default: the lowest metric among the prefixes it covers"`
+}
+
+// GracefulRestart configures RFC 8706 graceful restart.
+type GracefulRestart struct {
+	Helper bool `json:"helper" jsonschema:"description=Help restarting neighbors: keep their adjacencies, acknowledge (RA) and resend the LSDB"`
+	// HoldS is how long a neighbor keeps our adjacency while we restart
+	// (the remaining time we ask for), and our database sync limit.
+	HoldS int `json:"restart_hold_s,omitempty" jsonschema:"minimum=1,maximum=65535,description=Our restart: how long neighbors keep our adjacencies and we wait for the LSDB to resynchronize. Default 60"`
+}
+
 type Prefix struct {
 	Prefix string `json:"prefix" jsonschema:"required,description=e.g. 198.51.100.0/24 or 2001:db8:1::/48"`
 	Metric uint32 `json:"metric,omitempty" jsonschema:"description=Default 10"`
@@ -282,7 +307,8 @@ type Prefix struct {
 func defaultConfig() *Config {
 	return &Config{Areas: []string{"49.0001"}, Level: "L2", Circuit: "point-to-point", Priority: 64, Metric: 10,
 		HelloAuth: Auth{Type: "none"}, LSPAuth: Auth{Type: "none"}, SNPAuth: true, SegmentRouting: SegmentRouting{SRGBBase: 16000, SRGBSize: 8000, AdjSIDBase: 24000},
-		HelloInterval: 3, HelloMultiplier: 3, CSNPInterval: 10, LSPLifetime: 1200, LSPRefresh: 900, LSPMTU: 1492}
+		HelloInterval: 3, HelloMultiplier: 3, CSNPInterval: 10, LSPLifetime: 1200, LSPRefresh: 900, LSPMTU: 1492,
+		GracefulRestart: GracefulRestart{Helper: true}, BFD: BFDConfig{TLV: true}}
 }
 
 func (c *Config) Validate() error {
@@ -394,6 +420,40 @@ func (c *Config) Validate() error {
 	}
 	if err := c.SRv6.validate(algos); err != nil {
 		return err
+	}
+	return c.validateL1L2()
+}
+
+func (c *Config) validateL1L2() error {
+	switch c.AttachedBit {
+	case "", "auto", "always", "never":
+	default:
+		return fmt.Errorf("attached_bit must be auto, always or never")
+	}
+	if c.Level != "L1L2" && (c.AttachedBit != "" && c.AttachedBit != "auto" || len(c.Summaries) > 0 || len(c.LeakToL1) > 0) {
+		return errors.New("attached_bit, summaries and leak_to_l1 need level L1L2")
+	}
+	if c.OverloadOnStartup < 0 || c.OverloadOnStartup > 86400 {
+		return errors.New("overload_on_startup_s must be 0-86400")
+	}
+	for _, x := range c.Summaries {
+		if _, err := netip.ParsePrefix(x.Prefix); err != nil {
+			return fmt.Errorf("summaries: %q: %w", x.Prefix, err)
+		}
+		if x.Metric > maxPathMetric {
+			return fmt.Errorf("summaries: %s: metric too large", x.Prefix)
+		}
+	}
+	for _, x := range c.LeakToL1 {
+		if _, err := netip.ParsePrefix(x); err != nil {
+			return fmt.Errorf("leak_to_l1: %q: %w", x, err)
+		}
+	}
+	if err := c.BFD.validate(); err != nil {
+		return err
+	}
+	if h := c.GracefulRestart.HoldS; h < 0 || h > 65535 {
+		return errors.New("graceful_restart: restart_hold_s must be 1-65535")
 	}
 	return nil
 }

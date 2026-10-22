@@ -234,6 +234,41 @@ func groupCmd() *cobra.Command {
 	run.Flags().StringVar(&proto, "protocol", "", "the group protocol (needed when the group has several)")
 	run.Flags().BoolVar(&full, "results", false, "print every member's result")
 
-	cmd.AddCommand(add, set, show, del, run)
+	toggle := func(use, short string, disabled bool) *cobra.Command {
+		var proto, members string
+		var random uint32
+		c := &cobra.Command{
+			Use: use + " NAME", Short: short, Args: cobra.ExactArgs(1),
+			Example: fmt.Sprintf("  clabgenctl group %[1]s ce\n  clabgenctl group %[1]s ce --protocol bgp --members 1-10\n  clabgenctl group %[1]s ce --random 5", use),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c, cancel := ctx()
+				defer cancel()
+				r, err := client().SetGroupDisabled(c, connect.NewRequest(&v1.SetGroupDisabledRequest{Group: args[0], Protocol: proto,
+					Members: members, Random: random, Disabled: disabled}))
+				if err != nil {
+					return err
+				}
+				failed := 0
+				for _, x := range r.Msg.Results {
+					if x.Error != "" {
+						failed++
+						fmt.Printf("%d %s: %s\n", x.Index, x.Protocol, x.Error)
+					}
+				}
+				fmt.Printf("%sd %d instances: %d ok, %d failed\n", use, len(r.Msg.Results), len(r.Msg.Results)-failed, failed)
+				if failed > 0 {
+					return fmt.Errorf("%d instances failed", failed)
+				}
+				return nil
+			}}
+		c.Flags().StringVar(&proto, "protocol", "", "the group protocol (default all)")
+		c.Flags().StringVar(&members, "members", "", "members by 1-based index, e.g. 1-10,15 (default all, which is kept in the group spec)")
+		c.Flags().Uint32Var(&random, "random", 0, "only this many of the selected members, picked at random")
+		return c
+	}
+	disable := toggle("disable", "Stop group protocols on members, keeping their config", true)
+	enable := toggle("enable", "Start disabled group protocols on members again", false)
+
+	cmd.AddCommand(add, set, show, disable, enable, del, run)
 	return cmd
 }

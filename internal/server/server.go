@@ -533,6 +533,19 @@ func (s *Server) DeleteDeviceGroup(ctx context.Context, r *connect.Request[v1.De
 	return connect.NewResponse(&v1.DeleteDeviceGroupResponse{}), connectErr(s.eng.DeleteGroup(r.Msg.Name))
 }
 
+func (s *Server) SetGroupDisabled(ctx context.Context, r *connect.Request[v1.SetGroupDisabledRequest]) (*connect.Response[v1.SetGroupDisabledResponse], error) {
+	res, err := s.eng.SetGroupDisabled(core.GroupDisableRequest{Group: r.Msg.Group, Protocol: r.Msg.Protocol, Members: r.Msg.Members,
+		Random: int(r.Msg.Random), Disabled: r.Msg.Disabled})
+	if err != nil {
+		return nil, connectErr(err)
+	}
+	out := &v1.SetGroupDisabledResponse{}
+	for _, x := range res {
+		out.Results = append(out.Results, &v1.GroupActionResult{Index: uint32(x.Index), Protocol: x.Protocol, Error: x.Error})
+	}
+	return connect.NewResponse(out), nil
+}
+
 func (s *Server) RunGroupAction(ctx context.Context, r *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error) {
 	raw, err := fromStruct(r.Msg.Args)
 	if err != nil {

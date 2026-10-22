@@ -150,7 +150,7 @@ An IS-IS router on a device (point-to-point to the SR in
   - name: isis
     type: isis
     device: i500
-    config: {system_id: 0000.0000.0050, hostname: clabgen, level: L2, areas: [49.0001],
+    config: {system_id: 0000.0000.0050, hostname: clabgen, level: L2, areas: ["49.0001"],
              prefixes: [{prefix: 198.18.0.0/24, count: 1000, metric: 20}]}
 ```
 
@@ -172,6 +172,21 @@ hmac-sha1 | hmac-sha224 | hmac-sha256 | hmac-sha384 | hmac-sha512, key: …,
 key_id: …}`; SHA is RFC 5310, where `key_id` is the SR OS keychain entry); `lsp_auth` also covers CSNPs/PSNPs unless `snp_auth: false`. On
 SR OS the level key signs hellos too where an interface has no hello key,
 so match it with `hello_auth` on such interfaces.
+
+An L1L2 router carries level 1 into level 2 (`summaries: [{prefix:
+10.207.0.0/22}]` replace what they cover), leaks level-2 prefixes within
+`leak_to_l1` ranges into level 1 with the up/down bit, re-advertises
+Prefix-SIDs between levels (R and P flags), and sets the attached bit while
+level 2 reaches another area (`attached_bit: auto | always | never`).
+`bfd: {enabled: true, min_tx_ms: 100, min_rx_ms: 100}` (or `bfd: true` on
+an interface) runs BFD with each neighbor (IPv4, and IPv6 with `families`);
+with the BFD-enabled TLV on both sides (RFC 6213) an adjacency waits for
+BFD, and `proto run isis bfd-fail seconds=3` silences it. Graceful restart
+(RFC 8706): as helper by default (`graceful_restart: {helper: true}`), and
+`proto run isis graceful-restart` restarts the router gracefully: it drops
+the LSPs it learned and resynchronises them while neighbors keep the
+adjacencies and its LSPs. `overload_on_startup_s: 60` sets the overload bit
+for the first minute.
 
 For rollover use a keychain; the key that started sending last is used,
 and any key inside its accept window is accepted:
@@ -432,7 +447,11 @@ is the same running, so the count can grow or shrink without touching the
 rest. `clabgenctl groups` summarises each group protocol by the protocols'
 own state (e.g. `198 established, 2 active`), `group show ce` lists the
 members, and `group run ce flap --members 1-20` or `--random 5` runs an
-action on a selection in parallel. Lists leave members out unless asked
+action on a selection in parallel. `group disable ce --members 2,5` (or
+`--random 3`) stops a group protocol on some members, keeping their
+config, until `group enable`; on every member (`group disable ce`) it is
+recorded in the spec as `disabled: true` on the group protocol, so it is
+exported with the scenario. Lists leave members out unless asked
 (`devices --all`, `protocols --group ce`); the UI has a Groups tab.
 
 Mount the file in the topology and set `CLABGEN_SCENARIO`. See

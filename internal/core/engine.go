@@ -640,15 +640,20 @@ func (e *Engine) detachLocked(in *instance) protocol.Session {
 }
 
 // SetProtocolDisabled stops an instance and keeps it with its config
-// (disabled), or starts it again. Group members follow their group.
+// (disabled), or starts it again. Group members follow their group
+// (SetGroupDisabled).
 func (e *Engine) SetProtocolDisabled(name string, disabled bool) (ProtocolView, error) {
+	return e.setProtocolDisabled(name, disabled, "")
+}
+
+func (e *Engine) setProtocolDisabled(name string, disabled bool, group string) (ProtocolView, error) {
 	e.mu.Lock()
 	in, ok := e.insts[name]
 	if !ok {
 		e.mu.Unlock()
 		return ProtocolView{}, fmt.Errorf("protocol %s: %w", name, ErrNotFound)
 	}
-	if err := memberErr("protocol", name, in.group, ""); err != nil {
+	if err := memberErr("protocol", name, in.group, group); err != nil {
 		e.mu.Unlock()
 		return ProtocolView{}, err
 	}

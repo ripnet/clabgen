@@ -434,7 +434,7 @@ func (s *session) srDecorate(owner string, body *lspBody, pfx []IPReach, sids ma
 		if st != nil && pfx[i].MT != MTIPv4Multicast && pfx[i].MT != MTIPv6Multicast {
 			for _, sid := range ss {
 				st.NodeSIDs = append(st.NodeSIDs, SRNodeSID{Prefix: pfx[i].Prefix.String(), Index: sid.Index, Label: sr.SRGBBase + sid.Index, Algorithm: sid.Algo,
-					Flags: flagString(sid.Flags, "NPE", []byte{PSIDNode, PSIDNoPHP, PSIDExplicitNull})})
+					Flags: flagString(sid.Flags, "RNPE", []byte{PSIDReadvertised, PSIDNode, PSIDNoPHP, PSIDExplicitNull})})
 			}
 		}
 	}

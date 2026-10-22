@@ -36,6 +36,8 @@ type GroupProtocol struct {
 	Name   string          `json:"name,omitempty"`
 	Type   string          `json:"type"`
 	Config json.RawMessage `json:"config,omitempty"`
+	// Disabled members keep their config but don't run.
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 type group struct {
@@ -121,7 +123,7 @@ func (e *Engine) expandGroup(g GroupSpec) (GroupSpec, []groupMember, error) {
 				return fail(fmt.Errorf("%s: %w", p.Name, err))
 			}
 			norm, _ := json.Marshal(cfg)
-			s := ProtocolSpec{Name: ds.Name + "-" + p.Name, Type: p.Type, Device: ds.Name, Config: norm}
+			s := ProtocolSpec{Name: ds.Name + "-" + p.Name, Type: p.Type, Device: ds.Name, Config: norm, Disabled: p.Disabled}
 			if !nameRE.MatchString(s.Name) {
 				return fail(fmt.Errorf("invalid protocol name %q", s.Name))
 			}
@@ -253,6 +255,7 @@ func (e *Engine) UpdateGroup(g GroupSpec) (GroupView, error) {
 		for _, p := range m.protos {
 			op, had := was[p.Name]
 			delete(was, p.Name)
+			err = nil
 			switch {
 			case !had:
 				_, err = e.createProtocol(p, g.Name)
@@ -261,9 +264,13 @@ func (e *Engine) UpdateGroup(g GroupSpec) (GroupView, error) {
 					_, err = e.createProtocol(p, g.Name)
 				}
 			case !bytes.Equal(op.Config, p.Config):
+				// Keeps the instance's disabled flag; set below.
 				_, err = e.updateProtocol(p.Name, p.Config, g.Name)
-			default:
+			case op.Disabled == p.Disabled:
 				continue
+			}
+			if err == nil && op.Disabled != p.Disabled {
+				_, err = e.setProtocolDisabled(p.Name, p.Disabled, g.Name)
 			}
 			touched = true
 			if err != nil {
@@ -328,6 +335,9 @@ type GroupProtocolSummary struct {
 	// Health counts running instances by the protocol's own state word
 	// (protocol.Healther), e.g. established or up.
 	Health map[string]int `json:"health,omitempty"`
+	// Disabled: the group protocol is disabled on every member (in the
+	// spec; members disabled one by one only show in States).
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 type GroupMemberView struct {
@@ -390,7 +400,7 @@ func (e *Engine) GetGroup(name string, members bool) (GroupView, error) {
 	e.mu.RUnlock()
 
 	for _, p := range v.Spec.Protocols {
-		v.Protocols = append(v.Protocols, GroupProtocolSummary{Name: p.Name, Type: p.Type, States: map[string]int{}})
+		v.Protocols = append(v.Protocols, GroupProtocolSummary{Name: p.Name, Type: p.Type, States: map[string]int{}, Disabled: p.Disabled})
 	}
 	for i, m := range gm {
 		var mv GroupMemberView
@@ -523,5 +533,103 @@ func (e *Engine) RunGroupAction(ctx context.Context, r GroupActionRequest) ([]Gr
 	}
 	wg.Wait()
 	e.publish("group/"+r.Group, "group-action", fmt.Sprintf("%s %s on %d members", spec.Protocols[j].Name, r.Action, len(sel)), nil)
+	return out, nil
+}
+
+// ---- disable / enable ----
+
+type GroupDisableRequest struct {
+	Group string
+	// Protocol is the group protocol's name (default: all of them).
+	Protocol string
+	// Members and Random select members as for RunGroupAction.
+	Members  string
+	Random   int
+	Disabled bool
+}
+
+// SetGroupDisabled disables (stops, keeping their config) or enables a
+// group's protocols on selected members, in parallel. On every member it
+// is part of the group spec (the protocol's disabled flag, exported with
+// the scenario); on some, it lasts until they are changed again.
+// Per-instance failures are reported in the results.
+func (e *Engine) SetGroupDisabled(r GroupDisableRequest) ([]GroupActionResult, error) {
+	e.gmu.Lock()
+	defer e.gmu.Unlock()
+	e.mu.Lock()
+	g, ok := e.groups[r.Group]
+	if !ok {
+		e.mu.Unlock()
+		return nil, fmt.Errorf("group %s: %w", r.Group, ErrNotFound)
+	}
+	var js []int
+	for k, p := range g.spec.Protocols {
+		if r.Protocol == "" || p.Name == r.Protocol {
+			js = append(js, k)
+		}
+	}
+	if len(js) == 0 {
+		e.mu.Unlock()
+		if r.Protocol == "" {
+			return nil, fmt.Errorf("group %s has no protocols", r.Group)
+		}
+		return nil, fmt.Errorf("group %s has no protocol %q", r.Group, r.Protocol)
+	}
+	sel, err := parseMembers(r.Members, len(g.members))
+	if err != nil {
+		e.mu.Unlock()
+		return nil, err
+	}
+	if r.Random > 0 && r.Random < len(sel) {
+		rand.Shuffle(len(sel), func(a, b int) { sel[a], sel[b] = sel[b], sel[a] })
+		sel = sel[:r.Random]
+		sort.Ints(sel)
+	}
+	if len(sel) == len(g.members) {
+		// Every member: record it in the spec (copied, since views and
+		// exports share the old slices).
+		ps := append([]GroupProtocol(nil), g.spec.Protocols...)
+		ms := append([]groupMember(nil), g.members...)
+		for i := range ms {
+			ms[i].protos = append([]ProtocolSpec(nil), ms[i].protos...)
+		}
+		for _, j := range js {
+			ps[j].Disabled = r.Disabled
+			for i := range ms {
+				ms[i].protos[j].Disabled = r.Disabled
+			}
+		}
+		g.spec.Protocols, g.members = ps, ms
+	}
+	var out []GroupActionResult
+	for _, i := range sel {
+		for _, j := range js {
+			out = append(out, GroupActionResult{Index: i + 1, Protocol: g.members[i].protos[j].Name})
+		}
+	}
+	e.mu.Unlock()
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, groupActionParallel)
+	for k := range out {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(res *GroupActionResult) {
+			defer func() { <-sem; wg.Done() }()
+			if _, err := e.setProtocolDisabled(res.Protocol, r.Disabled, r.Group); err != nil {
+				res.Error = err.Error()
+			}
+		}(&out[k])
+	}
+	wg.Wait()
+	verb := "enabled"
+	if r.Disabled {
+		verb = "disabled"
+	}
+	what := "all protocols"
+	if r.Protocol != "" {
+		what = r.Protocol
+	}
+	e.publish("group/"+r.Group, "group-"+verb, fmt.Sprintf("%s %s on %d members", what, verb, len(sel)), nil)
 	return out, nil
 }

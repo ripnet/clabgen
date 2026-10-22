@@ -39,6 +39,10 @@ type circuit struct {
 	transitions int               // adjacency ups and downs
 	flapTill    time.Time
 	flapMode    string
+
+	bfd           bool // BFD with this circuit's neighbors
+	bfdPeers      map[bfdKey]*bfdPeer
+	bfdSilentTill time.Time
 }
 
 // attachRetry is how often a missing further interface is attached again.
@@ -59,6 +63,10 @@ func (s *session) newCircuit(idx int, dev string, ic Interface) *circuit {
 	}
 	if ic.HelloAuth != nil {
 		c.helloAuth = *ic.HelloAuth
+	}
+	c.bfd = s.cfg.BFD.Enabled
+	if ic.BFD != nil {
+		c.bfd = *ic.BFD
 	}
 	c.adj.state = stDown
 	if c.lan {

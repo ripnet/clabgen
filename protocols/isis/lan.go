@@ -28,6 +28,9 @@ type lanAdj struct {
 	addrs     []string
 	hostname  string
 	mts       []uint16
+	nbr       nbrAddrs
+	helping   bool // restarting (RR) and we help
+	suppress  bool // asks us not to advertise it (SA)
 }
 
 type lanLevel struct {
@@ -79,11 +82,15 @@ func (s *session) lanHelloLocked(c *circuit, n int, flapping bool) []byte {
 	if ll.isDIS {
 		hold = max(1, hold/3) // the DIS hellos three times as often
 	}
+	if s.gr != nil {
+		hold = int(s.gr.hold)
+	}
 	padTo := 0
 	if s.cfg.HelloPadding {
 		padTo = 1497 - c.helloAuth.tlvLen()
 	}
-	return c.helloAuth.sign(EncodeLANHello(n, s.cfg.circuitType(), s.sys, uint16(hold), c.priority, ll.lanID, s.areas, a4, a6, s.mts, nbrs, padTo))
+	extra := append(s.restartTLV(c, n, time.Now()), s.bfdHello(c)...)
+	return c.helloAuth.sign(EncodeLANHello(n, s.cfg.circuitType(), s.sys, uint16(hold), c.priority, ll.lanID, s.areas, a4, a6, s.mts, nbrs, padTo, extra...))
 }
 
 // tickLANLocked sends due hellos and expires LAN adjacencies.
@@ -165,6 +172,7 @@ func (s *session) rxLANHello(c *circuit, f *pkt.Frame, p *PDU) {
 		ll.adjs[f.Src] = a
 	}
 	a.sys, a.priority, a.lanID, a.mts = h.Source, h.Priority, h.LANID, mts
+	a.nbr = parseNbrAddrs(p.TLVs)
 	a.hold, a.lastHello = time.Duration(h.Hold)*time.Second, now
 	a.areas, a.addrs = nil, nil
 	for _, x := range p.Areas {
@@ -187,9 +195,18 @@ func (s *session) rxLANHello(c *circuit, f *pkt.Frame, p *PDU) {
 			seesUs = true
 		}
 	}
+	// Graceful restart: a restarting neighbor stays up while it relearns us.
+	r, hasR := parseRestart(p.TLVs)
+	keep := s.helpLocked(c, []int{h.Level}, r, hasR, a.state == stUp, &a.helping, &a.suppress, h.Source, now)
+	s.grAckLocked(c, []int{h.Level}, r, hasR, now)
 	next := stInitializing
-	if seesUs {
+	if seesUs || keep {
 		next = stUp
+	}
+	// RFC 6213: with both sides sending the BFD-enabled TLV, up waits for BFD.
+	if next == stUp && a.state != stUp && s.bfdHolds(c, a.nbr) && !c.bfdUp(f.Src) {
+		next = stInitializing
+		s.count("adj_waiting_bfd")
 	}
 	if next != a.state {
 		prev := a.state
@@ -281,6 +298,7 @@ func (s *session) pseudonodeLocked(c *circuit, l *level, isType byte, now time.T
 		if old != nil && old.own && old.purgeAt.IsZero() {
 			ll.pnSeq++
 			l.db[id] = &dbEntry{lsp: mustLSP(s.signLSP(purgeRaw(l.n, id, ll.pnSeq, isType))), rxAt: now, own: true, srm: s.allSRM(), purgeAt: now.Add(60 * time.Second)}
+			l.gen++
 		}
 		return
 	}
@@ -289,7 +307,7 @@ func (s *session) pseudonodeLocked(c *circuit, l *level, isType byte, now time.T
 	copy(me[:], s.sys[:])
 	nbrs = append(nbrs, ISReach{Neighbor: me})
 	for _, a := range ll.adjs {
-		if a.state == stUp {
+		if a.state == stUp && !a.suppress {
 			var nb NodeID
 			copy(nb[:], a.sys[:])
 			nbrs = append(nbrs, ISReach{Neighbor: nb})
@@ -304,6 +322,7 @@ func (s *session) pseudonodeLocked(c *circuit, l *level, isType byte, now time.T
 		ll.pnSeq++
 		raw = s.signLSP(EncodeLSP(l.n, id, ll.pnSeq, life, isType, body))
 		l.db[id] = &dbEntry{lsp: mustLSP(raw), rxAt: now, life: life, own: true, srm: s.allSRM()}
+		l.gen++
 	}
 }
 
@@ -339,7 +358,8 @@ func (s *session) lanStatusLocked(c *circuit, now time.Time) ([]AdjStatus, []LAN
 			a := ll.adjs[m]
 			adjs = append(adjs, AdjStatus{Interface: c.device, State: a.state, Neighbor: a.sys.String(), MAC: m.String(), Levels: []int{n}, Transitions: c.transitions,
 				HoldS: (a.hold - now.Sub(a.lastHello)).Seconds(), Since: a.since.Format(time.RFC3339), Areas: a.areas, Addresses: a.addrs,
-				Priority: a.priority, DIS: ll.disMAC == m && !ll.isDIS, Topologies: mtNameList(a.mts)})
+				Priority: a.priority, DIS: ll.disMAC == m && !ll.isDIS, Topologies: mtNameList(a.mts),
+				BFD: c.bfdStatus(m), Restarting: a.helping, Suppressed: a.suppress})
 		}
 	}
 	return adjs, lans

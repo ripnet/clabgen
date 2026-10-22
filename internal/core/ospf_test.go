@@ -93,9 +93,16 @@ func TestOSPFPointToPoint(t *testing.T) {
 		c := lsdbTypes(t, b, "ospf")
 		return c["router"] == 2 && c["external"] == 300
 	})
-	d := ospfRun(t, b, "ospf", "lsa", `{"type": "router", "id": "192.0.2.1"}`)
-	links := d["links"].([]any)
-	if d["flags"].(map[string]any)["asbr"] != true || len(links) != 4 {
+	// a re-originates its router LSA once full (with the p2p link); b may
+	// still have the copy from before.
+	var d map[string]any
+	var links []any
+	eventuallyLong(t, "a's router LSA with the p2p link", func() bool {
+		d = ospfRun(t, b, "ospf", "lsa", `{"type": "router", "id": "192.0.2.1"}`)
+		links, _ = d["links"].([]any)
+		return len(links) == 4
+	})
+	if d["flags"].(map[string]any)["asbr"] != true {
 		t.Fatalf("a's router LSA: %v", d)
 	}
 	kinds := map[string]int{}
@@ -711,7 +718,7 @@ func TestOSPFGracefulRestart(t *testing.T) {
 				typ, rtrID = "ospfv3", "0.0.0.0"
 			}
 			for i, e := range []*core.Engine{a, b} {
-				cfg := fmt.Sprintf(`{"router_id": "192.0.2.%d", "network": "point-to-point", "bfd": {"enabled": true, "min_tx_ms": 100, "min_rx_ms": 100}, %s}`, i+1, ospfTimers)
+				cfg := fmt.Sprintf(`{"router_id": "192.0.2.%d", "network": "point-to-point", "bfd": {"enabled": true, "min_tx_ms": 300, "min_rx_ms": 300}, %s}`, i+1, ospfTimers)
 				if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "o", Type: typ, Device: "d", Config: json.RawMessage(cfg)}); err != nil {
 					t.Fatal(err)
 				}

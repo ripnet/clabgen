@@ -219,3 +219,92 @@ func TestGroupErrors(t *testing.T) {
 		t.Fatal("a failed group left something behind")
 	}
 }
+
+func TestGroupDisable(t *testing.T) {
+	const n = 8
+	a, b, _, _ := newPair()
+	if _, err := a.CreateGroup(groupSpec(t, fmt.Sprintf(groupPE, n))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CreateGroup(groupSpec(t, fmt.Sprintf(groupCE, n))); err != nil {
+		t.Fatal(err)
+	}
+	eventuallyLong(t, "all established", func() bool { return healthOf(t, a, "pe")["established"] == n })
+	states := func() map[string]int {
+		v, err := b.GetGroup("ce", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v.Protocols[0].States
+	}
+	specDisabled := func() bool {
+		sc := b.Export()
+		return len(sc.Groups) == 1 && sc.Groups[0].Protocols[0].Disabled
+	}
+
+	// Some members: stopped until enabled again, not in the spec.
+	res, err := b.SetGroupDisabled(core.GroupDisableRequest{Group: "ce", Members: "1-2,5", Disabled: true})
+	if err != nil || len(res) != 3 || res[2].Protocol != "ce-5-bgp" || res[0].Error != "" {
+		t.Fatalf("disable some: %+v %v", res, err)
+	}
+	if s := states(); s["disabled"] != 3 || s["running"] != n-3 {
+		t.Fatalf("states: %v", s)
+	}
+	if specDisabled() {
+		t.Fatal("a partial disable went into the spec")
+	}
+	eventuallyLong(t, "PE lost 3 peers", func() bool { return healthOf(t, a, "pe")["established"] == n-3 })
+	if _, err := b.SetProtocolDisabled("ce-3-bgp", true); err == nil || !strings.Contains(err.Error(), "belongs to group ce") {
+		t.Fatalf("member disabled directly: %v", err)
+	}
+	if _, err := b.SetGroupDisabled(core.GroupDisableRequest{Group: "ce", Members: "1-2,5"}); err != nil {
+		t.Fatal(err)
+	}
+	eventuallyLong(t, "re-established", func() bool { return healthOf(t, a, "pe")["established"] == n })
+
+	// Every member: in the spec, so exported and kept by group updates.
+	if res, err := b.SetGroupDisabled(core.GroupDisableRequest{Group: "ce", Protocol: "bgp", Disabled: true}); err != nil || len(res) != n {
+		t.Fatalf("disable all: %+v %v", res, err)
+	}
+	if v, _ := b.GetGroup("ce", false); !v.Protocols[0].Disabled || v.Protocols[0].States["disabled"] != n {
+		t.Fatalf("group view: %+v", v.Protocols[0])
+	}
+	if !specDisabled() {
+		t.Fatal("disable all not in the exported spec")
+	}
+	eventuallyLong(t, "PE lost all peers", func() bool { return healthOf(t, a, "pe")["established"] == 0 })
+	// A config change through the group keeps them disabled; dropping the
+	// flag from the spec enables them.
+	g := b.Export().Groups[0]
+	g.Protocols[0].Config = json.RawMessage(strings.Replace(string(g.Protocols[0].Config), `"hold_time":30`, `"hold_time":40`, 1))
+	if _, err := b.UpdateGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	if s := states(); s["disabled"] != n {
+		t.Fatalf("after config change: %v", s)
+	}
+	if p, _ := b.GetProtocol("ce-1-bgp"); !strings.Contains(string(p.Config), `"hold_time":40`) {
+		t.Fatalf("config not changed: %s", p.Config)
+	}
+	g.Protocols[0].Disabled = false
+	if _, err := b.UpdateGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	if s := states(); s["running"] != n {
+		t.Fatalf("after enabling in the spec: %v", s)
+	}
+	eventuallyLong(t, "all back", func() bool { return healthOf(t, a, "pe")["established"] == n })
+
+	// Random picks; errors.
+	if res, err := b.SetGroupDisabled(core.GroupDisableRequest{Group: "ce", Random: 2, Disabled: true}); err != nil || len(res) != 2 {
+		t.Fatalf("random: %+v %v", res, err)
+	}
+	if s := states(); s["disabled"] != 2 || specDisabled() {
+		t.Fatalf("random states: %v", s)
+	}
+	for _, r := range []core.GroupDisableRequest{{Group: "nope"}, {Group: "ce", Protocol: "nope"}, {Group: "ce", Members: "99"}} {
+		if _, err := b.SetGroupDisabled(r); err == nil {
+			t.Errorf("%+v: no error", r)
+		}
+	}
+}

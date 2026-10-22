@@ -112,13 +112,13 @@ export function ProtocolsTab({ agentId }: { agentId: string }) {
 
 // EnableToggle switches a protocol instance on (running) or off (disabled,
 // config kept).
-export function EnableToggle({ disabled, busy, onToggle }: { disabled: boolean; busy: boolean; onToggle: () => void }) {
+export function EnableToggle({ disabled, busy, onToggle, title }: { disabled: boolean; busy: boolean; onToggle: () => void; title?: string }) {
   return (
     <button
       className={`toggle ${disabled ? "" : "on"}`}
       disabled={busy}
       aria-pressed={!disabled}
-      title={disabled ? "Enable: start it again" : "Disable: stop it, keeping its config"}
+      title={title ?? (disabled ? "Enable: start it again" : "Disable: stop it, keeping its config")}
       onClick={(e) => {
         e.stopPropagation();
         onToggle();

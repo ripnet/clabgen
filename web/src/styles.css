@@ -464,3 +464,4 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .diff-table td { vertical-align: top; overflow-wrap: anywhere; }
 .diff-from { color: var(--bad); }
 .diff-to { color: var(--ok); }
+.group-proto { display: flex; align-items: center; gap: 10px; }

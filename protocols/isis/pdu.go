@@ -49,6 +49,8 @@ const (
 	TLVMultiTopology uint8 = 229
 	TLVMTIPReach     uint8 = 235
 	TLVMTIPv6Reach   uint8 = 237
+	TLVBFDEnabled    uint8 = 148 // RFC 6213
+	TLVRestart       uint8 = 211 // RFC 8706
 	NLPIDIPv4        byte  = 0xcc
 	NLPIDIPv6        byte  = 0x8e
 	circuitL1        uint8 = 1
@@ -452,7 +454,8 @@ func pad(w *tlvBuf, have, size int) {
 func setLen(b []byte, off int) { binary.BigEndian.PutUint16(b[off:], uint16(len(b))) }
 
 // EncodeP2PHello builds a point-to-point IIH.
-func EncodeP2PHello(circuit uint8, src SysID, hold uint16, localCircuit uint8, areas [][]byte, v4, v6 []netip.Addr, mts []uint16, tw ThreeWay, padTo int) []byte {
+// extra TLVs (restart, BFD-enabled) follow the standard ones.
+func EncodeP2PHello(circuit uint8, src SysID, hold uint16, localCircuit uint8, areas [][]byte, v4, v6 []netip.Addr, mts []uint16, tw ThreeWay, padTo int, extra ...TLV) []byte {
 	b := header(PDUP2PHello, 20)
 	b = append(b, circuit)
 	b = append(b, src[:]...)
@@ -467,6 +470,9 @@ func EncodeP2PHello(circuit uint8, src SysID, hold uint16, localCircuit uint8, a
 		a = binary.BigEndian.AppendUint32(a, tw.NeighborExtCircuit)
 	}
 	w.add(TLVP2PAdjacency, a)
+	for _, t := range extra {
+		w.add(t.Type, t.Value)
+	}
 	if padTo > 0 {
 		pad(&w, len(b), padTo)
 	}
@@ -476,7 +482,7 @@ func EncodeP2PHello(circuit uint8, src SysID, hold uint16, localCircuit uint8, a
 }
 
 // EncodeLANHello builds a LAN IIH for level 1 or 2.
-func EncodeLANHello(level int, circuit uint8, src SysID, hold uint16, prio uint8, lanID NodeID, areas [][]byte, v4, v6 []netip.Addr, mts []uint16, neighbors []pkt.MAC, padTo int) []byte {
+func EncodeLANHello(level int, circuit uint8, src SysID, hold uint16, prio uint8, lanID NodeID, areas [][]byte, v4, v6 []netip.Addr, mts []uint16, neighbors []pkt.MAC, padTo int, extra ...TLV) []byte {
 	typ := PDULANHelloL1
 	if level == 2 {
 		typ = PDULANHelloL2
@@ -494,6 +500,9 @@ func EncodeLANHello(level int, circuit uint8, src SysID, hold uint16, prio uint8
 		items = append(items, append([]byte{}, m[:]...))
 	}
 	w.addItems(TLVLANNeighbors, items)
+	for _, t := range extra {
+		w.add(t.Type, t.Value)
+	}
 	if padTo > 0 {
 		pad(&w, len(b), padTo)
 	}
@@ -744,6 +753,7 @@ type LSPInfo struct {
 }
 
 type NbrInfo struct {
+	id      NodeID        // typed, for SPF
 	ID      string        `json:"id"`
 	Metric  uint32        `json:"metric"`
 	MT      uint16        `json:"mt,omitempty"`
@@ -753,15 +763,18 @@ type NbrInfo struct {
 }
 
 type PfxInfo struct {
-	Prefix string    `json:"prefix"`
-	Metric uint32    `json:"metric"`
-	Down   bool      `json:"down,omitempty"`
-	MT     uint16    `json:"mt,omitempty"`
-	SID    *SIDInfo  `json:"sid,omitempty"`       // algorithm 0
-	Flex   []SIDInfo `json:"flex_sids,omitempty"` // other algorithms (flex-algo)
+	pfx    netip.Prefix // typed, for SPF
+	sids   []PrefixSID  // index SIDs as sent (flags kept), for re-advertisement
+	Prefix string       `json:"prefix"`
+	Metric uint32       `json:"metric"`
+	Down   bool         `json:"down,omitempty"`
+	MT     uint16       `json:"mt,omitempty"`
+	SID    *SIDInfo     `json:"sid,omitempty"`       // algorithm 0
+	Flex   []SIDInfo    `json:"flex_sids,omitempty"` // other algorithms (flex-algo)
 }
 
-// setSIDs files decoded Prefix-SIDs by algorithm.
+// setSIDs files decoded Prefix-SIDs by algorithm, and keeps the index
+// SIDs as sent.
 func (p *PfxInfo) setSIDs(sub []byte) {
 	for _, s := range parsePrefixSIDs(sub) {
 		if s.Algo == 0 && p.SID == nil {
@@ -769,6 +782,13 @@ func (p *PfxInfo) setSIDs(sub []byte) {
 			p.SID = &c
 		} else {
 			p.Flex = append(p.Flex, s)
+		}
+	}
+	for len(sub) >= 2 && int(sub[1]) <= len(sub)-2 {
+		t, v := sub[0], sub[2:2+int(sub[1])]
+		sub = sub[2+int(sub[1]):]
+		if t == subPrefixSID && len(v) == 6 && v[0]&(PSIDValue|PSIDLocal) == 0 {
+			p.sids = append(p.sids, PrefixSID{Flags: v[0], Algo: v[1], Index: binary.BigEndian.Uint32(v[2:])})
 		}
 	}
 }
@@ -830,7 +850,7 @@ func (l *LSP) Info() LSPInfo {
 			if len(v) < 11+sl {
 				break
 			}
-			n := NbrInfo{ID: NodeID(v[:7]).String(), Metric: uint32(v[7])<<16 | uint32(v[8])<<8 | uint32(v[9]), MT: mt, AdjSIDs: parseAdjSIDs(v[11 : 11+sl])}
+			n := NbrInfo{id: NodeID(v[:7]), ID: NodeID(v[:7]).String(), Metric: uint32(v[7])<<16 | uint32(v[8])<<8 | uint32(v[9]), MT: mt, AdjSIDs: parseAdjSIDs(v[11 : 11+sl])}
 			parseNbrSubTLVs(v[11:11+sl], &n)
 			in.Neighbors = append(in.Neighbors, n)
 			v = v[11+sl:]
@@ -849,7 +869,7 @@ func (l *LSP) Info() LSPInfo {
 			v = v[1:] // virtual flag
 		}
 		for ; len(v) >= 11; v = v[11:] {
-			in.Neighbors = append(in.Neighbors, NbrInfo{ID: NodeID(v[4:11]).String(), Metric: uint32(v[0] & 0x3f)})
+			in.Neighbors = append(in.Neighbors, NbrInfo{id: NodeID(v[4:11]), ID: NodeID(v[4:11]).String(), Metric: uint32(v[0] & 0x3f)})
 		}
 	}
 	ip4 := func(v []byte, mt uint16) {
@@ -862,7 +882,8 @@ func (l *LSP) Info() LSPInfo {
 			}
 			var a [4]byte
 			copy(a[:], v[5:5+n])
-			p := PfxInfo{Prefix: netip.PrefixFrom(netip.AddrFrom4(a), bits).String(), Metric: binary.BigEndian.Uint32(v), Down: ctl&0x80 != 0, MT: mt}
+			pf := netip.PrefixFrom(netip.AddrFrom4(a), bits)
+			p := PfxInfo{pfx: pf.Masked(), Prefix: pf.String(), Metric: binary.BigEndian.Uint32(v), Down: ctl&0x80 != 0, MT: mt}
 			off := 5 + n
 			if ctl&0x40 != 0 && len(v) > off {
 				if end := off + 1 + int(v[off]); end <= len(v) {
@@ -908,7 +929,8 @@ func (l *LSP) Info() LSPInfo {
 			}
 			var a [16]byte
 			copy(a[:], v[6:6+n])
-			p := PfxInfo{Prefix: netip.PrefixFrom(netip.AddrFrom16(a), bits).String(), Metric: binary.BigEndian.Uint32(v), Down: fl&0x80 != 0, MT: mt}
+			pf := netip.PrefixFrom(netip.AddrFrom16(a), bits)
+			p := PfxInfo{pfx: pf.Masked(), Prefix: pf.String(), Metric: binary.BigEndian.Uint32(v), Down: fl&0x80 != 0, MT: mt}
 			off := 6 + n
 			if fl&0x20 != 0 && len(v) > off {
 				if end := off + 1 + int(v[off]); end <= len(v) {

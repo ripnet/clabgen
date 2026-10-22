@@ -8,9 +8,24 @@ import { SchemaForm, defaults, parseSchema, type Obj } from "../components/Schem
 import { ValueView } from "../components/ValueView";
 import { Empty, ErrorBox, HealthText, Modal, useBusy } from "../ui";
 import { AgentHeader } from "./AgentPage";
+import { EnableToggle } from "./ProtocolsTab";
+
+// throwFailed turns per-member failures of a group change into an error.
+function throwFailed(r: { results: GroupActionResult[] }) {
+  const failed = r.results.filter((x) => x.error);
+  if (failed.length)
+    throw new Error(`${failed.length} of ${r.results.length} failed: ${failed.slice(0, 3).map((f) => `${f.protocol}: ${f.error}`).join("; ")}`);
+  return r;
+}
+
+// Group-wide pseudo-actions, next to the protocol type's own.
+const toggleActions = [
+  { name: "disable", description: "Stop the protocol on the selected members, keeping their config. On every member it is kept in the group spec; on some, until they are enabled again.", argsSchema: "" },
+  { name: "enable", description: "Start the protocol again on the selected members.", argsSchema: "" },
+];
 
 type Counts = Record<string, number>;
-type ProtoSummary = { name: string; type: string; states: Counts; health?: Counts };
+type ProtoSummary = { name: string; type: string; states: Counts; health?: Counts; disabled?: boolean };
 type MemberProto = { name: string; state: string; health?: string; error?: string };
 type Member = { index: number; device: string; mac: string; vlans: string; addresses?: string[]; protocols?: MemberProto[] };
 
@@ -34,10 +49,12 @@ export function countsText(c: Counts | undefined): string {
 const sum = (c: Counts | undefined) => Object.values(c ?? {}).reduce((a, b) => a + b, 0);
 
 // groupHealth rolls a group protocol's counts into one health: ok when
-// every member is running and healthy, bad when none is.
+// every member is running and healthy, bad when none is. Disabled members
+// don't count against it.
 export function groupHealth(p: ProtoSummary): Summary {
-  const total = sum(p.states);
+  const total = sum(p.states) - (p.states.disabled ?? 0);
   const running = p.states.running ?? 0;
+  if (total === 0) return { health: "idle", text: countsText(p.states) };
   if (p.states.error) return { health: "bad", text: `${p.states.error} failed: ${countsText(p.states)}` };
   if (!running) return { health: "idle", text: countsText(p.states) };
   if (!p.health) return { health: running === total ? "ok" : "warn", text: countsText(p.states) };
@@ -45,7 +62,7 @@ export function groupHealth(p: ProtoSummary): Summary {
   const good = entries.filter(([k]) => goodWords.test(k)).reduce((a, [, n]) => a + n, 0);
   const idle = entries.filter(([k]) => idleWords.test(k)).reduce((a, [, n]) => a + n, 0);
   let text = countsText(p.health);
-  if (running < total) text += ` (${countsText(p.states)})`;
+  if (running < sum(p.states)) text += ` (${countsText(p.states)})`;
   if (good === total) return { health: "ok", text };
   if (idle === total) return { health: "idle", text };
   return { health: good > 0 ? "warn" : "bad", text };
@@ -252,7 +269,16 @@ export function GroupDetail({ agentId, name }: { agentId: string; name: string }
               {s.protocols.map((p) => {
                 const h = groupHealth(p);
                 return (
-                  <div key={p.name}>
+                  <div key={p.name} className="group-proto">
+                    <EnableToggle
+                      disabled={!!p.disabled}
+                      busy={busy}
+                      title={p.disabled ? `Enable ${p.name} on every member` : `Disable ${p.name} on every member, keeping its config`}
+                      onToggle={() => {
+                        if (!p.disabled && !confirm(`Disable ${p.name} on all ${s.count} members of ${group.name}?`)) return;
+                        run(() => c.setGroupDisabled({ group: group.name, protocol: p.name, disabled: !p.disabled }).then(throwFailed), `${p.disabled ? "Enabled" : "Disabled"} ${p.name} on ${group.name}`).then(g.refresh);
+                      }}
+                    />
                     <HealthText health={h.health}>
                       <span className="mono">{p.name}</span> ({p.type}): {h.text}
                     </HealthText>
@@ -357,7 +383,8 @@ function GroupActions({ agentId, group, protocols, count }: { agentId: string; g
   const types = usePoll(() => client(agentId).listProtocolTypes({}), [agentId]);
   const [protoName, setProtoName] = useState(protocols[0].name);
   const proto = protocols.find((p) => p.name === protoName) ?? protocols[0];
-  const actions = types.data?.types.find((t) => t.name === proto.type)?.actions ?? [];
+  const typeActions = types.data?.types.find((t) => t.name === proto.type)?.actions;
+  const actions = typeActions ? [...typeActions, ...toggleActions] : [];
   const [sel, setSel] = useState("");
   const action = actions.find((a) => a.name === sel) ?? actions[0];
   const schema = useMemo(() => parseSchema(action?.argsSchema), [action?.argsSchema]);
@@ -375,14 +402,11 @@ function GroupActions({ agentId, group, protocols, count }: { agentId: string; g
     const t0 = performance.now();
     const base = { id: Date.now(), action: `${proto.name} ${action.name}`, at: new Date() };
     try {
-      const r = await client(agentId).runGroupAction({
-        group,
-        protocol: proto.name,
-        action: action.name,
-        args: args as JsonObject,
-        members,
-        random: Number(random) || 0,
-      });
+      const sel = { group, protocol: proto.name, members, random: Number(random) || 0 };
+      const toggle = toggleActions.some((a) => a.name === action.name);
+      const r = toggle
+        ? await client(agentId).setGroupDisabled({ ...sel, disabled: action.name === "disable" })
+        : await client(agentId).runGroupAction({ ...sel, action: action.name, args: args as JsonObject });
       setResults((x) => [{ ...base, ms: performance.now() - t0, results: r.results }, ...x].slice(0, 5));
     } catch (e) {
       setResults((x) => [{ ...base, ms: performance.now() - t0, error: errorText(e) }, ...x].slice(0, 5));
@@ -431,11 +455,15 @@ function GroupActions({ agentId, group, protocols, count }: { agentId: string; g
             <div className="hint">Run on this many of the selected members, picked at random</div>
           </div>
         </div>
-        <h4>Arguments</h4>
-        <SchemaForm schema={schema} value={args} onChange={(v) => setArgsBy((m) => ({ ...m, [key]: v }))} mode="args" />
+        {action.argsSchema && (
+          <>
+            <h4>Arguments</h4>
+            <SchemaForm schema={schema} value={args} onChange={(v) => setArgsBy((m) => ({ ...m, [key]: v }))} mode="args" />
+          </>
+        )}
         <div className="btn-row end">
           <button className="btn primary" disabled={running}>
-            {running ? "Running…" : `Run ${action.name}`}
+            {running ? "Running…" : action.name === "disable" ? "Disable" : action.name === "enable" ? "Enable" : `Run ${action.name}`}
           </button>
         </div>
       </form>

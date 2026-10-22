@@ -109,6 +109,9 @@ const (
 	// AgentServiceRunGroupActionProcedure is the fully-qualified name of the AgentService's
 	// RunGroupAction RPC.
 	AgentServiceRunGroupActionProcedure = "/clabgen.v1.AgentService/RunGroupAction"
+	// AgentServiceSetGroupDisabledProcedure is the fully-qualified name of the AgentService's
+	// SetGroupDisabled RPC.
+	AgentServiceSetGroupDisabledProcedure = "/clabgen.v1.AgentService/SetGroupDisabled"
 	// AgentServiceWatchEventsProcedure is the fully-qualified name of the AgentService's WatchEvents
 	// RPC.
 	AgentServiceWatchEventsProcedure = "/clabgen.v1.AgentService/WatchEvents"
@@ -168,6 +171,9 @@ type AgentServiceClient interface {
 	DeleteDeviceGroup(context.Context, *connect.Request[v1.DeleteDeviceGroupRequest]) (*connect.Response[v1.DeleteDeviceGroupResponse], error)
 	// RunGroupAction runs a protocol action on some or all members.
 	RunGroupAction(context.Context, *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error)
+	// Disables (stops, keeping config) or enables a group's protocols on
+	// selected members; on all of them it is recorded in the group spec.
+	SetGroupDisabled(context.Context, *connect.Request[v1.SetGroupDisabledRequest]) (*connect.Response[v1.SetGroupDisabledResponse], error)
 	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest]) (*connect.ServerStreamForClient[v1.Event], error)
 	// Scenarios are the whole agent config as YAML.
 	GetScenario(context.Context, *connect.Request[v1.GetScenarioRequest]) (*connect.Response[v1.GetScenarioResponse], error)
@@ -341,6 +347,12 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(agentServiceMethods.ByName("RunGroupAction")),
 			connect.WithClientOptions(opts...),
 		),
+		setGroupDisabled: connect.NewClient[v1.SetGroupDisabledRequest, v1.SetGroupDisabledResponse](
+			httpClient,
+			baseURL+AgentServiceSetGroupDisabledProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("SetGroupDisabled")),
+			connect.WithClientOptions(opts...),
+		),
 		watchEvents: connect.NewClient[v1.WatchEventsRequest, v1.Event](
 			httpClient,
 			baseURL+AgentServiceWatchEventsProcedure,
@@ -390,6 +402,7 @@ type agentServiceClient struct {
 	updateDeviceGroup   *connect.Client[v1.UpdateDeviceGroupRequest, v1.UpdateDeviceGroupResponse]
 	deleteDeviceGroup   *connect.Client[v1.DeleteDeviceGroupRequest, v1.DeleteDeviceGroupResponse]
 	runGroupAction      *connect.Client[v1.RunGroupActionRequest, v1.RunGroupActionResponse]
+	setGroupDisabled    *connect.Client[v1.SetGroupDisabledRequest, v1.SetGroupDisabledResponse]
 	watchEvents         *connect.Client[v1.WatchEventsRequest, v1.Event]
 	getScenario         *connect.Client[v1.GetScenarioRequest, v1.GetScenarioResponse]
 	applyScenario       *connect.Client[v1.ApplyScenarioRequest, v1.ApplyScenarioResponse]
@@ -525,6 +538,11 @@ func (c *agentServiceClient) RunGroupAction(ctx context.Context, req *connect.Re
 	return c.runGroupAction.CallUnary(ctx, req)
 }
 
+// SetGroupDisabled calls clabgen.v1.AgentService.SetGroupDisabled.
+func (c *agentServiceClient) SetGroupDisabled(ctx context.Context, req *connect.Request[v1.SetGroupDisabledRequest]) (*connect.Response[v1.SetGroupDisabledResponse], error) {
+	return c.setGroupDisabled.CallUnary(ctx, req)
+}
+
 // WatchEvents calls clabgen.v1.AgentService.WatchEvents.
 func (c *agentServiceClient) WatchEvents(ctx context.Context, req *connect.Request[v1.WatchEventsRequest]) (*connect.ServerStreamForClient[v1.Event], error) {
 	return c.watchEvents.CallServerStream(ctx, req)
@@ -588,6 +606,9 @@ type AgentServiceHandler interface {
 	DeleteDeviceGroup(context.Context, *connect.Request[v1.DeleteDeviceGroupRequest]) (*connect.Response[v1.DeleteDeviceGroupResponse], error)
 	// RunGroupAction runs a protocol action on some or all members.
 	RunGroupAction(context.Context, *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error)
+	// Disables (stops, keeping config) or enables a group's protocols on
+	// selected members; on all of them it is recorded in the group spec.
+	SetGroupDisabled(context.Context, *connect.Request[v1.SetGroupDisabledRequest]) (*connect.Response[v1.SetGroupDisabledResponse], error)
 	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.Event]) error
 	// Scenarios are the whole agent config as YAML.
 	GetScenario(context.Context, *connect.Request[v1.GetScenarioRequest]) (*connect.Response[v1.GetScenarioResponse], error)
@@ -757,6 +778,12 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(agentServiceMethods.ByName("RunGroupAction")),
 		connect.WithHandlerOptions(opts...),
 	)
+	agentServiceSetGroupDisabledHandler := connect.NewUnaryHandler(
+		AgentServiceSetGroupDisabledProcedure,
+		svc.SetGroupDisabled,
+		connect.WithSchema(agentServiceMethods.ByName("SetGroupDisabled")),
+		connect.WithHandlerOptions(opts...),
+	)
 	agentServiceWatchEventsHandler := connect.NewServerStreamHandler(
 		AgentServiceWatchEventsProcedure,
 		svc.WatchEvents,
@@ -829,6 +856,8 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 			agentServiceDeleteDeviceGroupHandler.ServeHTTP(w, r)
 		case AgentServiceRunGroupActionProcedure:
 			agentServiceRunGroupActionHandler.ServeHTTP(w, r)
+		case AgentServiceSetGroupDisabledProcedure:
+			agentServiceSetGroupDisabledHandler.ServeHTTP(w, r)
 		case AgentServiceWatchEventsProcedure:
 			agentServiceWatchEventsHandler.ServeHTTP(w, r)
 		case AgentServiceGetScenarioProcedure:
@@ -946,6 +975,10 @@ func (UnimplementedAgentServiceHandler) DeleteDeviceGroup(context.Context, *conn
 
 func (UnimplementedAgentServiceHandler) RunGroupAction(context.Context, *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.RunGroupAction is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) SetGroupDisabled(context.Context, *connect.Request[v1.SetGroupDisabledRequest]) (*connect.Response[v1.SetGroupDisabledResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.SetGroupDisabled is not implemented"))
 }
 
 func (UnimplementedAgentServiceHandler) WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.Event]) error {
