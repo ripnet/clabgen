@@ -135,7 +135,8 @@ func (f *flow) HandleRx(fr *pkt.Frame) {
 		if !v4 {
 			ttlName = "hlim"
 		}
-		f.Tracker().Received(n, ipflow.RxTime(fr), sent, fmt.Sprintf("%d B from %s %s=%d", len(m)-8, from, ttlName, ttl))
+		size := len(m) - 8
+		f.Tracker().Received(n, ipflow.RxTime(fr), sent, func() string { return fmt.Sprintf("%d B from %s %s=%d", size, from, ttlName, ttl) })
 		return
 	}
 	e, ok := ipflow.ParseICMPError(m, v4, from)

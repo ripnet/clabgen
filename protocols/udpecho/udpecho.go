@@ -60,7 +60,7 @@ type responder struct {
 	mu       sync.Mutex
 	rx, tx   uint64
 	txErrors uint64
-	lastFrom string
+	lastFrom netip.AddrPort // formatted by Status
 }
 
 func (echoType) Start(env protocol.Env, c any) (protocol.Session, error) {
@@ -145,7 +145,7 @@ func (r *responder) HandleRx(fr *pkt.Frame) {
 	} else {
 		r.tx++
 	}
-	r.lastFrom = fmt.Sprintf("%s", netip.AddrPortFrom(src, binary.BigEndian.Uint16(b[0:])))
+	r.lastFrom = netip.AddrPortFrom(src, binary.BigEndian.Uint16(b[0:]))
 	r.mu.Unlock()
 }
 
@@ -160,7 +160,11 @@ type Status struct {
 func (r *responder) Status() any {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return Status{Ports: r.cfg.Ports, Rx: r.rx, Tx: r.tx, TxErrors: r.txErrors, LastFrom: r.lastFrom}
+	st := Status{Ports: r.cfg.Ports, Rx: r.rx, Tx: r.tx, TxErrors: r.txErrors}
+	if r.lastFrom.IsValid() {
+		st.LastFrom = r.lastFrom.String()
+	}
+	return st
 }
 
 func (r *responder) Action(_ context.Context, name string, _ any) (any, error) {
@@ -168,7 +172,7 @@ func (r *responder) Action(_ context.Context, name string, _ any) (any, error) {
 		return nil, fmt.Errorf("unknown action %q", name)
 	}
 	r.mu.Lock()
-	r.rx, r.tx, r.txErrors, r.lastFrom = 0, 0, 0, ""
+	r.rx, r.tx, r.txErrors, r.lastFrom = 0, 0, 0, netip.AddrPort{}
 	r.mu.Unlock()
 	return map[string]any{"cleared": true}, nil
 }

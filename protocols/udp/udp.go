@@ -150,7 +150,8 @@ func (f *flow) HandleRx(fr *pkt.Frame) {
 		if !ok || id != f.FlowID {
 			return
 		}
-		f.Tracker().Received(n, ipflow.RxTime(fr), sent, fmt.Sprintf("%d B from %s:%d ttl=%d", len(b)-8, from, f.cfg.DstPort, ttl))
+		size, port := len(b)-8, f.cfg.DstPort
+		f.Tracker().Received(n, ipflow.RxTime(fr), sent, func() string { return fmt.Sprintf("%d B from %s:%d ttl=%d", size, from, port, ttl) })
 		return
 	}
 	// ICMP errors quoting our datagrams (port unreachable, TTL exceeded, …).

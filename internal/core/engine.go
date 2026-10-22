@@ -644,7 +644,9 @@ func (e *Engine) view(in *instance, withStatus, brief bool) ProtocolView {
 	return v
 }
 
-func (e *Engine) Protocols(withStatus bool) []ProtocolView { return e.ProtocolList(withStatus, false, false) }
+func (e *Engine) Protocols(withStatus bool) []ProtocolView {
+	return e.ProtocolList(withStatus, false, false)
+}
 
 // ProtocolList lists instances; with brief, sessions that offer a compact
 // status (protocol.Briefer) report that instead; noMembers leaves out

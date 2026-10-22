@@ -112,7 +112,8 @@ type Tracker struct {
 	jitN    uint64
 
 	buckets [timelineLen]Bucket
-	recent  []Line
+	recent  [recentLen]entry // ring; formatted into Lines by Snapshot
+	nRecent int
 }
 
 // New returns a tracker for a flow sending one packet per interval and
@@ -141,12 +142,29 @@ func (t *Tracker) bucketIfKept(at time.Time) *Bucket {
 	return b
 }
 
-func (t *Tracker) line(l Line) {
-	if len(t.recent) >= recentLen {
-		copy(t.recent, t.recent[1:])
-		t.recent = t.recent[:recentLen-1]
+// entry is a result line as recorded: formatting (the time, the detail)
+// waits until a snapshot asks for it, since most lines are overwritten
+// unread at high rates.
+type entry struct {
+	seq    uint64
+	at     time.Time
+	result string
+	rtt    float64
+	detail string
+	lazy   func() string // detail, when set
+}
+
+func (t *Tracker) line(e entry) {
+	t.recent[t.nRecent%recentLen] = e
+	t.nRecent++
+}
+
+func (e entry) line() Line {
+	l := Line{Seq: e.seq, Time: stamp(e.at), Result: e.result, RTTus: e.rtt, Detail: e.detail}
+	if e.lazy != nil {
+		l.Detail = e.lazy()
 	}
-	t.recent = append(t.recent, l)
+	return l
 }
 
 func stamp(at time.Time) string { return at.Format("15:04:05.000") }
@@ -227,14 +245,15 @@ func (t *Tracker) TxError(seq uint64, at time.Time, err error) {
 	t.st.Lost++
 	b.Lost++
 	t.settle(seq, false)
-	t.line(Line{Seq: seq, Time: stamp(at), Result: ResultTxError, Detail: err.Error()})
+	t.line(entry{seq: seq, at: at, result: ResultTxError, detail: err.Error()})
 }
 
 // Received records a reply for seq that arrived at rx. sentAt, when
 // non-zero, is the send time carried in the packet (more precise than the
-// recorded one). detail is shown on the result line (e.g. "ttl=63").
+// recorded one). detail, if not nil, gives the text shown on the result
+// line (e.g. "ttl=63"); it is called only if the line is read.
 // It returns the result kind.
-func (t *Tracker) Received(seq uint64, rx, sentAt time.Time, detail string) string {
+func (t *Tracker) Received(seq uint64, rx, sentAt time.Time, detail func() string) string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	p, ok := t.pending[seq]
@@ -242,11 +261,11 @@ func (t *Tracker) Received(seq uint64, rx, sentAt time.Time, detail string) stri
 		if at, wasLost := t.lost[seq]; wasLost {
 			delete(t.lost, seq)
 			t.st.Late++
-			t.line(Line{Seq: seq, Time: stamp(rx), Result: ResultLate, RTTus: us(rx.Sub(at)), Detail: detail})
+			t.line(entry{seq: seq, at: rx, result: ResultLate, rtt: us(rx.Sub(at)), lazy: detail})
 			return ResultLate
 		}
 		t.st.Dup++
-		t.line(Line{Seq: seq, Time: stamp(rx), Result: ResultDup, Detail: detail})
+		t.line(entry{seq: seq, at: rx, result: ResultDup, lazy: detail})
 		return ResultDup
 	}
 	delete(t.pending, seq)
@@ -279,7 +298,7 @@ func (t *Tracker) Received(seq uint64, rx, sentAt time.Time, detail string) stri
 	}
 	t.prevRTT = rtt
 	t.settle(seq, true)
-	t.line(Line{Seq: seq, Time: stamp(rx), Result: ResultReply, RTTus: rtt, Detail: detail})
+	t.line(entry{seq: seq, at: rx, result: ResultReply, rtt: rtt, lazy: detail})
 	return ResultReply
 }
 
@@ -298,7 +317,7 @@ func (t *Tracker) ErrorReceived(seq uint64, rx time.Time, detail string) {
 		}
 		t.settle(seq, false)
 	}
-	t.line(Line{Seq: seq, Time: stamp(rx), Result: ResultError, Detail: detail})
+	t.line(entry{seq: seq, at: rx, result: ResultError, detail: detail})
 }
 
 func (t *Tracker) endOutage() {
@@ -335,7 +354,7 @@ func (t *Tracker) Expire(now time.Time, force bool) {
 		if b := t.bucketIfKept(p.at); b != nil {
 			b.Lost++
 		}
-		t.line(Line{Seq: seq, Time: stamp(p.at.Add(t.timeout)), Result: ResultLost})
+		t.line(entry{seq: seq, at: p.at.Add(t.timeout), result: ResultLost})
 	}
 	// Forget old losses; replies later than this count as duplicates.
 	keep := 10 * t.timeout
@@ -363,7 +382,10 @@ func (t *Tracker) Snapshot(now time.Time, seconds int) Stats {
 	if t.run > 0 {
 		st.OutageCurrentMs = float64(t.run) * float64(t.interval) / float64(time.Millisecond)
 	}
-	st.Recent = append([]Line{}, t.recent...)
+	st.Recent = make([]Line, 0, recentLen)
+	for i := max(0, t.nRecent-recentLen); i < t.nRecent; i++ {
+		st.Recent = append(st.Recent, t.recent[i%recentLen].line())
+	}
 	if seconds > timelineLen {
 		seconds = timelineLen
 	}

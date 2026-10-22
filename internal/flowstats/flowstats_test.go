@@ -2,6 +2,7 @@ package flowstats
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -16,7 +17,7 @@ func TestTrackerLossOutageRTT(t *testing.T) {
 		if i < 5 || i >= 10 {
 			tr.Expire(at(i), false)
 			rtt := time.Duration(1+i%3) * time.Millisecond
-			if got := tr.Received(uint64(i), at(i).Add(rtt), time.Time{}, ""); got != ResultReply {
+			if got := tr.Received(uint64(i), at(i).Add(rtt), time.Time{}, nil); got != ResultReply {
 				t.Fatalf("seq %d: %s", i, got)
 			}
 		}
@@ -24,12 +25,12 @@ func TestTrackerLossOutageRTT(t *testing.T) {
 			tr.Expire(at(9).Add(time.Second), false) // 5..9 time out
 		}
 	}
-	if got := tr.Received(3, at(20), time.Time{}, ""); got != ResultDup {
+	if got := tr.Received(3, at(20), time.Time{}, nil); got != ResultDup {
 		t.Fatalf("dup: %s", got)
 	}
 	tr.Sent(20, at(20))
 	tr.Expire(at(20).Add(2*time.Second), false)
-	if got := tr.Received(20, at(20).Add(3*time.Second), time.Time{}, ""); got != ResultLate {
+	if got := tr.Received(20, at(20).Add(3*time.Second), time.Time{}, nil); got != ResultLate {
 		t.Fatalf("late: %s", got)
 	}
 	tr.TxError(21, at(21), errors.New("boom"))
@@ -82,5 +83,27 @@ func TestTrackerNoReplyOutage(t *testing.T) {
 	st := tr.Snapshot(now, 10)
 	if st.OutageCurrentMs != 0 || st.Outages != 1 || st.OutageMaxMs != 50 || st.Lost != 5 || st.Tx != 7 {
 		t.Fatalf("after %+v", st)
+	}
+}
+
+func TestRecentRing(t *testing.T) {
+	t0 := time.Now()
+	tr := New(time.Millisecond, time.Second)
+	calls := 0
+	for i := 0; i < 100; i++ {
+		at := t0.Add(time.Duration(i) * time.Millisecond)
+		tr.Sent(uint64(i), at)
+		n := i
+		tr.Received(uint64(i), at.Add(time.Millisecond), time.Time{}, func() string { calls++; return fmt.Sprint("ttl=", n) })
+	}
+	if calls != 0 {
+		t.Fatalf("details formatted before a snapshot: %d", calls)
+	}
+	r := tr.Snapshot(t0.Add(time.Second), 10).Recent
+	if len(r) != recentLen || r[0].Seq != 100-recentLen || r[len(r)-1].Seq != 99 || r[len(r)-1].Detail != "ttl=99" || r[0].Time == "" {
+		t.Fatalf("recent: %d lines, first %+v, last %+v", len(r), r[0], r[len(r)-1])
+	}
+	if calls != recentLen {
+		t.Fatalf("formatted %d details, want %d", calls, recentLen)
 	}
 }
