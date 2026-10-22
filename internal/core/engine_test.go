@@ -306,8 +306,12 @@ func TestEngineIP(t *testing.T) {
 	}
 
 	// An IP-only change is applied in place: the MEP keeps running.
-	eventually(t, "mep up", func() bool { return rmepOK(t, a, "m") })
-	before := mepStatus(t, a, "m")["tx"].(map[string]any)["CCM"].(float64)
+	// Up and sending (the MEP's first CCM can come after its peer's arrive).
+	var before float64
+	eventually(t, "mep up and sending", func() bool {
+		before, _ = mepStatus(t, a, "m")["tx"].(map[string]any)["CCM"].(float64)
+		return rmepOK(t, a, "m") && before > 0
+	})
 	va.Addresses = []string{"10.0.0.11/24"}
 	va.VLANs = []pkt.VLANTag{{TPID: pkt.TPIDDot1Q, VID: 10}} // same tag, spelled out as clients may send it
 	if _, err := a.UpdateDevice(va); err != nil {
@@ -316,7 +320,7 @@ func TestEngineIP(t *testing.T) {
 	if _, _, _, err := b.ResolveNeighbor(ctx, "d", netip.MustParseAddr("10.0.0.11")); err != nil {
 		t.Fatal(err)
 	}
-	if after := mepStatus(t, a, "m")["tx"].(map[string]any)["CCM"].(float64); after < before {
+	if after, _ := mepStatus(t, a, "m")["tx"].(map[string]any)["CCM"].(float64); after < before {
 		t.Fatalf("a's MEP restarted (%v → %v)", before, after)
 	}
 	if v, _ := a.GetProtocol("m"); v.State != core.StateRunning {
