@@ -188,3 +188,60 @@
 /configure router "Base" ospf3 0 segment-routing admin-state enable
 /configure router "Base" ospf3 0 segment-routing prefix-sid-range global
 /configure router "Base" ospf3 0 area 0.0.0.0 interface "system" node-sid index 4
+/configure router "Base" bgp group "clabgen" family vpn-ipv4 true
+/configure router "Base" bgp group "clabgen" family vpn-ipv6 true
+/configure router "Base" bgp group "clabgen" family evpn true
+/configure router "Base" bgp group "clabgen" family l2-vpn true
+/configure service vprn "vprn500" admin-state enable
+/configure service vprn "vprn500" service-id 500
+/configure service vprn "vprn500" customer "1"
+/configure service vprn "vprn500" bgp-ipvpn mpls admin-state enable
+/configure service vprn "vprn500" bgp-ipvpn mpls route-distinguisher "65100:500"
+/configure service vprn "vprn500" bgp-ipvpn mpls vrf-target community "target:65100:500"
+/configure service vprn "vprn500" bgp-ipvpn mpls auto-bind-tunnel resolution any
+/configure service vprn "vprn500" interface "lo500" loopback true
+/configure service vprn "vprn500" interface "lo500" ipv4 primary address 10.200.5.1 prefix-length 32
+/configure service vprn "vprn500" interface "lo500" ipv6 address 2001:db8:200:5::1 prefix-length 128
+/configure service vpls "evpn600" admin-state enable
+/configure service vpls "evpn600" service-id 600
+/configure service vpls "evpn600" customer "1"
+/configure service vpls "evpn600" bgp 1 route-distinguisher "65100:600"
+/configure service vpls "evpn600" bgp 1 route-target export "target:65100:600"
+/configure service vpls "evpn600" bgp 1 route-target import "target:65100:600"
+/configure service vpls "evpn600" bgp-evpn evi 600
+/configure service vpls "evpn600" bgp-evpn mpls 1 admin-state enable
+/configure service vpls "evpn600" bgp-evpn mpls 1 auto-bind-tunnel resolution any
+/configure service vpls "evpn600" sap 1/1/c1/1:600 admin-state enable
+/configure service sdp 50 admin-state enable
+/configure service sdp 50 delivery-type mpls
+/configure service sdp 50 sr-isis true
+/configure service sdp 50 signaling bgp
+/configure service sdp 50 far-end ip-address 192.0.2.50
+/configure service sdp 50 path-mtu 1600
+/configure service pw-template "bgp-l2" pw-template-id 700
+/configure service pw-template "bgp-l2" provisioned-sdp use
+/configure service pw-template "bgp-l2" path-mtu 1600
+/configure service vpls "bgpvpls700" admin-state enable
+/configure service vpls "bgpvpls700" service-id 700
+/configure service vpls "bgpvpls700" customer "1"
+/configure service vpls "bgpvpls700" bgp 1 route-distinguisher "65100:700"
+/configure service vpls "bgpvpls700" bgp 1 route-target export "target:65100:700"
+/configure service vpls "bgpvpls700" bgp 1 route-target import "target:65100:700"
+/configure service vpls "bgpvpls700" bgp 1 pw-template-binding "bgp-l2"
+/configure service vpls "bgpvpls700" bgp-vpls admin-state enable
+/configure service vpls "bgpvpls700" bgp-vpls maximum-ve-id 10
+/configure service vpls "bgpvpls700" bgp-vpls ve name "sr1" id 1
+/configure service vpls "bgpvpls700" sap 1/1/c1/1:700 admin-state enable
+/configure service epipe "bgpvpws800" admin-state enable
+/configure service epipe "bgpvpws800" service-id 800
+/configure service epipe "bgpvpws800" customer "1"
+/configure service epipe "bgpvpws800" bgp 1 route-distinguisher "65100:800"
+/configure service epipe "bgpvpws800" bgp 1 route-target export "target:65100:800"
+/configure service epipe "bgpvpws800" bgp 1 route-target import "target:65100:800"
+/configure service epipe "bgpvpws800" bgp 1 pw-template-binding "bgp-l2"
+/configure service epipe "bgpvpws800" bgp-vpws admin-state enable
+/configure service epipe "bgpvpws800" bgp-vpws local-ve name "sr1" id 1
+/configure service epipe "bgpvpws800" bgp-vpws remote-ve "clabgen" id 2
+/configure service epipe "bgpvpws800" sap 1/1/c1/1:800 admin-state enable
+/configure router "Base" bgp group "clabgen" ebgp-default-reject-policy import false
+/configure router "Base" bgp group "clabgen" ebgp-default-reject-policy export false

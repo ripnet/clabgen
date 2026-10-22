@@ -246,6 +246,30 @@ peer from loopbacks too):
 message="maintenance"`, `… route-refresh` and `… rib peer=10.0.50.1 prefix=…`.
 There is no TCP MD5 authentication (the netstack has none).
 
+VPN families (peer `families`: `ipv4-vpn`, `ipv6-vpn`, `evpn`, `l2vpn`):
+a route with an `rd` is VPNv4/VPNv6 (`label`, `route_targets`; the VPNv6
+next hop is IPv4-mapped over IPv4, as 6VPE); `evpn` entries are MAC/IP
+(counting MACs and IPs up), inclusive multicast (PMSI tunnel, ingress
+replication), Ethernet A-D (ESI label, single-active), Ethernet segment
+and IP prefix routes, with MPLS labels or VXLAN VNIs (`encapsulation`),
+MAC mobility and the router's MAC; `l2vpn` entries are BGP VPLS (RFC 4761)
+or VPWS (RFC 6624) label blocks (`ve_id`, `block_offset`, `block_size`,
+`label_base`, Layer2 Info MTU and control word). Received routes of these
+families show in the `rib` action (filter by text, e.g. `65100:500` or
+`mac:02:00`).
+
+```yaml
+             routes: [{prefix: 10.205.0.0/24, count: 100, rd: "65050:500", label: 5000, route_targets: ["65100:500"]}],
+             evpn: [{type: mac-ip, rd: "65050:600", route_targets: ["65100:600"], mac: "02:00:00:06:00:01", ip: 10.206.0.1, count: 50, label: 6000},
+                    {type: inclusive-multicast, rd: "65050:600", route_targets: ["65100:600"], label: 6001}],
+             l2vpn: [{kind: vpws, rd: "65050:800", route_targets: ["65100:800"], ve_id: 2, label_base: 800000, block_size: 2}]
+```
+
+Over eBGP, SR OS drops VPN routes under its RFC 8212 default reject
+(`vpn-apply-import` is off, so the group's import policy doesn't apply to
+them): set `ebgp-default-reject-policy import false export false` on the
+group, or use iBGP.
+
 An OSPFv2 router on a device, here point-to-point with MD5 and a second
 interface on a LAN where it wants to be DR:
 

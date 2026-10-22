@@ -17,7 +17,9 @@ type Config struct {
 	// Peers we talk to; each is dialled (unless passive) and accepted.
 	Peers []Peer `json:"peers,omitempty"`
 	// Routes we advertise to every peer of a matching family.
-	Routes []Route `json:"routes,omitempty" jsonschema:"description=Routes to advertise (route injection)"`
+	Routes []Route      `json:"routes,omitempty" jsonschema:"description=Routes to advertise (route injection); with an rd: VPNv4 / VPNv6"`
+	EVPN   []EVPNRoute  `json:"evpn,omitempty" jsonschema:"description=EVPN routes (family evpn)"`
+	L2VPN  []L2VPNRoute `json:"l2vpn,omitempty" jsonschema:"description=BGP VPLS / VPWS label blocks (family l2vpn)"`
 }
 
 type Peer struct {
@@ -25,7 +27,7 @@ type Peer struct {
 	RemoteAS     uint32   `json:"remote_as" jsonschema:"minimum=1"`
 	LocalAddress string   `json:"local_address,omitempty" jsonschema:"description=Our source address. Default: the device address toward the peer"`
 	Passive      bool     `json:"passive,omitempty" jsonschema:"description=Only accept the peer's connection; don't dial"`
-	Families     []string `json:"families,omitempty" jsonschema:"description=Address families: ipv4-unicast ipv6-unicast. Default: the peer address's family"`
+	Families     []string `json:"families,omitempty" jsonschema:"description=Address families: ipv4-unicast ipv6-unicast ipv4-vpn ipv6-vpn evpn l2vpn. Default: the peer address's unicast family"`
 	HoldTime     int      `json:"hold_time,omitempty" jsonschema:"description=Default: the speaker's"`
 	TTL          int      `json:"ttl,omitempty" jsonschema:"minimum=0,maximum=255,description=TTL of our packets (eBGP multihop / GTSM 255). Default 64 (eBGP 1)"`
 	Description  string   `json:"description,omitempty"`
@@ -47,13 +49,17 @@ type Route struct {
 	ExtCommunities   []string `json:"ext_communities,omitempty" jsonschema:"description=Extended communities: rt:65000:100, soo:65000:1, rt:192.0.2.1:7"`
 	AtomicAggregate  bool     `json:"atomic_aggregate,omitempty"`
 	Peers            []string `json:"peers,omitempty" jsonschema:"description=Only to these peers (addresses). Default: all"`
+	// VPN (RFC 4364 / 4659): a route distinguisher makes the route VPNv4/v6.
+	RD           string   `json:"rd,omitempty" jsonschema:"description=Route distinguisher (65100:500 or 192.0.2.50:500): advertise as VPNv4 / VPNv6"`
+	Label        uint32   `json:"label,omitempty" jsonschema:"description=VPN label. Default 30000"`
+	RouteTargets []string `json:"route_targets,omitempty" jsonschema:"description=Route targets, e.g. 65100:500"`
 }
 
 func defaultConfig() *Config {
 	return &Config{LocalAS: 65000, HoldTime: 90}
 }
 
-var families = map[string]bool{"ipv4-unicast": true, "ipv6-unicast": true}
+var families = map[string]bool{"ipv4-unicast": true, "ipv6-unicast": true, "ipv4-vpn": true, "ipv6-vpn": true, "evpn": true, "l2vpn": true}
 
 func (c *Config) Validate() error {
 	if c.LocalAS == 0 {
@@ -87,7 +93,7 @@ func (c *Config) Validate() error {
 		}
 		for _, f := range p.Families {
 			if !families[f] {
-				return fmt.Errorf("peer %s: unknown family %q (ipv4-unicast, ipv6-unicast)", a, f)
+				return fmt.Errorf("peer %s: unknown family %q (ipv4-unicast, ipv6-unicast, ipv4-vpn, ipv6-vpn, evpn, l2vpn)", a, f)
 			}
 		}
 		if p.HoldTime != 0 && (p.HoldTime < 3 || p.HoldTime > 65535) {
@@ -98,16 +104,39 @@ func (c *Config) Validate() error {
 		}
 	}
 	for _, r := range c.Routes {
-		if _, err := r.expand(); err != nil {
-			return err
-		}
-		if _, err := r.attrs(); err != nil {
+		if err := r.validate(); err != nil {
 			return err
 		}
 		for _, p := range r.Peers {
 			if a, err := netip.ParseAddr(p); err != nil || !seen[a] {
 				return fmt.Errorf("route %s: peer %q is not configured", r.Prefix, p)
 			}
+		}
+	}
+	for _, e := range c.EVPN {
+		if _, _, err := e.expand(netip.MustParseAddr("192.0.2.1")); err != nil {
+			return err
+		}
+	}
+	for _, l := range c.L2VPN {
+		if _, err := l.expand(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r Route) validate() error {
+	if _, err := r.expand(); err != nil {
+		return err
+	}
+	t, err := r.attrs()
+	if err != nil {
+		return err
+	}
+	if r.RD != "" {
+		if _, err := r.vpnRoutes(t); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -198,7 +227,9 @@ func parseLarge(s string) ([3]uint32, error) {
 
 // Action args.
 type RouteArgs struct {
-	Routes []Route `json:"routes"`
+	Routes []Route      `json:"routes,omitempty"`
+	EVPN   []EVPNRoute  `json:"evpn,omitempty"`
+	L2VPN  []L2VPNRoute `json:"l2vpn,omitempty"`
 }
 
 type PeerArgs struct {
@@ -226,14 +257,21 @@ func (a *FlapArgs) Validate() error {
 }
 
 func (a *RouteArgs) Validate() error {
-	if len(a.Routes) == 0 {
+	if len(a.Routes)+len(a.EVPN)+len(a.L2VPN) == 0 {
 		return errors.New("at least one route")
 	}
 	for _, r := range a.Routes {
-		if _, err := r.expand(); err != nil {
+		if err := r.validate(); err != nil {
 			return err
 		}
-		if _, err := r.attrs(); err != nil {
+	}
+	for _, e := range a.EVPN {
+		if _, _, err := e.expand(netip.MustParseAddr("192.0.2.1")); err != nil {
+			return err
+		}
+	}
+	for _, l := range a.L2VPN {
+		if _, err := l.expand(); err != nil {
 			return err
 		}
 	}
@@ -242,7 +280,7 @@ func (a *RouteArgs) Validate() error {
 
 type RIBArgs struct {
 	Peer   string `json:"peer" jsonschema:"description=Peer address"`
-	Family string `json:"family,omitempty" jsonschema:"enum=ipv4-unicast,enum=ipv6-unicast,description=Default: all"`
-	Prefix string `json:"prefix,omitempty" jsonschema:"description=Only prefixes within this one"`
+	Family string `json:"family,omitempty" jsonschema:"enum=ipv4-unicast,enum=ipv6-unicast,enum=ipv4-vpn,enum=ipv6-vpn,enum=evpn,enum=l2vpn,description=Default: all"`
+	Prefix string `json:"prefix,omitempty" jsonschema:"description=Unicast: only prefixes within this one; other families: routes whose text contains it"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"description=At most this many routes. Default 1000"`
 }

@@ -26,7 +26,13 @@ type Peer = {
   flapping?: boolean;
   counters: Record<string, number>;
 };
-type BGPStatus = { local_as: number; router_id: string; advertised: Record<string, number>; peers: Peer[]; counters: Record<string, number> };
+type BGPStatus = {
+  local_as: number;
+  router_id: string;
+  advertised: Record<string, number>;
+  peers: Peer[];
+  counters: Record<string, number>;
+};
 type RIBRoute = {
   prefix: string;
   family: string;
@@ -42,9 +48,17 @@ type RIBRoute = {
 };
 
 const as = (s: JsonObject) => s as unknown as BGPStatus;
-const sum = (m?: Record<string, number>) => Object.values(m ?? {}).reduce((a, b) => a + b, 0);
-const famShort = (f: string) => ({ "ipv4-unicast": "v4", "ipv6-unicast": "v6" })[f] ?? f;
-const perFam = (m: Record<string, number>, fams: string[]) => fams.map((f) => `${famShort(f)} ${m[f] ?? 0}`).join(" · ");
+const sum = (m?: Record<string, number>) =>
+  Object.values(m ?? {}).reduce((a, b) => a + b, 0);
+const famShort = (f: string) =>
+  ({
+    "ipv4-unicast": "v4",
+    "ipv6-unicast": "v6",
+    "ipv4-vpn": "vpnv4",
+    "ipv6-vpn": "vpnv6",
+  })[f] ?? f;
+const perFam = (m: Record<string, number>, fams: string[]) =>
+  fams.map((f) => `${famShort(f)} ${m[f] ?? 0}`).join(" · ");
 
 function summary(st: JsonObject): { health: Health; text: string } {
   const s = as(st);
@@ -56,12 +70,24 @@ function summary(st: JsonObject): { health: Health; text: string } {
   return { health: up === ps.length ? "ok" : up ? "warn" : "bad", text };
 }
 
-function RIB({ agentId, name, peer }: { agentId?: string; name?: string; peer: string }) {
+function RIB({
+  agentId,
+  name,
+  peer,
+}: {
+  agentId?: string;
+  name?: string;
+  peer: string;
+}) {
   const [filter, setFilter] = useState("");
   const d = usePoll(
     async () => {
       if (!agentId || !name) return undefined;
-      const r = await client(agentId).runProtocolAction({ name, action: "rib", args: { peer, prefix: filter.includes("/") ? filter : "", limit: 200 } });
+      const r = await client(agentId).runProtocolAction({
+        name,
+        action: "rib",
+        args: { peer, prefix: filter, limit: 200 },
+      });
       return r.result as unknown as { routes: RIBRoute[]; total: number };
     },
     [agentId, name, peer, filter],
@@ -69,13 +95,20 @@ function RIB({ agentId, name, peer }: { agentId?: string; name?: string; peer: s
   );
   return (
     <div>
-      <input className="input search mono" placeholder="within prefix, e.g. 198.51.100.0/22" value={filter} onChange={(e) => setFilter(e.target.value.trim())} />
+      <input
+        className="input search mono"
+        placeholder="within a prefix (198.51.100.0/22), or text in VPN / EVPN routes (65100:500, mac:02:00)"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value.trim())}
+      />
       {d.error && <div className="error-text">{d.error}</div>}
       {d.data && (
         <>
           <div className="muted small-note">
             {d.data.total} route{d.data.total === 1 ? "" : "s"}
-            {d.data.total > d.data.routes.length ? ` (first ${d.data.routes.length})` : ""}
+            {d.data.total > d.data.routes.length
+              ? ` (first ${d.data.routes.length})`
+              : ""}
           </div>
           <div className="table-wrap">
             <table className="table dense">
@@ -89,7 +122,7 @@ function RIB({ agentId, name, peer }: { agentId?: string; name?: string; peer: s
               </thead>
               <tbody>
                 {d.data.routes.map((r) => (
-                  <tr key={r.prefix}>
+                  <tr key={`${r.family}/${r.prefix}`}>
                     <td className="mono">{r.prefix}</td>
                     <td className="mono">{r.next_hop}</td>
                     <td className="mono">{r.as_path || "(empty)"}</td>
@@ -117,7 +150,15 @@ function RIB({ agentId, name, peer }: { agentId?: string; name?: string; peer: s
   );
 }
 
-function Status({ status, agentId, name }: { status: JsonObject; agentId?: string; name?: string }) {
+function Status({
+  status,
+  agentId,
+  name,
+}: {
+  status: JsonObject;
+  agentId?: string;
+  name?: string;
+}) {
   const s = as(status);
   const [open, setOpen] = useState<string>();
   return (
@@ -131,7 +172,11 @@ function Status({ status, agentId, name }: { status: JsonObject; agentId?: strin
         </div>
         <div className="kv-row">
           <dt>advertising</dt>
-          <dd className="mono">{Object.entries(s.advertised ?? {}).map(([f, n]) => `${famShort(f)} ${n}`).join(" · ") || "nothing"}</dd>
+          <dd className="mono">
+            {Object.entries(s.advertised ?? {})
+              .map(([f, n]) => `${famShort(f)} ${n}`)
+              .join(" · ") || "nothing"}
+          </dd>
         </div>
       </dl>
       <h4>Peers</h4>
@@ -148,7 +193,12 @@ function Status({ status, agentId, name }: { status: JsonObject; agentId?: strin
           </thead>
           <tbody>
             {(s.peers ?? []).map((p) => (
-              <tr key={p.address} onClick={() => setOpen(open === p.address ? undefined : p.address)}>
+              <tr
+                key={p.address}
+                onClick={() =>
+                  setOpen(open === p.address ? undefined : p.address)
+                }
+              >
                 <td className="mono">
                   {p.address}
                   <div className="muted small-note">
@@ -157,20 +207,40 @@ function Status({ status, agentId, name }: { status: JsonObject; agentId?: strin
                   </div>
                 </td>
                 <td>
-                  <span className={p.state === "established" ? "pill pill-on" : p.state === "idle" || p.state === "active" ? "pill" : "pill pill-warn"}>{p.state}</span>
+                  <span
+                    className={
+                      p.state === "established"
+                        ? "pill pill-on"
+                        : p.state === "idle" || p.state === "active"
+                          ? "pill"
+                          : "pill pill-warn"
+                    }
+                  >
+                    {p.state}
+                  </span>
                   {p.flapping && <span className="tag tag-warn">flapping</span>}
-                  <div className="muted small-note">since {new Date(p.since).toLocaleTimeString()}</div>
+                  <div className="muted small-note">
+                    since {new Date(p.since).toLocaleTimeString()}
+                  </div>
                 </td>
                 <td className="mono">
                   {perFam(p.received, p.families)}
-                  {p.end_of_rib_received?.length ? <div className="muted small-note">EoR {p.end_of_rib_received.map(famShort).join(", ")}</div> : null}
+                  {p.end_of_rib_received?.length ? (
+                    <div className="muted small-note">
+                      EoR {p.end_of_rib_received.map(famShort).join(", ")}
+                    </div>
+                  ) : null}
                 </td>
                 <td className="mono">{perFam(p.advertised, p.families)}</td>
                 <td className="mono small-note">
-                  {p.state === "established" && `id ${p.remote_id} · hold ${p.hold_time} s · from ${p.local_address}`}
+                  {p.state === "established" &&
+                    `id ${p.remote_id} · hold ${p.hold_time} s · from ${p.local_address}`}
                   <div className="muted">
-                    {p.ups} up · {p.downs} down{p.last_down ? ` · last down: ${p.last_down}` : ""}
-                    {p.state !== "established" && p.last_error ? ` · ${p.last_error}` : ""}
+                    {p.ups} up · {p.downs} down
+                    {p.last_down ? ` · last down: ${p.last_down}` : ""}
+                    {p.state !== "established" && p.last_error
+                      ? ` · ${p.last_error}`
+                      : ""}
                   </div>
                 </td>
               </tr>

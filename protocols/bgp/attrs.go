@@ -22,9 +22,10 @@ type tmpl struct {
 	large     []*gb.LargeCommunity
 	ext       []gb.ExtendedCommunityInterface
 	atomic    bool
-	peers     map[netip.Addr]bool // nil: every peer
-	text      string              // for status
-	count     [2]int              // prefixes advertised with it: IPv4, IPv6
+	extra     []gb.PathAttributeInterface // per-route-type attributes (EVPN PMSI tunnel)
+	peers     map[netip.Addr]bool         // nil: every peer
+	text      string                      // for status
+	count     [2]int                      // prefixes advertised with it: IPv4, IPv6
 }
 
 var origins = map[string]uint8{"": gb.BGP_ORIGIN_ATTR_TYPE_IGP, "igp": gb.BGP_ORIGIN_ATTR_TYPE_IGP, "egp": gb.BGP_ORIGIN_ATTR_TYPE_EGP, "incomplete": gb.BGP_ORIGIN_ATTR_TYPE_INCOMPLETE}
@@ -53,6 +54,9 @@ func (r Route) attrs() (*tmpl, error) {
 			return nil, fmt.Errorf("route %s: %w", r.Prefix, err)
 		}
 		t.large = append(t.large, gb.NewLargeCommunity(v[0], v[1], v[2]))
+	}
+	for _, rt := range r.RouteTargets {
+		r.ExtCommunities = append(r.ExtCommunities, "rt:"+rt)
 	}
 	for _, c := range r.ExtCommunities {
 		kind, val, ok := strings.Cut(c, ":")
@@ -90,6 +94,9 @@ func (r Route) attrs() (*tmpl, error) {
 		if len(x) > 0 {
 			parts = append(parts, strings.Join(x, " "))
 		}
+	}
+	if r.RD != "" {
+		parts = append([]string{"rd " + r.RD}, parts...)
 	}
 	t.text = strings.Join(parts, ", ")
 	return t, nil
@@ -129,7 +136,7 @@ func (t *tmpl) pathAttrs(localAS uint32, ebgp bool) []gb.PathAttributeInterface 
 	if len(t.large) > 0 {
 		attrs = append(attrs, gb.NewPathAttributeLargeCommunities(t.large))
 	}
-	return attrs
+	return append(attrs, t.extra...)
 }
 
 func (t *tmpl) forPeer(a netip.Addr) bool { return t.peers == nil || t.peers[a] }
@@ -214,7 +221,7 @@ func summarize(attrs []gb.PathAttributeInterface) *pathInfo {
 			}
 		case *gb.PathAttributeExtendedCommunities:
 			for _, c := range x.Value {
-				p.ExtCommunities = append(p.ExtCommunities, c.String())
+				p.ExtCommunities = append(p.ExtCommunities, extText(c))
 			}
 		case *gb.PathAttributeMpReachNLRI, *gb.PathAttributeMpUnreachNLRI:
 		default:
@@ -230,4 +237,15 @@ func (p *pathInfo) withNextHop(nh string) *pathInfo {
 	c := *p
 	c.NextHop = nh
 	return &c
+}
+
+// extText names an extended community; Layer2 Info (any encapsulation, as
+// VPWS uses) is decoded here.
+func extText(c gb.ExtendedCommunityInterface) string {
+	if t, st := c.GetTypes(); t == gb.EC_TYPE_GENERIC_TRANSITIVE_EXPERIMENTAL && st == gb.EC_SUBTYPE_L2_INFO {
+		if b, err := c.Serialize(); err == nil && len(b) == 8 {
+			return (&l2InfoExtended{encap: b[2], flags: b[3], mtu: uint16(b[4])<<8 | uint16(b[5])}).String()
+		}
+	}
+	return c.String()
 }

@@ -158,10 +158,18 @@ protocols:
     config: {local_as: 65050, router_id: 192.0.2.50, hold_time: 30,
              peers: [{address: 10.0.50.1, remote_as: 65100, families: [ipv4-unicast, ipv6-unicast], description: sr1 link},
                      {address: 192.0.2.100, remote_as: 65100, local_address: 192.0.2.50, ttl: 64,
-                      families: [ipv4-unicast, ipv6-unicast], description: sr1 loopback}],
+                      families: [ipv4-unicast, ipv6-unicast, ipv4-vpn, ipv6-vpn, evpn, l2vpn], description: sr1 loopback}],
              routes: [{prefix: 100.64.0.0/24, count: 10000, communities: ["65050:1"], large_communities: ["65050:1:1"]},
                       {prefix: "2001:db8:abc::/48", count: 1000, med: 50},
-                      {prefix: 203.0.113.0/24, as_path: [64512, 64513], communities: [no-export], peers: [10.0.50.1]}]}
+                      {prefix: 203.0.113.0/24, as_path: [64512, 64513], communities: [no-export], peers: [10.0.50.1]},
+                      # VPN routes for the SR's vprn500 (RT 65100:500), next hop 192.0.2.50 (an SR-ISIS tunnel at the SR)
+                      {prefix: 10.205.0.0/24, count: 100, rd: "65050:500", label: 5000, route_targets: ["65100:500"]},
+                      {prefix: "2001:db8:205::/48", count: 10, rd: "65050:500", label: 5001, route_targets: ["65100:500"]}],
+             # EVPN for the SR's evpn600 (EVI 600), BGP VPLS bgpvpls700 and BGP VPWS bgpvpws800 (VE 2 = "clabgen")
+             evpn: [{type: mac-ip, rd: "65050:600", route_targets: ["65100:600"], mac: "02:00:00:06:00:01", ip: 10.206.0.1, count: 50, label: 6000},
+                    {type: inclusive-multicast, rd: "65050:600", route_targets: ["65100:600"], label: 6001}],
+             l2vpn: [{kind: vpls, rd: "65050:700", route_targets: ["65100:700"], ve_id: 2, label_base: 700000},
+                     {kind: vpws, rd: "65050:800", route_targets: ["65100:800"], ve_id: 2, label_base: 800000, block_size: 2}]}
   # OSPF area 0 with the SR: one router on the point-to-point link (MD5)
   # and the LAN (a keychain: HMAC-SHA-256 key 5, then key 6, rolled over
   # with the SR's keychain), where it is DR (priority 100); a second

@@ -144,3 +144,68 @@ func TestBGP(t *testing.T) {
 		t.Fatalf("a's dials to an unconfigured peer are counted at b: %v", c)
 	}
 }
+
+// VPN families over iBGP: VPNv4/v6, EVPN and L2VPN routes from a reach b's
+// RIB with their labels and communities, and withdrawals take them out.
+func TestBGPVPN(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	fams := `"families":["ipv4-unicast","ipv4-vpn","ipv6-vpn","evpn","l2vpn"]`
+	mk := func(e *core.Engine, cfg string) {
+		t.Helper()
+		if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "bgp", Type: "bgp", Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(a, `{"local_as":65100,"hold_time":9,"peers":[{"address":"10.0.0.2","remote_as":65100,`+fams+`,"connect_retry":1}],
+		"routes":[{"prefix":"10.50.0.0/24","count":100,"rd":"65100:500","label":5000,"route_targets":["65100:500"]},
+			{"prefix":"2001:db8:500::/48","count":10,"rd":"65100:500","route_targets":["65100:500"]},
+			{"prefix":"198.51.100.0/24"}],
+		"evpn":[{"type":"mac-ip","rd":"65100:600","route_targets":["65100:600"],"mac":"02:00:00:00:06:01","ip":"10.60.0.1","count":50,"label":600},
+			{"type":"inclusive-multicast","rd":"65100:600","route_targets":["65100:600"],"label":600}],
+		"l2vpn":[{"rd":"65100:700","route_targets":["65100:700"],"ve_id":2,"label_base":700000}]}`)
+	mk(b, `{"local_as":65100,"router_id":"10.0.0.2","hold_time":9,"peers":[{"address":"10.0.0.1","remote_as":65100,`+fams+`,"connect_retry":1}]}`)
+	defer func() {
+		if t.Failed() {
+			t.Logf("b %v", bgpPeer(t, b, "10.0.0.1"))
+			t.Logf("a %v", bgpPeer(t, a, "10.0.0.2"))
+		}
+	}()
+	eventuallyLong(t, "all families received", func() bool {
+		p := bgpPeer(t, b, "10.0.0.1")
+		return p["state"] == "established" && received(p, "ipv4-vpn") == 100 && received(p, "ipv6-vpn") == 10 &&
+			received(p, "evpn") == 51 && received(p, "l2vpn") == 1 && received(p, "ipv4-unicast") == 1
+	})
+	if adv := bgpPeer(t, a, "10.0.0.2")["advertised"].(map[string]any); num(adv, "evpn") != 51 || num(adv, "ipv4-vpn") != 100 {
+		t.Fatalf("a advertised %v", adv)
+	}
+	one := func(fam, sub string) map[string]any {
+		rs := bgpRun(t, b, "rib", `{"peer":"10.0.0.1","family":"`+fam+`","prefix":"`+sub+`"}`)["routes"].([]any)
+		if len(rs) == 0 {
+			t.Fatalf("no %s route matching %q", fam, sub)
+		}
+		return rs[0].(map[string]any)
+	}
+	if r := one("ipv4-vpn", "65100:500:10.50.7.0/24"); !strings.Contains(fmt.Sprint(r["prefix"]), "label [5000]") || r["next_hop"] != "10.0.0.1" ||
+		!strings.Contains(fmt.Sprint(r["ext_communities"]), "65100:500") || num(r, "local_pref") != 100 {
+		t.Fatalf("VPNv4 route %v", r)
+	}
+	if r := one("ipv6-vpn", "2001:db8:509::/48"); r["next_hop"] != "10.0.0.1" { // IPv4-mapped on the wire
+		t.Fatalf("VPNv6 route %v", r)
+	}
+	if r := one("evpn", "mac:02:00:00:00:06:32"); !strings.Contains(fmt.Sprint(r["prefix"]), "ip:10.60.0.50") || !strings.Contains(fmt.Sprint(r["prefix"]), "label [600]") {
+		t.Fatalf("EVPN MAC route %v", r)
+	}
+	if r := one("evpn", "multicast"); !strings.Contains(fmt.Sprint(r["other_attributes"]), "PMSI") {
+		t.Fatalf("EVPN IMET route %v", r)
+	}
+	if r := one("l2vpn", "65100:700"); !strings.Contains(fmt.Sprint(r["prefix"]), "labels from 700000") {
+		t.Fatalf("L2VPN route %v", r)
+	}
+	bgpRun(t, a, "withdraw", `{"routes":[{"prefix":"10.50.0.0/24","count":50,"rd":"65100:500"}],
+		"evpn":[{"type":"mac-ip","rd":"65100:600","mac":"02:00:00:00:06:01","ip":"10.60.0.1","count":50,"label":600}],
+		"l2vpn":[{"rd":"65100:700","ve_id":2,"label_base":700000}]}`)
+	eventuallyLong(t, "withdrawn", func() bool {
+		p := bgpPeer(t, b, "10.0.0.1")
+		return received(p, "ipv4-vpn") == 50 && received(p, "evpn") == 1 && received(p, "l2vpn") == 0
+	})
+}

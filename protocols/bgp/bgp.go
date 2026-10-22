@@ -1,6 +1,7 @@
 // Package bgp is an emulated BGP speaker (RFC 4271) on a device: peers
 // over the device's TCP (gVisor netstack, see ipstack), IPv4/IPv6 unicast
-// (RFC 4760), 4-byte AS numbers, route refresh, End-of-RIB; route
+// (RFC 4760) and the VPN families (vpn.go: VPNv4/v6, EVPN, L2VPN), 4-byte
+// AS numbers, route refresh, End-of-RIB; route
 // injection at scale with communities; received routes per peer; actions
 // to advertise/withdraw, reset, flap, send NOTIFICATIONs and route
 // refreshes. Messages are encoded and decoded with GoBGP's codec.
@@ -32,7 +33,7 @@ type bgpType struct{}
 
 func (bgpType) Name() string { return TypeName }
 func (bgpType) Description() string {
-	return "BGP speaker: IPv4/IPv6 unicast peers over the device's TCP, route injection, received routes, reset/flap/notification actions"
+	return "BGP speaker: IPv4/IPv6 unicast, VPNv4/v6, EVPN and L2VPN (VPLS/VPWS) over the device's TCP, route injection, received routes, reset/flap/notification actions"
 }
 func (bgpType) NewConfig() any       { return defaultConfig() }
 func (bgpType) EtherTypes() []uint16 { return nil } // TCP arrives through the device's IP stack
@@ -57,7 +58,8 @@ type session struct {
 	mu       sync.Mutex
 	peers    []*peer
 	byAddr   map[netip.Addr]*peer
-	out      map[netip.Prefix]*tmpl // what we advertise
+	out      map[netip.Prefix]*tmpl // what we advertise (unicast)
+	xout     map[string]*xroute     // VPN families (vpn.go), by key
 	tmpls    map[*tmpl]bool         // templates in use
 	nextTmpl int
 	counters map[string]uint64
@@ -73,7 +75,7 @@ func (bgpType) Start(env protocol.Env, c any) (protocol.Session, error) {
 	if ip == nil {
 		return nil, errors.New("the device has no IP stack")
 	}
-	s := &session{env: env, cfg: cfg, byAddr: map[netip.Addr]*peer{}, out: map[netip.Prefix]*tmpl{}, tmpls: map[*tmpl]bool{},
+	s := &session{env: env, cfg: cfg, byAddr: map[netip.Addr]*peer{}, out: map[netip.Prefix]*tmpl{}, tmpls: map[*tmpl]bool{}, xout: map[string]*xroute{},
 		counters: map[string]uint64{}, stop: make(chan struct{})}
 	if cfg.RouterID != "" {
 		s.rid = netip.MustParseAddr(cfg.RouterID)
@@ -90,6 +92,15 @@ func (bgpType) Start(env protocol.Env, c any) (protocol.Session, error) {
 	}
 	for _, r := range cfg.Routes {
 		s.addRouteLocked(r)
+		s.addXLocked(s.vpnRoutes(r))
+	}
+	for _, e := range cfg.EVPN {
+		s.addXLocked(s.evpnRoutes(e))
+	}
+	for _, l := range cfg.L2VPN {
+		if x, err := l.expand(); err == nil {
+			s.addXLocked([]*xroute{x})
+		}
 	}
 	for _, v6 := range []bool{false, true} {
 		l, err := ip.ListenTCP(netip.Addr{}, 179, v6, 0)
@@ -170,7 +181,7 @@ func (s *session) event(kind, msg string) { s.env.Emit(kind, msg, nil) }
 // returns them by family.
 func (s *session) addRouteLocked(r Route) (*tmpl, []netip.Prefix) {
 	t, err := r.attrs()
-	if err != nil {
+	if err != nil || r.RD != "" {
 		return nil, nil
 	}
 	s.nextTmpl++
@@ -195,8 +206,42 @@ func famIdx(p netip.Prefix) int {
 	return 1
 }
 
+// vpnRoutes are a VPN route's NLRIs (nil if it isn't one).
+func (s *session) vpnRoutes(r Route) []*xroute {
+	if r.RD == "" {
+		return nil
+	}
+	t, err := r.attrs()
+	if err != nil {
+		return nil
+	}
+	xs, _ := r.vpnRoutes(t)
+	return xs
+}
+
+func (s *session) evpnRoutes(e EVPNRoute) []*xroute {
+	xs, _, _ := e.expand(s.rid)
+	return xs
+}
+
+// addXLocked records routes of the VPN families.
+func (s *session) addXLocked(xs []*xroute) {
+	for _, x := range xs {
+		s.xout[x.key] = x
+	}
+}
+
 // advertisedLocked counts what peer p gets of family f.
 func (s *session) advertisedLocked(p *peer, f family) int {
+	if isXFamily(f.rf) {
+		n := 0
+		for _, x := range s.xout {
+			if x.f == f && x.t.forPeer(p.addr) {
+				n++
+			}
+		}
+		return n
+	}
 	i := 0
 	if f.v6 {
 		i = 1
@@ -242,6 +287,9 @@ func (s *session) Status() any {
 	for p := range s.out {
 		st.Advertised[famOfPrefix(p).name]++
 	}
+	for _, x := range s.xout {
+		st.Advertised[x.f.name]++
+	}
 	for k, v := range s.counters {
 		st.Counters[k] = v
 	}
@@ -271,7 +319,7 @@ func (s *session) peersNamed(a string) ([]*peer, error) {
 func (s *session) Action(_ context.Context, name string, args any) (any, error) {
 	switch name {
 	case "advertise", "withdraw":
-		return s.changeRoutes(name == "advertise", args.(*RouteArgs).Routes)
+		return s.changeRoutes(name == "advertise", args.(*RouteArgs))
 	case "reset", "route-refresh":
 		s.mu.Lock()
 		ps, err := s.peersNamed(args.(*PeerArgs).Peer)
@@ -350,10 +398,35 @@ func (s *session) Action(_ context.Context, name string, args any) (any, error) 
 }
 
 // changeRoutes advertises or withdraws routes and tells established peers.
-func (s *session) changeRoutes(add bool, routes []Route) (any, error) {
+func (s *session) changeRoutes(add bool, a *RouteArgs) (any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	routes := a.Routes
 	n := 0
+	// VPN families.
+	var xs []*xroute
+	for _, r := range routes {
+		xs = append(xs, s.vpnRoutes(r)...)
+	}
+	for _, e := range a.EVPN {
+		xs = append(xs, s.evpnRoutes(e)...)
+	}
+	for _, l := range a.L2VPN {
+		if x, err := l.expand(); err == nil {
+			xs = append(xs, x)
+		}
+	}
+	var xchanged []*xroute
+	for _, x := range xs {
+		if add {
+			s.xout[x.key] = x
+			xchanged = append(xchanged, x)
+		} else if old := s.xout[x.key]; old != nil {
+			delete(s.xout, x.key)
+			xchanged = append(xchanged, old)
+		}
+	}
+	n += len(xchanged)
 	type batch struct {
 		t   *tmpl
 		pfx []netip.Prefix
@@ -361,6 +434,9 @@ func (s *session) changeRoutes(add bool, routes []Route) (any, error) {
 	var adds []batch
 	var dels []netip.Prefix
 	for _, r := range routes {
+		if r.RD != "" {
+			continue
+		}
 		if add {
 			t, ps := s.addRouteLocked(r)
 			if t != nil {
@@ -393,12 +469,21 @@ func (s *session) changeRoutes(add bool, routes []Route) (any, error) {
 		if len(dels) > 0 {
 			c.enqueue(job{withdraw: true, pfx: dels})
 		}
+		var mine []*xroute
+		for _, x := range xchanged {
+			if x.t.forPeer(p.addr) {
+				mine = append(mine, x)
+			}
+		}
+		if len(mine) > 0 {
+			c.enqueue(job{withdraw: !add, xs: mine})
+		}
 	}
 	verb := "withdrawn"
 	if add {
 		verb = "advertised"
 	}
-	return map[string]any{verb: n, "total": len(s.out)}, nil
+	return map[string]any{verb: n, "total": len(s.out) + len(s.xout)}, nil
 }
 
 // RIBRoute is one received route.
@@ -421,9 +506,7 @@ func (s *session) rib(a *RIBArgs) (any, error) {
 	p := ps[0]
 	var within netip.Prefix
 	if a.Prefix != "" {
-		if within, err = netip.ParsePrefix(a.Prefix); err != nil {
-			return nil, err
-		}
+		within, _ = netip.ParsePrefix(a.Prefix) // else a substring of other families' routes
 	}
 	limit := a.Limit
 	if limit <= 0 {
@@ -431,8 +514,28 @@ func (s *session) rib(a *RIBArgs) (any, error) {
 	}
 	var out []RIBRoute
 	total := 0
-	for _, f := range []family{famIPv4, famIPv6} {
+	for _, f := range xfamilies {
 		if a.Family != "" && a.Family != f.name {
+			continue
+		}
+		keys := make([]string, 0, len(p.adjX[f.rf]))
+		for k, r := range p.adjX[f.rf] {
+			if a.Prefix == "" || strings.Contains(r.text, a.Prefix) {
+				keys = append(keys, k)
+			}
+		}
+		total += len(keys)
+		sort.Strings(keys)
+		for _, k := range keys {
+			if len(out) >= limit {
+				break
+			}
+			r := p.adjX[f.rf][k]
+			out = append(out, RIBRoute{Prefix: r.text, Family: f.name, pathInfo: r.info})
+		}
+	}
+	for _, f := range []family{famIPv4, famIPv6} {
+		if a.Family != "" && a.Family != f.name || a.Prefix != "" && !within.IsValid() {
 			continue
 		}
 		keys := make([]netip.Prefix, 0, len(p.adjIn[f.rf]))

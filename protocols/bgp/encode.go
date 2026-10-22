@@ -26,21 +26,19 @@ var (
 )
 
 func familyByName(n string) (family, bool) {
-	switch n {
-	case famIPv4.name:
-		return famIPv4, true
-	case famIPv6.name:
-		return famIPv6, true
+	for _, f := range append([]family{famIPv4, famIPv6}, xfamilies...) {
+		if f.name == n {
+			return f, true
+		}
 	}
 	return family{}, false
 }
 
 func familyOf(rf gb.RouteFamily) (family, bool) {
-	switch rf {
-	case gb.RF_IPv4_UC:
-		return famIPv4, true
-	case gb.RF_IPv6_UC:
-		return famIPv6, true
+	for _, f := range append([]family{famIPv4, famIPv6}, xfamilies...) {
+		if f.rf == rf {
+			return f, true
+		}
 	}
 	return family{}, false
 }

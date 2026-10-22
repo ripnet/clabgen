@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,7 +50,9 @@ type peer struct {
 	downs    int
 	flapTill time.Time
 	flapMode string
+	lastBad  string // hex of the last message we couldn't parse
 	adjIn    map[gb.RouteFamily]map[netip.Prefix]*pathInfo
+	adjX     map[gb.RouteFamily]map[string]*rxRoute // VPN families
 	eorIn    map[gb.RouteFamily]bool
 	counters map[string]uint64
 }
@@ -82,6 +85,7 @@ func (p *peer) ebgp() bool { return p.cfg.RemoteAS != p.s.cfg.LocalAS }
 
 func (p *peer) resetRIBLocked() {
 	p.adjIn, p.eorIn = map[gb.RouteFamily]map[netip.Prefix]*pathInfo{}, map[gb.RouteFamily]bool{}
+	p.adjX = map[gb.RouteFamily]map[string]*rxRoute{}
 }
 
 func (p *peer) established() *conn {
@@ -197,6 +201,7 @@ type job struct {
 	t        *tmpl
 	withdraw bool
 	pfx      []netip.Prefix
+	xs       []*xroute // VPN families: advertise (or withdraw) these
 }
 
 type conn struct {
@@ -304,6 +309,13 @@ func (c *conn) enqueue(j job) {
 }
 
 func (c *conn) readMsg(deadline time.Duration) (*gb.BGPMessage, error) {
+	m, _, err := c.readMsgL2(deadline)
+	return m, err
+}
+
+// readMsgL2 reads a message; L2VPN routes in an UPDATE come back decoded
+// apart (vpn.go).
+func (c *conn) readMsgL2(deadline time.Duration) (*gb.BGPMessage, *l2Update, error) {
 	if deadline > 0 {
 		c.c.SetReadDeadline(time.Now().Add(deadline))
 	} else {
@@ -311,23 +323,30 @@ func (c *conn) readMsg(deadline time.Duration) (*gb.BGPMessage, error) {
 	}
 	var h [19]byte
 	if _, err := io.ReadFull(c.c, h[:]); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	l := int(binary.BigEndian.Uint16(h[16:]))
 	for _, x := range h[:16] {
 		if x != 0xff {
-			return nil, gb.NewMessageError(gb.BGP_ERROR_MESSAGE_HEADER_ERROR, gb.BGP_ERROR_SUB_CONNECTION_NOT_SYNCHRONIZED, nil, "bad marker")
+			return nil, nil, gb.NewMessageError(gb.BGP_ERROR_MESSAGE_HEADER_ERROR, gb.BGP_ERROR_SUB_CONNECTION_NOT_SYNCHRONIZED, nil, "bad marker")
 		}
 	}
 	if l < 19 || l > maxMsg {
-		return nil, gb.NewMessageError(gb.BGP_ERROR_MESSAGE_HEADER_ERROR, gb.BGP_ERROR_SUB_BAD_MESSAGE_LENGTH, h[16:18], fmt.Sprintf("bad length %d", l))
+		return nil, nil, gb.NewMessageError(gb.BGP_ERROR_MESSAGE_HEADER_ERROR, gb.BGP_ERROR_SUB_BAD_MESSAGE_LENGTH, h[16:18], fmt.Sprintf("bad length %d", l))
 	}
 	b := make([]byte, l)
 	copy(b, h[:])
 	if _, err := io.ReadFull(c.c, b[19:]); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return gb.ParseBGPMessage(b)
+	b, l2 := takeL2VPN(b)
+	m, err := gb.ParseBGPMessage(b)
+	if err != nil {
+		c.p.s.mu.Lock()
+		c.p.lastBad = fmt.Sprintf("% x", b[:min(len(b), 512)])
+		c.p.s.mu.Unlock()
+	}
+	return m, l2, err
 }
 
 func (c *conn) run() {
@@ -570,7 +589,7 @@ func (c *conn) established() string {
 	c.enqueue(job{dump: true})
 	for {
 		hold := time.Duration(c.holdTime) * time.Second
-		m, err := c.readMsg(hold)
+		m, l2, err := c.readMsgL2(hold)
 		if err != nil {
 			return c.readError(err)
 		}
@@ -579,7 +598,7 @@ func (c *conn) established() string {
 			c.count("rx_keepalive")
 		case *gb.BGPUpdate:
 			c.count("rx_update")
-			c.rxUpdate(b)
+			c.rxUpdate(b, l2)
 		case *gb.BGPRouteRefresh:
 			c.count("rx_route_refresh")
 			c.enqueue(job{refresh: gb.AfiSafiToRouteFamily(b.AFI, b.SAFI)})
@@ -628,11 +647,34 @@ func toPrefix(a gb.AddrPrefixInterface) (netip.Prefix, bool) {
 	return p.Masked(), err == nil
 }
 
-func (c *conn) rxUpdate(u *gb.BGPUpdate) {
+func (c *conn) rxUpdate(u *gb.BGPUpdate, l2 *l2Update) {
 	p, s := c.p, c.p.s
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if eor, rf := u.IsEndOfRib(); eor {
+	if l2 != nil {
+		info := summarize(u.PathAttributes)
+		m := p.adjX[gb.RF_VPLS]
+		if m == nil {
+			m = map[string]*rxRoute{}
+			p.adjX[gb.RF_VPLS] = m
+		}
+		for _, n := range l2.unreach {
+			delete(m, n.key)
+		}
+		in := info.withNextHop(l2.nextHop)
+		for _, n := range l2.reach {
+			if info.hasAS(s.cfg.LocalAS) {
+				delete(m, n.key)
+				p.counters["rx_as_path_loops"]++
+				continue
+			}
+			m[n.key] = &rxRoute{text: n.text, info: in}
+		}
+		if len(l2.reach) == 0 && len(l2.unreach) == 0 {
+			p.eorIn[gb.RF_VPLS] = true // an empty MP_UNREACH: End-of-RIB
+		}
+	}
+	if eor, rf := u.IsEndOfRib(); eor && l2 == nil {
 		p.eorIn[rf] = true
 		return
 	}
@@ -641,6 +683,14 @@ func (c *conn) rxUpdate(u *gb.BGPUpdate) {
 		if m == nil {
 			m = map[netip.Prefix]*pathInfo{}
 			p.adjIn[rf] = m
+		}
+		return m
+	}
+	xrib := func(rf gb.RouteFamily) map[string]*rxRoute {
+		m := p.adjX[rf]
+		if m == nil {
+			m = map[string]*rxRoute{}
+			p.adjX[rf] = m
 		}
 		return m
 	}
@@ -677,6 +727,18 @@ func (c *conn) rxUpdate(u *gb.BGPUpdate) {
 				nh += " " + m.LinkLocalNexthop.String()
 			}
 			in := info.withNextHop(nh)
+			if isXFamily(rf) {
+				vxlan := strings.Contains(strings.Join(in.ExtCommunities, " "), "VXLAN")
+				for _, n := range m.Value {
+					if loop {
+						delete(xrib(rf), xKey(n))
+						p.counters["rx_as_path_loops"]++
+						continue
+					}
+					xrib(rf)[xKey(n)] = &rxRoute{text: rxText(n, vxlan), info: in}
+				}
+				continue
+			}
 			for _, n := range m.Value {
 				if x, ok := toPrefix(n); ok {
 					store(rf, x, in)
@@ -684,6 +746,12 @@ func (c *conn) rxUpdate(u *gb.BGPUpdate) {
 			}
 		case *gb.PathAttributeMpUnreachNLRI:
 			rf := gb.AfiSafiToRouteFamily(m.AFI, m.SAFI)
+			if isXFamily(rf) {
+				for _, n := range m.Value {
+					delete(xrib(rf), xKey(n))
+				}
+				continue
+			}
 			for _, n := range m.Value {
 				if x, ok := toPrefix(n); ok {
 					delete(rib(rf), x)
@@ -756,10 +824,33 @@ func (c *conn) do(j job) error {
 		f family
 	}
 	groups := map[key][]netip.Prefix{}
+	xgroups := map[key][][]byte{}
+	xwithdraw := map[family][][]byte{}
 	var withdraw map[family][]netip.Prefix
 	var eor []family
+	addX := func(x *xroute) {
+		if _, ok := fams[x.f.rf]; ok && x.t.forPeer(p.addr) {
+			xgroups[key{x.t, x.f}] = append(xgroups[key{x.t, x.f}], x.nlri)
+		}
+	}
 	switch {
+	case j.xs != nil:
+		for _, x := range j.xs {
+			if _, ok := fams[x.f.rf]; !ok {
+				continue
+			}
+			if j.withdraw {
+				xwithdraw[x.f] = append(xwithdraw[x.f], x.nlri)
+			} else if s.xout[x.key] == x {
+				addX(x)
+			}
+		}
 	case j.dump || j.refresh != 0:
+		for _, x := range s.xout {
+			if j.refresh == 0 || x.f.rf == j.refresh {
+				addX(x)
+			}
+		}
 		for x, t := range s.out {
 			f := famOfPrefix(x)
 			if _, ok := fams[f.rf]; !ok || !t.forPeer(p.addr) || (j.refresh != 0 && f.rf != j.refresh) {
@@ -822,6 +913,45 @@ func (c *conn) do(j job) error {
 			c.count("tx_update")
 		}
 	}
+	xkeys := make([]key, 0, len(xgroups))
+	for k := range xgroups {
+		xkeys = append(xkeys, k)
+	}
+	sort.Slice(xkeys, func(a, b int) bool {
+		return xkeys[a].t.id < xkeys[b].t.id || xkeys[a].t.id == xkeys[b].t.id && xkeys[a].f.name < xkeys[b].f.name
+	})
+	for _, k := range xkeys {
+		nh := k.t.nextHop
+		if !nh.IsValid() {
+			nh = v4
+			if !nh.IsValid() {
+				nh = v6
+			}
+		}
+		if !nh.IsValid() {
+			c.count("tx_skipped_no_next_hop")
+			continue
+		}
+		msgs, err := buildMPUpdates(k.f, k.t.pathAttrs(localAS, ebgp), xNextHop(k.f, nh), xgroups[k])
+		if err != nil {
+			c.count("tx_encode_errors")
+			continue
+		}
+		for _, m := range msgs {
+			if err := c.write(m); err != nil {
+				return err
+			}
+			c.count("tx_update")
+		}
+	}
+	for f, nl := range xwithdraw {
+		for _, m := range buildMPWithdraws(f, nl) {
+			if err := c.write(m); err != nil {
+				return err
+			}
+			c.count("tx_update")
+		}
+	}
 	for f, pfx := range withdraw {
 		sortPrefixes(pfx)
 		for _, m := range buildWithdraws(f, pfx) {
@@ -852,33 +982,34 @@ func sortPrefixes(ps []netip.Prefix) {
 // ---- status ----
 
 type PeerStatus struct {
-	Address      string            `json:"address"`
-	RemoteAS     uint32            `json:"remote_as"`
-	Description  string            `json:"description,omitempty"`
-	Type         string            `json:"type"` // ebgp or ibgp
-	State        string            `json:"state"`
-	Since        string            `json:"since"`
-	RemoteID     string            `json:"remote_id,omitempty"`
-	LocalAddress string            `json:"local_address,omitempty"`
-	HoldTime     int               `json:"hold_time,omitempty"` // negotiated
-	Families     []string          `json:"families"`            // negotiated (configured when down)
-	Capabilities []string          `json:"capabilities,omitempty"`
-	Received     map[string]int    `json:"received"`
-	Advertised   map[string]int    `json:"advertised"`
-	EndOfRIB     []string          `json:"end_of_rib_received,omitempty"`
-	LastError    string            `json:"last_error,omitempty"`
-	LastDown     string            `json:"last_down,omitempty"` // why the last session ended
-	LastDownAt   string            `json:"last_down_at,omitempty"`
-	Ups          int               `json:"ups"`
-	Downs        int               `json:"downs"`
-	Flapping     bool              `json:"flapping,omitempty"`
-	Counters     map[string]uint64 `json:"counters"`
+	Address       string            `json:"address"`
+	RemoteAS      uint32            `json:"remote_as"`
+	Description   string            `json:"description,omitempty"`
+	Type          string            `json:"type"` // ebgp or ibgp
+	State         string            `json:"state"`
+	Since         string            `json:"since"`
+	RemoteID      string            `json:"remote_id,omitempty"`
+	LocalAddress  string            `json:"local_address,omitempty"`
+	HoldTime      int               `json:"hold_time,omitempty"` // negotiated
+	Families      []string          `json:"families"`            // negotiated (configured when down)
+	Capabilities  []string          `json:"capabilities,omitempty"`
+	Received      map[string]int    `json:"received"`
+	Advertised    map[string]int    `json:"advertised"`
+	EndOfRIB      []string          `json:"end_of_rib_received,omitempty"`
+	LastError     string            `json:"last_error,omitempty"`
+	LastDown      string            `json:"last_down,omitempty"` // why the last session ended
+	LastDownAt    string            `json:"last_down_at,omitempty"`
+	LastMalformed string            `json:"last_malformed,omitempty"` // hex, first 512 bytes
+	Ups           int               `json:"ups"`
+	Downs         int               `json:"downs"`
+	Flapping      bool              `json:"flapping,omitempty"`
+	Counters      map[string]uint64 `json:"counters"`
 }
 
 func (p *peer) statusLocked(now time.Time) PeerStatus {
 	st := PeerStatus{Address: p.addr.String(), RemoteAS: p.cfg.RemoteAS, Description: p.cfg.Description, Type: "ibgp", State: p.state,
 		Since: p.since.Format(time.RFC3339), LastError: p.lastErr, Ups: p.ups, Downs: p.downs, Flapping: now.Before(p.flapTill),
-		Received: map[string]int{}, Advertised: map[string]int{}, Counters: map[string]uint64{}, LastDown: p.lastDown}
+		Received: map[string]int{}, Advertised: map[string]int{}, Counters: map[string]uint64{}, LastDown: p.lastDown, LastMalformed: p.lastBad}
 	if !p.downAt.IsZero() {
 		st.LastDownAt = p.downAt.Format(time.RFC3339)
 	}
@@ -893,7 +1024,7 @@ func (p *peer) statusLocked(now time.Time) PeerStatus {
 	}
 	for _, f := range fams {
 		st.Families = append(st.Families, f.name)
-		st.Received[f.name] = len(p.adjIn[f.rf])
+		st.Received[f.name] = len(p.adjIn[f.rf]) + len(p.adjX[f.rf])
 		if p.est != nil {
 			st.Advertised[f.name] = p.s.advertisedLocked(p, f)
 		}
