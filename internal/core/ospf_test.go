@@ -724,7 +724,21 @@ func TestOSPFGracefulRestart(t *testing.T) {
 				}
 			}
 			eventuallyLong(t, "full", func() bool { return ospfFull(t, a, "o", 1) && ospfFull(t, b, "o", 1) })
-			time.Sleep(2 * time.Second)
+			// a re-originates its router LSA with the link once full (no
+			// sooner than MinLSInterval): wait until b has that copy, or
+			// the sequence check below sees it arrive during the restart.
+			aID := map[bool]string{false: "192.0.2.1", true: "0.0.0.0"}[v3]
+			eventuallyLong(t, "b has a's full-state router LSA", func() bool {
+				d := ospfRun(t, b, "o", "lsa", fmt.Sprintf(`{"type": "router", "id": %q, "adv_router": "192.0.2.1"}`, aID))
+				ls, _ := d["links"].([]any)
+				for _, l := range ls {
+					if strings.Contains(fmt.Sprint(l.(map[string]any)["type"]), "point") {
+						return true
+					}
+				}
+				return false
+			})
+			time.Sleep(500 * time.Millisecond)
 			bSeq := lsaSeqBy(t, b, "o", "router", rtrID, "192.0.2.2")
 			aSeq := lsaSeqBy(t, b, "o", "router", map[bool]string{false: "192.0.2.1", true: "0.0.0.0"}[v3], "192.0.2.1")
 			ospfRun(t, a, "o", "graceful-restart", `{"seconds": 60}`)
