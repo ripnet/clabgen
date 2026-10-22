@@ -80,6 +80,13 @@ Interop is verified against Nokia SR-SIM.
 
 ![A BGP speaker's peers and routes](docs/images/bgp.png)
 
+## Intended use
+
+clabgen is for lab and test networks. An agent takes over its node's
+interfaces and sends real protocol traffic (BGP updates, IS-IS and OSPF
+floods, CFM, traffic flows), and its API and UI have no authentication:
+keep it on lab networks, away from production ones.
+
 ## Documentation
 
 - [Web UI](docs/ui.md): the lab-wide UI and its options
@@ -89,3 +96,8 @@ Interop is verified against Nokia SR-SIM.
 - [API](docs/api.md)
 - [Development](docs/development.md): building, tests, images and releases
 - [Writing a protocol](docs/writing-a-protocol.md)
+
+## License
+
+BSD 3-Clause; see [LICENSE](LICENSE). Copyright (c) 2026, Tom Young and
+the clabgen contributors.

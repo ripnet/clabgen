@@ -51,7 +51,9 @@ function UIVersion() {
   if (!ui?.version) return null;
   return (
     <>
-      <span className="brand-version muted">{displayVersion(ui.version)}</span>
+      <a className="brand-version muted" href="https://github.com/ripnet/clabgen" target="_blank" rel="noreferrer" title="clabgen by Tom Young and contributors">
+        {displayVersion(ui.version)}
+      </a>
       {ui.update_available && ui.latest && (
         <a
           className="update-link"

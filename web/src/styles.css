@@ -473,3 +473,4 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .update-link { font-size: 12px; margin-left: 10px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); white-space: nowrap; }
 .side-ver { font-size: 10.5px; font-weight: 600; padding: 0 6px; border-radius: 999px; background: var(--surface-2); color: var(--text-3); border: 1px solid var(--border); flex: none; }
 .side-ver.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.brand-version:hover { color: var(--accent-text); text-decoration: none; }

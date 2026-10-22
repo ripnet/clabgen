@@ -10,6 +10,8 @@ test("version, newer release and an older agent", async ({ page }) => {
   });
   await page.goto("./#/");
   await expect(page.locator(".brand-version")).toHaveText("v0.2.0");
+  await expect(page.locator(".brand-version")).toHaveAttribute("href", "https://github.com/ripnet/clabgen");
+  await expect(page.locator(".brand-version")).toHaveAttribute("title", "clabgen by Tom Young and contributors");
   const link = page.getByRole("link", { name: "v0.3.0 available" });
   await expect(link).toHaveAttribute("href", "https://example.test/releases/v0.3.0");
 

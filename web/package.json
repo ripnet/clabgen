@@ -2,6 +2,7 @@
   "name": "clabgen-web",
   "private": true,
   "version": "0.0.0",
+  "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
     "dev": "vite",
