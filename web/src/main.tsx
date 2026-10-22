@@ -11,6 +11,7 @@ import "./protocols/udp";
 import "./protocols/isis";
 import "./protocols/lldp";
 import "./protocols/bgp";
+import "./protocols/ospf";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

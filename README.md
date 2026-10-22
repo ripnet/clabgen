@@ -246,6 +246,32 @@ peer from loopbacks too):
 message="maintenance"`, `… route-refresh` and `… rib peer=10.0.50.1 prefix=…`.
 There is no TCP MD5 authentication (the netstack has none).
 
+An OSPFv2 router (one area) on a device, here point-to-point with MD5 and
+a second interface on a LAN where it wants to be DR:
+
+```yaml
+  - name: ospf
+    type: ospf
+    device: o600
+    config: {router_id: 192.0.2.60, area: 0.0.0.0, network: point-to-point,
+             auth: {type: md5, key: clabgen, key_id: 1}, loopbacks: [192.0.2.60/32],
+             interfaces: [{device: o601a, network: broadcast, priority: 100, auth: {type: none}}],
+             prefixes: [{prefix: 100.66.0.0/24, count: 1000, tag: 600},
+                        {prefix: 100.65.60.0/24, type: internal, metric: 5}]}
+```
+
+It forms adjacencies (full DR/BDR election on broadcast interfaces),
+exchanges and floods LSAs, and originates its router LSA, a network LSA
+where it is DR, and the `prefixes`: AS-external LSAs (`external-2` by
+default, or `external-1`, with tag and forwarding address) or, with `type:
+internal`, stub links in the router LSA. Our router LSA has to fit in one
+packet (no IP fragmentation), so large route sets belong in externals.
+Actions: `flap` (reset or silent, per interface), `cost`, `max-metric`
+(RFC 6987), `advertise` / `withdraw` and `lsa` (one LSA decoded). It
+computes no routes. The MTU in database descriptions is `mtu` (default
+1500); a neighbor with a larger one is refused (as RFC 2328 says), so match
+it on the peer (SR OS: `ip-mtu 1500`) or set `mtu_ignore`.
+
 LLDP runs on an untagged device (LLDP frames carry no VLAN tag):
 
 ```yaml

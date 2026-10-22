@@ -137,3 +137,15 @@
 /configure router "Base" bgp group "ce" import policy ["accept-all"]
 /configure router "Base" bgp group "ce" export policy ["reject-all"]
 /configure router "Base" bgp group "ce" dynamic-neighbor match prefix 10.1.0.0/16 allowed-peer-as ["65001..65999"]
+/configure router "Base" interface "ospf-p2p" port 1/1/c3/1:600
+/configure router "Base" interface "ospf-p2p" ipv4 primary address 10.0.70.1 prefix-length 30
+/configure router "Base" interface "ospf-p2p" ip-mtu 1500
+/configure router "Base" interface "ospf-lan" port 1/1/c3/1:601
+/configure router "Base" interface "ospf-lan" ipv4 primary address 10.0.71.1 prefix-length 24
+/configure router "Base" interface "ospf-lan" ip-mtu 1500
+/configure router "Base" ospf 0 admin-state enable
+/configure router "Base" ospf 0 area 0.0.0.0 interface "system" passive true
+/configure router "Base" ospf 0 area 0.0.0.0 interface "ospf-p2p" interface-type point-to-point
+/configure router "Base" ospf 0 area 0.0.0.0 interface "ospf-p2p" authentication-type message-digest
+/configure router "Base" ospf 0 area 0.0.0.0 interface "ospf-p2p" message-digest-key 1 md5 "clabgen"
+/configure router "Base" ospf 0 area 0.0.0.0 interface "ospf-lan" interface-type broadcast

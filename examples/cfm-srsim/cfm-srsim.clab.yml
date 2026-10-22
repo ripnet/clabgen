@@ -14,6 +14,8 @@
 #     VLAN 500: SR router interface 10.0.50.1/30 (p2p, level 2, area 49.0001) -- clabgen .2
 #     VLAN 501: SR router interface 10.0.60.1/24 (broadcast) -- two clabgen IS-IS routers (.2, .3)
 #     VLAN 502: SR router interface 10.0.52.1/30 (p2p) -- clabgen .2, the VLAN 500 router's second interface
+#     VLAN 600: SR router interface 10.0.70.1/30 (p2p, MD5) -- OSPF area 0 with clabgen router 192.0.2.60
+#     VLAN 601: SR router interface 10.0.71.1/24 (broadcast) -- the same clabgen router (DR) and a second one
 #     VLANs 1000-1007: SR router interfaces ce1000-ce1007 (10.1.0.x/30) -- device group "ce": one eBGP
 #               CE per VLAN, each in its own AS, to the SR's dynamic-neighbor group
 name: cfm-srsim

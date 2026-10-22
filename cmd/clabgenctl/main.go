@@ -592,6 +592,31 @@ func summary(p *v1.Protocol) string {
 		}
 		return fmt.Sprintf("AS %v id %v peers=[%s]", m["local_as"], m["router_id"], strings.Join(ps, " "))
 	}
+	if p.Type == "ospf" {
+		var ns []string
+		if l, ok := m["neighbors"].([]any); ok {
+			for _, x := range l {
+				n := x.(map[string]any)
+				who := fmt.Sprint(n["router_id"])
+				if r, _ := n["role"].(string); r != "" {
+					who += "/" + strings.ToUpper(r)
+				}
+				ns = append(ns, fmt.Sprintf("%s:%v", who, n["state"]))
+			}
+		}
+		var ifs []string
+		if l, ok := m["interfaces"].([]any); ok {
+			for _, x := range l {
+				i := x.(map[string]any)
+				ifs = append(ifs, fmt.Sprintf("%v:%v", i["name"], i["state"]))
+			}
+		}
+		out := fmt.Sprintf("%v area %v if=[%s] nbrs=[%s] lsdb=%v", m["router_id"], m["area"], strings.Join(ifs, " "), strings.Join(ns, " "), m["lsdb_total"])
+		if m["max_metric"] == true {
+			out += " max-metric"
+		}
+		return out
+	}
 	if p.Type == "lldp" {
 		var ns []string
 		if l, ok := m["neighbors"].([]any); ok {

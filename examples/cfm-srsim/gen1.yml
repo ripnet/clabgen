@@ -16,6 +16,10 @@ devices:
   - {name: l501a, port: eth3, vlans: [{vid: 501}], addresses: [10.0.60.2/24]}
   - {name: l501b, port: eth3, vlans: [{vid: 501}], addresses: [10.0.60.3/24]}
   - {name: v401, port: eth2, vlans: [{vid: 401}], addresses: [10.0.41.2/24, 2001:db8:41::2/64], gateway4: 10.0.41.1, gateway6: 2001:db8:41::1}
+  # OSPF with the SR (eth3): VLAN 600 point-to-point (MD5), VLAN 601 broadcast.
+  - {name: o600, port: eth3, vlans: [{vid: 600}], addresses: [10.0.70.2/30]}
+  - {name: o601a, port: eth3, vlans: [{vid: 601}], addresses: [10.0.71.2/24]}
+  - {name: o601b, port: eth3, vlans: [{vid: 601}], addresses: [10.0.71.3/24]}
   # Untagged devices for LLDP on the SR's ports 1/1/c1/1 and 1/1/c3/1.
   - {name: lldp1, port: eth1}
   - {name: lldp3, port: eth3}
@@ -156,6 +160,20 @@ protocols:
              routes: [{prefix: 100.64.0.0/24, count: 10000, communities: ["65050:1"], large_communities: ["65050:1:1"]},
                       {prefix: "2001:db8:abc::/48", count: 1000, med: 50},
                       {prefix: 203.0.113.0/24, as_path: [64512, 64513], communities: [no-export], peers: [10.0.50.1]}]}
+  # OSPF area 0 with the SR: one router on the point-to-point link (MD5)
+  # and the LAN, where it is DR (priority 100); a second router on the LAN
+  # at priority 0. The first injects 1000 externals and a stub prefix.
+  - name: ospf
+    type: ospf
+    device: o600
+    config: {router_id: 192.0.2.60, network: point-to-point, auth: {type: md5, key: clabgen, key_id: 1},
+             loopbacks: [192.0.2.60/32],
+             interfaces: [{device: o601a, network: broadcast, priority: 100, auth: {type: none}}],
+             prefixes: [{prefix: 100.66.0.0/24, count: 1000, tag: 600}, {prefix: 100.65.60.0/24, type: internal, metric: 5}]}
+  - name: ospf-lan-b
+    type: ospf
+    device: o601b
+    config: {router_id: 192.0.2.62, priority: 0}
 device_groups:
   # Eight CE routers on the SR's router interfaces ce1000-ce1007 (eth3
   # VLANs 1000-1007, 10.1.0.x/30), each in its own AS and advertising ten
