@@ -7,28 +7,28 @@ import (
 
 // Config is one down-MEP. JSON names follow SR OS terminology where it has one.
 type Config struct {
-	Level    uint8  `json:"level" jsonschema:"minimum=0,maximum=7,description=Maintenance domain level"`
-	MEPID    uint16 `json:"mep_id" jsonschema:"minimum=1,maximum=8191"`
-	MDFormat string `json:"md_format" jsonschema:"enum=none,enum=dns,enum=mac-int,enum=string"`
-	MDName   string `json:"md_name,omitempty" jsonschema:"description=Empty when md_format is none. mac-int is MAC:integer."`
-	MAFormat string `json:"ma_format" jsonschema:"enum=string,enum=icc,enum=primary-vid,enum=integer,enum=vpn-id"`
-	MAName   string `json:"ma_name" jsonschema:"description=icc: up to 13 chars (Y.1731 MEG ID). vpn-id: OUI:index in hex."`
+	Level    uint8  `json:"level" jsonschema:"minimum=0,maximum=7,description=Maintenance domain level" jsonschema_extras:"x-group=Identity"`
+	MEPID    uint16 `json:"mep_id" jsonschema:"required,minimum=1,maximum=8191" jsonschema_extras:"x-group=Identity"`
+	MDFormat string `json:"md_format" jsonschema:"enum=none,enum=dns,enum=mac-int,enum=string" jsonschema_extras:"x-group=Identity"`
+	MDName   string `json:"md_name,omitempty" jsonschema:"description=Empty when md_format is none. mac-int is MAC:integer." jsonschema_extras:"x-group=Identity"`
+	MAFormat string `json:"ma_format" jsonschema:"enum=string,enum=icc,enum=primary-vid,enum=integer,enum=vpn-id" jsonschema_extras:"x-group=Identity"`
+	MAName   string `json:"ma_name" jsonschema:"description=icc: up to 13 chars (Y.1731 MEG ID). vpn-id: OUI:index in hex." jsonschema_extras:"x-group=Identity"`
 
-	CCMEnabled  bool   `json:"ccm_enabled"`
-	CCMInterval string `json:"ccm_interval" jsonschema:"enum=3.33ms,enum=10ms,enum=100ms,enum=1s,enum=10s,enum=1m,enum=10m,description=Aliases 60s and 600s are accepted"`
-	CCMPriority uint8  `json:"ccm_priority" jsonschema:"minimum=0,maximum=7,description=PCP for CCM and LTM frames (applies to all VLAN tags)"`
+	CCMEnabled  bool   `json:"ccm_enabled" jsonschema_extras:"x-group=CCM"`
+	CCMInterval string `json:"ccm_interval" jsonschema:"enum=3.33ms,enum=10ms,enum=100ms,enum=1s,enum=10s,enum=1m,enum=10m,description=Aliases 60s and 600s are accepted" jsonschema_extras:"x-group=CCM"`
+	CCMPriority uint8  `json:"ccm_priority" jsonschema:"minimum=0,maximum=7,description=PCP for CCM and LTM frames (applies to all VLAN tags)" jsonschema_extras:"x-group=CCM"`
 
 	// Empty means auto-discover: accept any MEPID and learn it.
-	RemoteMEPs []uint16 `json:"remote_meps,omitempty" jsonschema:"description=Expected remote MEP IDs; empty enables auto-discovery"`
+	RemoteMEPs []uint16 `json:"remote_meps,omitempty" jsonschema:"description=Expected remote MEP IDs; empty enables auto-discovery" jsonschema_extras:"x-group=Identity"`
 
-	PortStatusTLV      bool `json:"port_status_tlv,omitempty" jsonschema:"description=Include Port Status TLV in CCMs"`
-	InterfaceStatusTLV bool `json:"interface_status_tlv,omitempty" jsonschema:"description=Include Interface Status TLV in CCMs"`
+	PortStatusTLV      bool `json:"port_status_tlv,omitempty" jsonschema:"description=Include Port Status TLV in CCMs" jsonschema_extras:"x-group=CCM"`
+	InterfaceStatusTLV bool `json:"interface_status_tlv,omitempty" jsonschema:"description=Include Interface Status TLV in CCMs" jsonschema_extras:"x-group=CCM"`
 
 	// Responder controls, for negative testing.
-	DisableLBR bool `json:"disable_lbr,omitempty"`
-	DisableLTR bool `json:"disable_ltr,omitempty"`
-	DisableDMR bool `json:"disable_dmr,omitempty"`
-	DisableSLR bool `json:"disable_slr,omitempty"`
+	DisableLBR bool `json:"disable_lbr,omitempty" jsonschema_extras:"x-group=Responders,x-advanced=true"`
+	DisableLTR bool `json:"disable_ltr,omitempty" jsonschema_extras:"x-group=Responders,x-advanced=true"`
+	DisableDMR bool `json:"disable_dmr,omitempty" jsonschema_extras:"x-group=Responders,x-advanced=true"`
+	DisableSLR bool `json:"disable_slr,omitempty" jsonschema_extras:"x-group=Responders,x-advanced=true"`
 }
 
 func defaultConfig() *Config {

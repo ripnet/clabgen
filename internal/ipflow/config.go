@@ -16,7 +16,7 @@ import (
 // list run, addressing, IP, transport and payload fields in that order.
 
 type Target struct {
-	Destination string `json:"destination" jsonschema:"description=IPv4 or IPv6 address to send to"`
+	Destination string `json:"destination" jsonschema:"required,description=IPv4 or IPv6 address to send to"`
 }
 
 type Run struct {

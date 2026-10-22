@@ -11,43 +11,43 @@ import (
 
 // Config is one emulated OSPFv2 router.
 type Config struct {
-	RouterID string `json:"router_id,omitempty" jsonschema:"description=Default: the first IPv4 loopback, else the device's first IPv4 address"`
-	Area     AreaID `json:"area" jsonschema:"description=Area ID (dotted, like 0.0.0.0, or a number) of the first interface, the loopbacks and internal prefixes"`
+	RouterID string `json:"router_id,omitempty" jsonschema:"description=Default: the first IPv4 loopback, else the device's first IPv4 address" jsonschema_extras:"x-group=Router"`
+	Area     AreaID `json:"area" jsonschema:"description=Area ID (dotted, like 0.0.0.0, or a number) of the first interface, the loopbacks and internal prefixes" jsonschema_extras:"x-group=Router"`
 	// Areas sets area types and ranges; interfaces name their area.
-	Areas    []AreaConfig `json:"areas,omitempty" jsonschema:"description=Area settings (type, ranges). An area needs an entry only to change the defaults (normal, no ranges)"`
-	Network  string       `json:"network" jsonschema:"enum=broadcast,enum=point-to-point,enum=non-broadcast,enum=point-to-multipoint,description=Interface type (non-broadcast: NBMA, hellos to neighbors)"`
-	Cost     uint16       `json:"cost" jsonschema:"minimum=1,maximum=65535,description=Interface cost"`
-	Priority uint8        `json:"priority" jsonschema:"description=DR election priority (broadcast; 0: never DR/BDR)"`
-	Passive  bool         `json:"passive,omitempty" jsonschema:"description=Advertise the interface's subnet without hellos (no adjacency)"`
+	Areas    []AreaConfig `json:"areas,omitempty" jsonschema:"description=Area settings (type, ranges). An area needs an entry only to change the defaults (normal, no ranges)" jsonschema_extras:"x-summary={id}[ {type}][ {no_summary}]"`
+	Network  string       `json:"network" jsonschema:"enum=broadcast,enum=point-to-point,enum=non-broadcast,enum=point-to-multipoint,description=Interface type (non-broadcast: NBMA, hellos to neighbors)" jsonschema_extras:"x-group=First interface"`
+	Cost     uint16       `json:"cost" jsonschema:"minimum=1,maximum=65535,description=Interface cost" jsonschema_extras:"x-group=First interface"`
+	Priority uint8        `json:"priority" jsonschema:"description=DR election priority (broadcast; 0: never DR/BDR)" jsonschema_extras:"x-group=First interface"`
+	Passive  bool         `json:"passive,omitempty" jsonschema:"description=Advertise the interface's subnet without hellos (no adjacency)" jsonschema_extras:"x-group=First interface"`
 	// Neighbors of the first interface (non-broadcast networks).
-	Neighbors []string `json:"neighbors,omitempty" jsonschema:"description=Neighbor addresses for non-broadcast networks (NBMA, or point-to-multipoint without multicast): hellos go to each"`
+	Neighbors []string `json:"neighbors,omitempty" jsonschema:"description=Neighbor addresses for non-broadcast networks (NBMA, or point-to-multipoint without multicast): hellos go to each" jsonschema_extras:"x-group=First interface"`
 
 	// Interfaces are further devices of this router (the instance's own
 	// device is its first interface, with the settings above).
-	Interfaces []Interface `json:"interfaces,omitempty" jsonschema:"description=Further interfaces: devices of this router besides the instance's own"`
+	Interfaces []Interface `json:"interfaces,omitempty" jsonschema:"description=Further interfaces: devices of this router besides the instance's own" jsonschema_extras:"x-summary={device}[ {network}][ area {area}][ cost {cost}][ {passive}]"`
 
-	HelloInterval      int  `json:"hello_interval" jsonschema:"minimum=1,maximum=65535,description=Seconds"`
-	DeadInterval       int  `json:"dead_interval" jsonschema:"minimum=2,description=Seconds (must match the neighbor's)"`
-	RetransmitInterval int  `json:"retransmit_interval" jsonschema:"minimum=1,maximum=3600,description=Seconds between retransmissions of DBDs, requests and LSAs"`
-	MTU                int  `json:"mtu" jsonschema:"minimum=576,maximum=9600,description=IP MTU sent in database descriptions and used to pack packets"`
-	MTUIgnore          bool `json:"mtu_ignore,omitempty" jsonschema:"description=Accept neighbors with a larger MTU"`
-	LSARefresh         int  `json:"lsa_refresh" jsonschema:"minimum=10,maximum=3599,description=Seconds between refreshes of our LSAs"`
+	HelloInterval      int  `json:"hello_interval" jsonschema:"minimum=1,maximum=65535,description=Seconds" jsonschema_extras:"x-group=Timers"`
+	DeadInterval       int  `json:"dead_interval" jsonschema:"minimum=2,description=Seconds (must match the neighbor's)" jsonschema_extras:"x-group=Timers"`
+	RetransmitInterval int  `json:"retransmit_interval" jsonschema:"minimum=1,maximum=3600,description=Seconds between retransmissions of DBDs, requests and LSAs" jsonschema_extras:"x-group=Timers"`
+	MTU                int  `json:"mtu" jsonschema:"minimum=576,maximum=9600,description=IP MTU sent in database descriptions and used to pack packets" jsonschema_extras:"x-group=Packets,x-advanced=true"`
+	MTUIgnore          bool `json:"mtu_ignore,omitempty" jsonschema:"description=Accept neighbors with a larger MTU" jsonschema_extras:"x-group=Packets,x-advanced=true"`
+	LSARefresh         int  `json:"lsa_refresh" jsonschema:"minimum=10,maximum=3599,description=Seconds between refreshes of our LSAs" jsonschema_extras:"x-group=Timers"`
 
 	Auth Auth `json:"auth" jsonschema:"description=Packet authentication on the interfaces"`
 
-	MaxMetric bool `json:"max_metric,omitempty" jsonschema:"description=Stub router (RFC 6987): advertise transit links at 65535"`
+	MaxMetric bool `json:"max_metric,omitempty" jsonschema:"description=Stub router (RFC 6987): advertise transit links at 65535" jsonschema_extras:"x-group=Router"`
 	// Interface subnets are advertised automatically.
-	Prefixes []Prefix `json:"prefixes,omitempty" jsonschema:"description=Extra prefixes to advertise (route injection)"`
+	Prefixes []Prefix `json:"prefixes,omitempty" jsonschema:"description=Extra prefixes to advertise (route injection)" jsonschema_extras:"x-summary={prefix}[ ×{count}][ {type}][ metric {metric}]"`
 	// Loopbacks are the router's own addresses, answered on every interface.
-	Loopbacks []string `json:"loopbacks,omitempty" jsonschema:"description=Router loopback addresses (e.g. 192.0.2.60/32): stub links at cost 0, answered (ping, flows) on every interface; the first is the default router ID"`
+	Loopbacks []string `json:"loopbacks,omitempty" jsonschema:"description=Router loopback addresses (e.g. 192.0.2.60/32): stub links at cost 0, answered (ping, flows) on every interface; the first is the default router ID" jsonschema_extras:"x-group=Router"`
 
 	Topology Topology `json:"topology" jsonschema:"description=Simulated routers behind this one; their LSAs are originated here"`
 
 	SegmentRouting     SegmentRouting  `json:"segment_routing" jsonschema:"description=Segment routing (RFC 8665; MPLS): SRGB, node SIDs, adjacency SIDs in opaque LSAs"`
-	FlexAlgos          []FlexAlgo      `json:"flex_algos,omitempty" jsonschema:"description=Flexible algorithms (RFC 9350) we take part in, optionally with their definitions"`
-	TrafficEngineering bool            `json:"traffic_engineering,omitempty" jsonschema:"description=Originate TE LSAs (RFC 3630): router address and a link TLV per adjacency"`
+	FlexAlgos          []FlexAlgo      `json:"flex_algos,omitempty" jsonschema:"description=Flexible algorithms (RFC 9350) we take part in, optionally with their definitions" jsonschema_extras:"x-summary={algorithm}[ {metric_type}][ {participate_only}]"`
+	TrafficEngineering bool            `json:"traffic_engineering,omitempty" jsonschema:"description=Originate TE LSAs (RFC 3630): router address and a link TLV per adjacency" jsonschema_extras:"x-group=Router"`
 	GracefulRestart    GracefulRestart `json:"graceful_restart" jsonschema:"description=Graceful restart (RFC 3623 / 5187): helper mode and our grace period"`
-	VirtualLinks       []VirtualLink   `json:"virtual_links,omitempty" jsonschema:"description=Virtual links to other area border routers across transit areas (backbone connectivity)"`
+	VirtualLinks       []VirtualLink   `json:"virtual_links,omitempty" jsonschema:"description=Virtual links to other area border routers across transit areas (backbone connectivity)" jsonschema_extras:"x-summary={router_id} via area {transit_area}"`
 	BFD                BFDConfig       `json:"bfd" jsonschema:"description=BFD (RFC 5880/5881) with every neighbor: a failed session drops the neighbor at once"`
 	LinkAttrs                          // of the first interface
 }
@@ -55,10 +55,10 @@ type Config struct {
 // LinkAttrs are an interface's TE attributes: in TE LSAs and, for
 // flex-algo, in application-specific link attributes (RFC 8920).
 type LinkAttrs struct {
-	TEMetric      uint32 `json:"te_metric,omitempty" jsonschema:"description=TE metric (flex-algo metric type te). Default: none (TE LSAs use the cost)"`
-	DelayUS       uint32 `json:"delay_us,omitempty" jsonschema:"maximum=16777215,description=Link delay in µs (flex-algo metric type delay)"`
-	AdminGroups   []int  `json:"admin_groups,omitempty" jsonschema:"description=Admin groups 0-31 (flex-algo include/exclude)"`
-	BandwidthMbps uint32 `json:"bandwidth_mbps,omitempty" jsonschema:"description=Maximum bandwidth in TE LSAs. Default 1000"`
+	TEMetric      uint32 `json:"te_metric,omitempty" jsonschema:"description=TE metric (flex-algo metric type te). Default: none (TE LSAs use the cost)" jsonschema_extras:"x-group=TE attributes,x-advanced=true"`
+	DelayUS       uint32 `json:"delay_us,omitempty" jsonschema:"maximum=16777215,description=Link delay in µs (flex-algo metric type delay)" jsonschema_extras:"x-group=TE attributes,x-advanced=true"`
+	AdminGroups   []int  `json:"admin_groups,omitempty" jsonschema:"description=Admin groups 0-31 (flex-algo include/exclude)" jsonschema_extras:"x-group=TE attributes,x-advanced=true"`
+	BandwidthMbps uint32 `json:"bandwidth_mbps,omitempty" jsonschema:"description=Maximum bandwidth in TE LSAs. Default 1000" jsonschema_extras:"x-group=TE attributes,x-advanced=true"`
 }
 
 // SegmentRouting configures SR-MPLS advertisements.
@@ -66,15 +66,15 @@ type SegmentRouting struct {
 	Enabled    bool      `json:"enabled"`
 	SRGBBase   uint32    `json:"srgb_base" jsonschema:"minimum=16,maximum=1048575,description=First label of the SR global block"`
 	SRGBSize   uint32    `json:"srgb_size" jsonschema:"minimum=1,maximum=1048560"`
-	NodeSIDs   []NodeSID `json:"node_sids,omitempty" jsonschema:"description=Prefix-SIDs on our prefixes (loopbacks, internal prefixes or interface subnets); /32s get the node flag"`
+	NodeSIDs   []NodeSID `json:"node_sids,omitempty" jsonschema:"description=Prefix-SIDs on our prefixes (loopbacks, internal prefixes or interface subnets); /32s get the node flag" jsonschema_extras:"x-summary={prefix} index {index}[ algo {algorithm}]"`
 	AdjSIDBase uint32    `json:"adj_sid_base" jsonschema:"description=Local label for our first adjacency SID (the others count up); 0: no adjacency SIDs"`
 	SRLBBase   uint32    `json:"srlb_base,omitempty" jsonschema:"description=First label of the SR local block (advertised; 0: none)"`
 	SRLBSize   uint32    `json:"srlb_size,omitempty"`
 }
 
 type NodeSID struct {
-	Prefix       string `json:"prefix" jsonschema:"description=e.g. 192.0.2.60/32"`
-	Index        uint32 `json:"index" jsonschema:"description=Index into the SRGB"`
+	Prefix       string `json:"prefix" jsonschema:"required,description=e.g. 192.0.2.60/32"`
+	Index        uint32 `json:"index" jsonschema:"required,description=Index into the SRGB"`
 	Algorithm    byte   `json:"algorithm,omitempty" jsonschema:"description=0 (SPF) or a flex-algo (128-255) from flex_algos"`
 	NoPHP        bool   `json:"no_php,omitempty" jsonschema:"description=Ask the penultimate hop not to pop (NP flag)"`
 	ExplicitNull bool   `json:"explicit_null,omitempty" jsonschema:"description=Ask for explicit null (E flag)"`
@@ -82,7 +82,7 @@ type NodeSID struct {
 
 // FlexAlgo is a flexible algorithm we take part in.
 type FlexAlgo struct {
-	Algorithm       byte   `json:"algorithm" jsonschema:"minimum=128,maximum=255"`
+	Algorithm       byte   `json:"algorithm" jsonschema:"required,minimum=128,maximum=255"`
 	MetricType      string `json:"metric_type,omitempty" jsonschema:"enum=igp,enum=delay,enum=te,description=Default igp"`
 	Priority        byte   `json:"priority,omitempty" jsonschema:"description=Definition priority (highest wins). Default 128"`
 	ParticipateOnly bool   `json:"participate_only,omitempty" jsonschema:"description=Take part without advertising a definition (another router defines it)"`
@@ -94,31 +94,31 @@ type FlexAlgo struct {
 // Interface is one more interface of the router. Empty fields take the
 // router-wide value.
 type Interface struct {
-	Device   string `json:"device" jsonschema:"description=Device name"`
-	Network  string `json:"network,omitempty" jsonschema:"enum=broadcast,enum=point-to-point,enum=non-broadcast,enum=point-to-multipoint"`
-	Cost     uint16 `json:"cost,omitempty" jsonschema:"minimum=1,maximum=65535"`
-	Priority *uint8 `json:"priority,omitempty"`
-	Passive  bool   `json:"passive,omitempty"`
-	Area     AreaID `json:"area,omitempty" jsonschema:"description=Default: the router's area. Interfaces in more than one area make this an area border router"`
+	Device   string `json:"device" jsonschema:"required,description=Device name" jsonschema_extras:"x-group=Interface"`
+	Network  string `json:"network,omitempty" jsonschema:"enum=broadcast,enum=point-to-point,enum=non-broadcast,enum=point-to-multipoint" jsonschema_extras:"x-group=Interface"`
+	Cost     uint16 `json:"cost,omitempty" jsonschema:"minimum=1,maximum=65535" jsonschema_extras:"x-group=Interface"`
+	Priority *uint8 `json:"priority,omitempty" jsonschema_extras:"x-group=Interface"`
+	Passive  bool   `json:"passive,omitempty" jsonschema_extras:"x-group=Interface"`
+	Area     AreaID `json:"area,omitempty" jsonschema:"description=Default: the router's area. Interfaces in more than one area make this an area border router" jsonschema_extras:"x-group=Interface"`
 	Auth     *Auth  `json:"auth,omitempty" jsonschema:"description=Default: the router's auth"`
 	// Neighbors on a non-broadcast network.
-	Neighbors     []string `json:"neighbors,omitempty" jsonschema:"description=Neighbor addresses (non-broadcast networks)"`
-	BFD           *bool    `json:"bfd,omitempty" jsonschema:"description=BFD on this interface. Default: the router's bfd.enabled"`
-	HelloInterval int      `json:"hello_interval,omitempty" jsonschema:"description=Seconds. Default: the router's"`
-	DeadInterval  int      `json:"dead_interval,omitempty" jsonschema:"description=Seconds. Default: the router's"`
+	Neighbors     []string `json:"neighbors,omitempty" jsonschema:"description=Neighbor addresses (non-broadcast networks)" jsonschema_extras:"x-group=Interface"`
+	BFD           *bool    `json:"bfd,omitempty" jsonschema:"description=BFD on this interface. Default: the router's bfd.enabled" jsonschema_extras:"x-group=Interface"`
+	HelloInterval int      `json:"hello_interval,omitempty" jsonschema:"description=Seconds. Default: the router's" jsonschema_extras:"x-group=Timers,x-advanced=true"`
+	DeadInterval  int      `json:"dead_interval,omitempty" jsonschema:"description=Seconds. Default: the router's" jsonschema_extras:"x-group=Timers,x-advanced=true"`
 	LinkAttrs
 }
 
 // AreaConfig is one area's type and the ranges we summarise it with as an
 // area border router.
 type AreaConfig struct {
-	ID          AreaID      `json:"id" jsonschema:"description=Area ID"`
+	ID          AreaID      `json:"id" jsonschema:"required,description=Area ID"`
 	Type        string      `json:"type,omitempty" jsonschema:"enum=normal,enum=stub,enum=nssa,description=Default normal. stub: no AS-external LSAs; nssa: externals as type-7 LSAs (RFC 3101)"`
-	NoSummary   bool        `json:"no_summary,omitempty" jsonschema:"description=stub / nssa: an area border router sends only a default summary into the area (totally stubby)"`
-	DefaultCost uint32      `json:"default_cost,omitempty" jsonschema:"description=Cost of the default summary into a stub or NSSA area. Default 1"`
-	NSSADefault bool        `json:"nssa_default,omitempty" jsonschema:"description=nssa: an area border router also originates a type-7 default into the area"`
-	Translate   string      `json:"nssa_translate,omitempty" jsonschema:"enum=candidate,enum=always,enum=never,description=nssa: translating type-7 LSAs to AS-external ones as a border router. candidate (default): when ours is the highest router ID of the area's border routers"`
-	Ranges      []AreaRange `json:"ranges,omitempty" jsonschema:"description=Address ranges summarising this area's prefixes into the other areas"`
+	NoSummary   bool        `json:"no_summary,omitempty" jsonschema:"description=stub / nssa: an area border router sends only a default summary into the area (totally stubby)" jsonschema_extras:"x-show-if=type=stub|nssa"`
+	DefaultCost uint32      `json:"default_cost,omitempty" jsonschema:"description=Cost of the default summary into a stub or NSSA area. Default 1" jsonschema_extras:"x-show-if=type=stub|nssa"`
+	NSSADefault bool        `json:"nssa_default,omitempty" jsonschema:"description=nssa: an area border router also originates a type-7 default into the area" jsonschema_extras:"x-show-if=type=nssa"`
+	Translate   string      `json:"nssa_translate,omitempty" jsonschema:"enum=candidate,enum=always,enum=never,description=nssa: translating type-7 LSAs to AS-external ones as a border router. candidate (default): when ours is the highest router ID of the area's border routers" jsonschema_extras:"x-show-if=type=nssa"`
+	Ranges      []AreaRange `json:"ranges,omitempty" jsonschema:"description=Address ranges summarising this area's prefixes into the other areas" jsonschema_extras:"x-summary={prefix}[ {no_advertise}][ cost {cost}]"`
 }
 
 type AreaRange struct {
@@ -230,12 +230,12 @@ func (a Auth3) common() Auth { return Auth{Type: a.Type, Key: a.Key, SAID: a.SAI
 // our intra-area-prefix LSA), or with type inter-area as a summary LSA in
 // every area (as an area border router would).
 type Prefix struct {
-	Prefix  string `json:"prefix" jsonschema:"description=e.g. 198.18.0.0/24"`
+	Prefix  string `json:"prefix" jsonschema:"required,description=e.g. 198.18.0.0/24"`
 	Count   int    `json:"count,omitempty" jsonschema:"description=Consecutive prefixes of this length. Default 1"`
 	Metric  uint32 `json:"metric,omitempty" jsonschema:"description=Default 20 (external) / 10 (internal)"`
 	Type    string `json:"type,omitempty" jsonschema:"enum=external-2,enum=external-1,enum=internal,enum=inter-area,description=Default external-2. internal prefixes are stub links in our router LSA; inter-area ones summary LSAs"`
-	Tag     uint32 `json:"tag,omitempty" jsonschema:"description=External route tag"`
-	Forward string `json:"forwarding_address,omitempty" jsonschema:"description=External forwarding address. Default 0.0.0.0 (us)"`
+	Tag     uint32 `json:"tag,omitempty" jsonschema:"description=External route tag" jsonschema_extras:"x-show-if=type!=internal|inter-area"`
+	Forward string `json:"forwarding_address,omitempty" jsonschema:"description=External forwarding address. Default 0.0.0.0 (us)" jsonschema_extras:"x-show-if=type!=internal|inter-area"`
 }
 
 // route is one expanded prefix.
@@ -493,51 +493,51 @@ func validatePrefixes(prefixes []Prefix, loopbacks []string, v6 bool) error {
 
 // ConfigV3 is one emulated OSPFv3 router (IPv6, RFC 5340) in one area.
 type ConfigV3 struct {
-	RouterID   string       `json:"router_id,omitempty" jsonschema:"description=Dotted 32-bit ID. Default: the device's first IPv4 address (required if it has none)"`
-	Area       AreaID       `json:"area" jsonschema:"description=Area ID (dotted, like 0.0.0.0, or a number) of the first interface, the loopbacks and internal prefixes"`
-	Areas      []AreaConfig `json:"areas,omitempty" jsonschema:"description=Area settings (type, ranges). An area needs an entry only to change the defaults (normal, no ranges)"`
-	InstanceID uint8        `json:"instance_id,omitempty" jsonschema:"description=Instance ID in packets (0 for IPv6 unicast)"`
-	Network    string       `json:"network" jsonschema:"enum=broadcast,enum=point-to-point,enum=non-broadcast,enum=point-to-multipoint,description=Interface type (non-broadcast: NBMA, hellos to neighbors)"`
-	Cost       uint16       `json:"cost" jsonschema:"minimum=1,maximum=65535,description=Interface cost"`
-	Priority   uint8        `json:"priority" jsonschema:"description=DR election priority (broadcast; 0: never DR/BDR)"`
-	Passive    bool         `json:"passive,omitempty" jsonschema:"description=Advertise the interface's prefixes without hellos (no adjacency)"`
-	Neighbors  []string     `json:"neighbors,omitempty" jsonschema:"description=Neighbors' link-local addresses for non-broadcast networks"`
+	RouterID   string       `json:"router_id,omitempty" jsonschema:"description=Dotted 32-bit ID. Default: the device's first IPv4 address (required if it has none)" jsonschema_extras:"x-group=Router"`
+	Area       AreaID       `json:"area" jsonschema:"description=Area ID (dotted, like 0.0.0.0, or a number) of the first interface, the loopbacks and internal prefixes" jsonschema_extras:"x-group=Router"`
+	Areas      []AreaConfig `json:"areas,omitempty" jsonschema:"description=Area settings (type, ranges). An area needs an entry only to change the defaults (normal, no ranges)" jsonschema_extras:"x-summary={id}[ {type}][ {no_summary}]"`
+	InstanceID uint8        `json:"instance_id,omitempty" jsonschema:"description=Instance ID in packets (0 for IPv6 unicast)" jsonschema_extras:"x-group=Router"`
+	Network    string       `json:"network" jsonschema:"enum=broadcast,enum=point-to-point,enum=non-broadcast,enum=point-to-multipoint,description=Interface type (non-broadcast: NBMA, hellos to neighbors)" jsonschema_extras:"x-group=First interface"`
+	Cost       uint16       `json:"cost" jsonschema:"minimum=1,maximum=65535,description=Interface cost" jsonschema_extras:"x-group=First interface"`
+	Priority   uint8        `json:"priority" jsonschema:"description=DR election priority (broadcast; 0: never DR/BDR)" jsonschema_extras:"x-group=First interface"`
+	Passive    bool         `json:"passive,omitempty" jsonschema:"description=Advertise the interface's prefixes without hellos (no adjacency)" jsonschema_extras:"x-group=First interface"`
+	Neighbors  []string     `json:"neighbors,omitempty" jsonschema:"description=Neighbors' link-local addresses for non-broadcast networks" jsonschema_extras:"x-group=First interface"`
 
-	Interfaces []Interface3 `json:"interfaces,omitempty" jsonschema:"description=Further interfaces: devices of this router besides the instance's own"`
+	Interfaces []Interface3 `json:"interfaces,omitempty" jsonschema:"description=Further interfaces: devices of this router besides the instance's own" jsonschema_extras:"x-summary={device}[ {network}][ area {area}][ cost {cost}][ {passive}]"`
 
-	HelloInterval      int  `json:"hello_interval" jsonschema:"minimum=1,maximum=65535,description=Seconds"`
-	DeadInterval       int  `json:"dead_interval" jsonschema:"minimum=2,maximum=65535,description=Seconds (must match the neighbor's)"`
-	RetransmitInterval int  `json:"retransmit_interval" jsonschema:"minimum=1,maximum=3600,description=Seconds between retransmissions of DBDs, requests and LSAs"`
-	MTU                int  `json:"mtu" jsonschema:"minimum=1280,maximum=9600,description=IPv6 MTU sent in database descriptions and used to pack packets"`
-	MTUIgnore          bool `json:"mtu_ignore,omitempty" jsonschema:"description=Accept neighbors with a larger MTU"`
-	LSARefresh         int  `json:"lsa_refresh" jsonschema:"minimum=10,maximum=3599,description=Seconds between refreshes of our LSAs"`
+	HelloInterval      int  `json:"hello_interval" jsonschema:"minimum=1,maximum=65535,description=Seconds" jsonschema_extras:"x-group=Timers"`
+	DeadInterval       int  `json:"dead_interval" jsonschema:"minimum=2,maximum=65535,description=Seconds (must match the neighbor's)" jsonschema_extras:"x-group=Timers"`
+	RetransmitInterval int  `json:"retransmit_interval" jsonschema:"minimum=1,maximum=3600,description=Seconds between retransmissions of DBDs, requests and LSAs" jsonschema_extras:"x-group=Timers"`
+	MTU                int  `json:"mtu" jsonschema:"minimum=1280,maximum=9600,description=IPv6 MTU sent in database descriptions and used to pack packets" jsonschema_extras:"x-group=Packets,x-advanced=true"`
+	MTUIgnore          bool `json:"mtu_ignore,omitempty" jsonschema:"description=Accept neighbors with a larger MTU" jsonschema_extras:"x-group=Packets,x-advanced=true"`
+	LSARefresh         int  `json:"lsa_refresh" jsonschema:"minimum=10,maximum=3599,description=Seconds between refreshes of our LSAs" jsonschema_extras:"x-group=Timers"`
 
 	Auth Auth3 `json:"auth" jsonschema:"description=Authentication trailer (RFC 7166) on the interfaces"`
 
-	MaxMetric bool     `json:"max_metric,omitempty" jsonschema:"description=Stub router (RFC 6987): advertise transit links at 65535"`
-	Prefixes  []Prefix `json:"prefixes,omitempty" jsonschema:"description=Extra IPv6 prefixes to advertise: AS-external, or internal (in our intra-area-prefix LSA)"`
-	Loopbacks []string `json:"loopbacks,omitempty" jsonschema:"description=Router loopback addresses (e.g. 2001:db8:ffff::60/128): advertised at cost 0 and answered on every interface"`
+	MaxMetric bool     `json:"max_metric,omitempty" jsonschema:"description=Stub router (RFC 6987): advertise transit links at 65535" jsonschema_extras:"x-group=Router"`
+	Prefixes  []Prefix `json:"prefixes,omitempty" jsonschema:"description=Extra IPv6 prefixes to advertise: AS-external, or internal (in our intra-area-prefix LSA)" jsonschema_extras:"x-summary={prefix}[ ×{count}][ {type}][ metric {metric}]"`
+	Loopbacks []string `json:"loopbacks,omitempty" jsonschema:"description=Router loopback addresses (e.g. 2001:db8:ffff::60/128): advertised at cost 0 and answered on every interface" jsonschema_extras:"x-group=Router"`
 
 	Topology Topology `json:"topology" jsonschema:"description=Simulated routers behind this one; their LSAs are originated here"`
 
 	GracefulRestart GracefulRestart `json:"graceful_restart" jsonschema:"description=Graceful restart (RFC 5187): helper mode and our grace period"`
 	BFD             BFDConfig       `json:"bfd" jsonschema:"description=BFD (RFC 5880/5881) with every neighbor"`
-	VirtualLinks    []VirtualLink   `json:"virtual_links,omitempty" jsonschema:"description=Virtual links to other area border routers across transit areas"`
+	VirtualLinks    []VirtualLink   `json:"virtual_links,omitempty" jsonschema:"description=Virtual links to other area border routers across transit areas" jsonschema_extras:"x-summary={router_id} via area {transit_area}"`
 	SegmentRouting  SegmentRouting  `json:"segment_routing" jsonschema:"description=Segment routing (RFC 8666; MPLS) in extended LSAs (RFC 8362 sparse mode): SRGB, IPv6 node SIDs, adjacency SIDs"`
 }
 
 type Interface3 struct {
-	Device        string   `json:"device" jsonschema:"description=Device name"`
-	Network       string   `json:"network,omitempty" jsonschema:"enum=broadcast,enum=point-to-point,enum=non-broadcast,enum=point-to-multipoint"`
-	Cost          uint16   `json:"cost,omitempty" jsonschema:"minimum=1,maximum=65535"`
-	Priority      *uint8   `json:"priority,omitempty"`
-	Passive       bool     `json:"passive,omitempty"`
-	Area          AreaID   `json:"area,omitempty" jsonschema:"description=Default: the router's area"`
+	Device        string   `json:"device" jsonschema:"required,description=Device name" jsonschema_extras:"x-group=Interface"`
+	Network       string   `json:"network,omitempty" jsonschema:"enum=broadcast,enum=point-to-point,enum=non-broadcast,enum=point-to-multipoint" jsonschema_extras:"x-group=Interface"`
+	Cost          uint16   `json:"cost,omitempty" jsonschema:"minimum=1,maximum=65535" jsonschema_extras:"x-group=Interface"`
+	Priority      *uint8   `json:"priority,omitempty" jsonschema_extras:"x-group=Interface"`
+	Passive       bool     `json:"passive,omitempty" jsonschema_extras:"x-group=Interface"`
+	Area          AreaID   `json:"area,omitempty" jsonschema:"description=Default: the router's area" jsonschema_extras:"x-group=Interface"`
 	Auth          *Auth3   `json:"auth,omitempty" jsonschema:"description=Default: the router's auth"`
-	Neighbors     []string `json:"neighbors,omitempty" jsonschema:"description=Neighbors' link-local addresses (non-broadcast networks)"`
-	BFD           *bool    `json:"bfd,omitempty"`
-	HelloInterval int      `json:"hello_interval,omitempty"`
-	DeadInterval  int      `json:"dead_interval,omitempty"`
+	Neighbors     []string `json:"neighbors,omitempty" jsonschema:"description=Neighbors' link-local addresses (non-broadcast networks)" jsonschema_extras:"x-group=Interface"`
+	BFD           *bool    `json:"bfd,omitempty" jsonschema_extras:"x-group=Interface"`
+	HelloInterval int      `json:"hello_interval,omitempty" jsonschema_extras:"x-group=Timers,x-advanced=true"`
+	DeadInterval  int      `json:"dead_interval,omitempty" jsonschema_extras:"x-group=Timers,x-advanced=true"`
 }
 
 func defaultConfigV3() *ConfigV3 {

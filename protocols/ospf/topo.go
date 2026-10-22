@@ -29,7 +29,7 @@ type Topology struct {
 	PrefixBase      string `json:"prefix_base,omitempty" jsonschema:"description=First prefix (e.g. 10.200.0.0/24); each node gets prefixes_per_node consecutive ones"`
 	PrefixesPerNode int    `json:"prefixes_per_node,omitempty" jsonschema:"minimum=0,maximum=100"`
 
-	Custom []SimNode `json:"custom,omitempty" jsonschema:"description=Nodes for kind custom"`
+	Custom []SimNode `json:"custom,omitempty" jsonschema:"description=Nodes for kind custom" jsonschema_extras:"x-summary={name}[ {router_id}]"`
 
 	NodeSIDBase  *uint32       `json:"node_sid_base,omitempty" jsonschema:"description=With segment routing (OSPFv2): node SID index of the first node's loopback; the others count up"`
 	FlexAlgoSIDs []AlgoSIDBase `json:"flex_algo_sids,omitempty" jsonschema:"description=Node SIDs per flex-algo for the simulated loopbacks"`
@@ -42,7 +42,7 @@ type AlgoSIDBase struct {
 }
 
 type SimNode struct {
-	Name     string    `json:"name"`
+	Name     string    `json:"name" jsonschema:"required"`
 	RouterID string    `json:"router_id,omitempty"`
 	Links    []SimLink `json:"links,omitempty" jsonschema:"description=Links to other nodes (by name; us for this router). Links are two-way"`
 	Prefixes []Prefix  `json:"prefixes,omitempty" jsonschema:"description=Prefixes of this node (stub links / intra-area prefixes)"`

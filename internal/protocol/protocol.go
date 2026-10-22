@@ -219,7 +219,9 @@ func FindAction(t Type, name string) (Action, bool) {
 
 // Schema returns the JSON schema of v's type, with defaults taken from v.
 func Schema(v any) string {
-	r := &jsonschema.Reflector{DoNotReference: true, ExpandedStruct: true, AllowAdditionalProperties: false}
+	// Only fields tagged jsonschema:"required" are required: a field without
+	// omitempty may still have a default.
+	r := &jsonschema.Reflector{DoNotReference: true, ExpandedStruct: true, AllowAdditionalProperties: false, RequiredFromJSONSchemaTags: true}
 	s := r.Reflect(v)
 	s.Version = ""
 	b, err := json.Marshal(s)

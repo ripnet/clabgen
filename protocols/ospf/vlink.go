@@ -16,8 +16,8 @@ import (
 // toward the far end.
 
 type VirtualLink struct {
-	TransitArea AreaID `json:"transit_area" jsonschema:"description=Area the virtual link crosses (a normal area we have an interface in)"`
-	RouterID    string `json:"router_id" jsonschema:"description=The other end's router ID"`
+	TransitArea AreaID `json:"transit_area" jsonschema:"required,description=Area the virtual link crosses (a normal area we have an interface in)"`
+	RouterID    string `json:"router_id" jsonschema:"required,description=The other end's router ID"`
 	Auth        *Auth  `json:"auth,omitempty" jsonschema:"description=Default: the router's auth"`
 	// SR OS virtual links default to 10/60 s.
 	HelloInterval int `json:"hello_interval,omitempty" jsonschema:"description=Seconds. Default: the router's"`

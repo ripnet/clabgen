@@ -40,53 +40,53 @@ type xroute struct {
 
 // EVPNRoute is an EVPN route (or count MAC/IP or IP prefix routes).
 type EVPNRoute struct {
-	Type         string   `json:"type" jsonschema:"enum=mac-ip,enum=inclusive-multicast,enum=ethernet-ad,enum=ethernet-segment,enum=ip-prefix,description=Route type 2, 3, 1, 4 or 5"`
-	RD           string   `json:"rd" jsonschema:"description=Route distinguisher, e.g. 65100:600 or 192.0.2.50:600"`
+	Type         string   `json:"type" jsonschema:"required,enum=mac-ip,enum=inclusive-multicast,enum=ethernet-ad,enum=ethernet-segment,enum=ip-prefix,description=Route type 2, 3, 1, 4 or 5"`
+	RD           string   `json:"rd" jsonschema:"required,description=Route distinguisher, e.g. 65100:600 or 192.0.2.50:600"`
 	RouteTargets []string `json:"route_targets,omitempty" jsonschema:"description=Route targets, e.g. 65100:600"`
-	ESI          string   `json:"esi,omitempty" jsonschema:"description=Ethernet segment identifier (10 bytes, e.g. 01:00:00:00:00:00:00:00:00:01). Default 0 (single-homed)"`
-	EthernetTag  uint32   `json:"ethernet_tag,omitempty"`
-	MAC          string   `json:"mac,omitempty" jsonschema:"description=mac-ip: the first MAC"`
-	IP           string   `json:"ip,omitempty" jsonschema:"description=mac-ip: the first host address (optional; counts up with the MAC)"`
-	Count        int      `json:"count,omitempty" jsonschema:"description=mac-ip / ip-prefix: consecutive MACs (and IPs) or prefixes. Default 1"`
-	Prefix       string   `json:"prefix,omitempty" jsonschema:"description=ip-prefix: the (first) prefix"`
-	Gateway      string   `json:"gateway,omitempty" jsonschema:"description=ip-prefix: gateway address. Default 0"`
-	Label        uint32   `json:"label,omitempty" jsonschema:"description=MPLS label (or VXLAN VNI) of the route; inclusive-multicast: in the PMSI tunnel attribute. Default 0"`
-	Label2       uint32   `json:"label2,omitempty" jsonschema:"description=mac-ip: second (L3) label"`
-	Originator   string   `json:"originator,omitempty" jsonschema:"description=inclusive-multicast / ethernet-segment: originating router address. Default: our router ID"`
-	Encap        string   `json:"encapsulation,omitempty" jsonschema:"enum=mpls,enum=vxlan,description=Default mpls (labels in the high 20 bits); vxlan adds the encapsulation community and carries VNIs"`
-	SingleActive bool     `json:"single_active,omitempty" jsonschema:"description=ethernet-ad: the ESI label community's single-active flag"`
-	ESILabel     *uint32  `json:"esi_label,omitempty" jsonschema:"description=ethernet-ad: add the ESI label community with this label"`
-	MACMobility  *uint32  `json:"mac_mobility,omitempty" jsonschema:"description=mac-ip: MAC mobility sequence number"`
-	RouterMAC    string   `json:"router_mac,omitempty" jsonschema:"description=Router's MAC community (EVPN IRB / type 5)"`
+	ESI          string   `json:"esi,omitempty" jsonschema:"description=Ethernet segment identifier (10 bytes, e.g. 01:00:00:00:00:00:00:00:00:01). Default 0 (single-homed)" jsonschema_extras:"x-show-if=type!=inclusive-multicast"`
+	EthernetTag  uint32   `json:"ethernet_tag,omitempty" jsonschema_extras:"x-advanced=true"`
+	MAC          string   `json:"mac,omitempty" jsonschema:"description=mac-ip: the first MAC" jsonschema_extras:"x-show-if=type=mac-ip"`
+	IP           string   `json:"ip,omitempty" jsonschema:"description=mac-ip: the first host address (optional; counts up with the MAC)" jsonschema_extras:"x-show-if=type=mac-ip"`
+	Count        int      `json:"count,omitempty" jsonschema:"description=mac-ip / ip-prefix: consecutive MACs (and IPs) or prefixes. Default 1" jsonschema_extras:"x-show-if=type=mac-ip|ip-prefix"`
+	Prefix       string   `json:"prefix,omitempty" jsonschema:"description=ip-prefix: the (first) prefix" jsonschema_extras:"x-show-if=type=ip-prefix"`
+	Gateway      string   `json:"gateway,omitempty" jsonschema:"description=ip-prefix: gateway address. Default 0" jsonschema_extras:"x-show-if=type=ip-prefix"`
+	Label        uint32   `json:"label,omitempty" jsonschema:"description=MPLS label (or VXLAN VNI) of the route; inclusive-multicast: in the PMSI tunnel attribute. Default 0" jsonschema_extras:"x-show-if=type!=ethernet-segment"`
+	Label2       uint32   `json:"label2,omitempty" jsonschema:"description=mac-ip: second (L3) label" jsonschema_extras:"x-show-if=type=mac-ip"`
+	Originator   string   `json:"originator,omitempty" jsonschema:"description=inclusive-multicast / ethernet-segment: originating router address. Default: our router ID" jsonschema_extras:"x-show-if=type=inclusive-multicast|ethernet-segment"`
+	Encap        string   `json:"encapsulation,omitempty" jsonschema:"enum=mpls,enum=vxlan,description=Default mpls (labels in the high 20 bits); vxlan adds the encapsulation community and carries VNIs" jsonschema_extras:"x-advanced=true"`
+	SingleActive bool     `json:"single_active,omitempty" jsonschema:"description=ethernet-ad: the ESI label community's single-active flag" jsonschema_extras:"x-show-if=type=ethernet-ad"`
+	ESILabel     *uint32  `json:"esi_label,omitempty" jsonschema:"description=ethernet-ad: add the ESI label community with this label" jsonschema_extras:"x-show-if=type=ethernet-ad"`
+	MACMobility  *uint32  `json:"mac_mobility,omitempty" jsonschema:"description=mac-ip: MAC mobility sequence number" jsonschema_extras:"x-show-if=type=mac-ip"`
+	RouterMAC    string   `json:"router_mac,omitempty" jsonschema:"description=Router's MAC community (EVPN IRB / type 5)" jsonschema_extras:"x-advanced=true,x-show-if=type=mac-ip|ip-prefix"`
 	Attributes
 }
 
 // L2VPNRoute is a BGP VPLS (RFC 4761) or VPWS (RFC 6624) label block.
 type L2VPNRoute struct {
 	Kind         string   `json:"kind" jsonschema:"enum=vpls,enum=vpws,description=Default vpls"`
-	RD           string   `json:"rd"`
+	RD           string   `json:"rd" jsonschema:"required"`
 	RouteTargets []string `json:"route_targets,omitempty"`
-	VEID         uint16   `json:"ve_id" jsonschema:"description=VE ID (VPLS) / CE ID (VPWS)"`
-	BlockOffset  uint16   `json:"block_offset,omitempty" jsonschema:"description=Label block offset. Default 1"`
-	BlockSize    uint16   `json:"block_size,omitempty" jsonschema:"description=Label block size. Default 8"`
-	LabelBase    uint32   `json:"label_base" jsonschema:"description=First label of the block"`
-	MTU          uint16   `json:"mtu,omitempty" jsonschema:"description=Layer-2 MTU in the Layer2 Info community (0: don't check)"`
-	ControlWord  bool     `json:"control_word,omitempty" jsonschema:"description=C flag: control word required"`
-	Encap        string   `json:"encapsulation,omitempty" jsonschema:"enum=vpls,enum=ethernet,enum=vlan,description=Layer2 Info encapsulation. Default vpls (VPLS) / ethernet (VPWS)"`
+	VEID         uint16   `json:"ve_id" jsonschema:"required,description=VE ID (VPLS) / CE ID (VPWS)"`
+	BlockOffset  uint16   `json:"block_offset,omitempty" jsonschema:"description=Label block offset. Default 1" jsonschema_extras:"x-group=Label block"`
+	BlockSize    uint16   `json:"block_size,omitempty" jsonschema:"description=Label block size. Default 8" jsonschema_extras:"x-group=Label block"`
+	LabelBase    uint32   `json:"label_base" jsonschema:"required,description=First label of the block"`
+	MTU          uint16   `json:"mtu,omitempty" jsonschema:"description=Layer-2 MTU in the Layer2 Info community (0: don't check)" jsonschema_extras:"x-group=Layer2 info"`
+	ControlWord  bool     `json:"control_word,omitempty" jsonschema:"description=C flag: control word required" jsonschema_extras:"x-group=Layer2 info"`
+	Encap        string   `json:"encapsulation,omitempty" jsonschema:"enum=vpls,enum=ethernet,enum=vlan,description=Layer2 Info encapsulation. Default vpls (VPLS) / ethernet (VPWS)" jsonschema_extras:"x-group=Layer2 info"`
 	Attributes
 }
 
 // Attributes are what non-unicast routes share with unicast ones.
 type Attributes struct {
-	NextHop          string   `json:"next_hop,omitempty" jsonschema:"description=Default: our address toward each peer"`
-	Origin           string   `json:"origin,omitempty" jsonschema:"enum=igp,enum=egp,enum=incomplete"`
-	ASPath           []uint32 `json:"as_path,omitempty"`
-	MED              *uint32  `json:"med,omitempty"`
-	LocalPref        *uint32  `json:"local_pref,omitempty"`
-	Communities      []string `json:"communities,omitempty"`
-	LargeCommunities []string `json:"large_communities,omitempty"`
-	ExtCommunities   []string `json:"ext_communities,omitempty"`
-	Peers            []string `json:"peers,omitempty"`
+	NextHop          string   `json:"next_hop,omitempty" jsonschema:"description=Default: our address toward each peer" jsonschema_extras:"x-group=Path attributes,x-advanced=true"`
+	Origin           string   `json:"origin,omitempty" jsonschema:"enum=igp,enum=egp,enum=incomplete" jsonschema_extras:"x-group=Path attributes,x-advanced=true"`
+	ASPath           []uint32 `json:"as_path,omitempty" jsonschema_extras:"x-group=Path attributes,x-advanced=true"`
+	MED              *uint32  `json:"med,omitempty" jsonschema_extras:"x-group=Path attributes,x-advanced=true"`
+	LocalPref        *uint32  `json:"local_pref,omitempty" jsonschema_extras:"x-group=Path attributes,x-advanced=true"`
+	Communities      []string `json:"communities,omitempty" jsonschema_extras:"x-group=Path attributes,x-advanced=true"`
+	LargeCommunities []string `json:"large_communities,omitempty" jsonschema_extras:"x-group=Path attributes,x-advanced=true"`
+	ExtCommunities   []string `json:"ext_communities,omitempty" jsonschema_extras:"x-group=Path attributes,x-advanced=true"`
+	Peers            []string `json:"peers,omitempty" jsonschema_extras:"x-group=Path attributes,x-advanced=true"`
 }
 
 func (a Attributes) route(name string, rts []string) Route {

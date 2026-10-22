@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
 
 // A JSON schema as published by the agent (invopop/jsonschema output plus
-// "default" values and "x-order").
+// "default" values and "x-order"), with hints from the Go config's
+// jsonschema_extras tags: x-group (a field's group heading), x-advanced
+// (kept back until "show all options"), x-summary (an object list's item
+// line, e.g. "{address} AS {remote_as}[ · {description}]": bracketed parts
+// only when their fields are set) and x-show-if ("type=a|b" or "type!=c":
+// the field applies only for those values of a sibling field).
 export type Schema = {
+  "x-group"?: string;
+  "x-advanced"?: boolean | string;
+  "x-summary"?: string;
+  "x-show-if"?: string;
   type?: string | string[];
   properties?: Record<string, Schema>;
   required?: string[];
@@ -69,12 +78,30 @@ function isSet(v: unknown): boolean {
   return true;
 }
 
+const isAdvanced = (s: Schema) => s["x-advanced"] === true || s["x-advanced"] === "true";
+
+// applies evaluates a field's x-show-if against its siblings (an unset
+// sibling counts as its default).
+function applies(ps: Schema, parent: Schema, value: Obj): boolean {
+  const cond = ps["x-show-if"];
+  if (!cond) return true;
+  const m = cond.match(/^(\w+)(!?=)(.*)$/);
+  if (!m) return true;
+  const [, field, op, vals] = m;
+  const cur = String(value[field] ?? parent.properties?.[field]?.default ?? "");
+  const hit = vals.split("|").includes(cur);
+  return op === "=" ? hit : !hit;
+}
+
 // The default a description mentions ("Default: the device's address"),
 // for placeholders.
 function defaultHint(s: Schema): string {
   if (s.default !== undefined) return String(s.default);
   const m = s.description?.match(/Default:?\s*([^.;]+)/i);
-  return m ? m[1].trim() : "";
+  const hint = m ? m[1].trim() : "";
+  // An enum's default is one of its values ("Default mpls (…)" → mpls).
+  if (s.enum && hint) return String(s.enum.find((x) => hint.startsWith(String(x))) ?? "");
+  return hint;
 }
 
 // "config" forms edit a whole object, so unset booleans are false. "args"
@@ -294,14 +321,19 @@ function FieldSet({
 }) {
   const [all, setAll] = useState(false);
   const req = new Set(schema.required ?? []);
-  const ks = keys ?? order(schema);
-  // Small forms (most action arguments) show everything.
+  // Fields that don't apply (x-show-if) aren't offered at all.
+  const ks = (keys ?? order(schema)).filter((k) =>
+    applies(schema.properties![k], schema, value),
+  );
+  const adv = (k: string) => isAdvanced(schema.properties![k]);
+  // Small forms (most action arguments) show everything but advanced
+  // fields.
   const shown = (k: string) =>
-    all || ks.length <= 6 || req.has(k) || isSet(value[k]);
+    all || req.has(k) || isSet(value[k]) || (ks.length <= 6 && !adv(k));
   let visible = ks.filter(shown);
   // Nothing set yet: show the first few so there is something to fill.
   if (!all && visible.length === 0)
-    visible = ks.slice(0, Math.min(4, ks.length));
+    visible = ks.filter((k) => !adv(k)).slice(0, 4);
   const hidden = ks.length - visible.length;
   const set = (k: string, v: unknown) => {
     const next = { ...value };
@@ -311,28 +343,41 @@ function FieldSet({
   };
   const scalars = visible.filter((k) => !isBlock(schema.properties![k]));
   const blocks = visible.filter((k) => isBlock(schema.properties![k]));
+  // Scalars by x-group, in order of first appearance (ungrouped first).
+  const groups: [string, string[]][] = [];
+  for (const k of scalars) {
+    const g = schema.properties![k]["x-group"] ?? "";
+    const at = groups.find(([n]) => n === g);
+    if (at) at[1].push(k);
+    else if (g === "") groups.unshift([g, [k]]);
+    else groups.push([g, [k]]);
+  }
+  const headed = groups.length > 1 || (groups.length === 1 && groups[0][0] !== "");
   return (
     <div className="fieldset">
-      {scalars.length > 0 && (
-        <div className="form-grid">
-          {scalars.map((k) => {
-            const ps = schema.properties![k];
-            return (
-              <div className={ps.items?.enum ? "field wide" : "field"} key={k}>
-                <FieldLabel name={k} schema={ps} required={req.has(k)} />
-                <Field
-                  name={k}
-                  schema={ps}
-                  value={value[k]}
-                  required={req.has(k)}
-                  mode={mode}
-                  onChange={(v) => set(k, v)}
-                />
-              </div>
-            );
-          })}
+      {groups.map(([g, gks]) => (
+        <div className="field-group" key={g}>
+          {headed && g && <div className="field-group-head">{g}</div>}
+          <div className="form-grid">
+            {gks.map((k) => {
+              const ps = schema.properties![k];
+              return (
+                <div className={ps.items?.enum ? "field wide" : "field"} key={k}>
+                  <FieldLabel name={k} schema={ps} required={req.has(k)} />
+                  <Field
+                    name={k}
+                    schema={ps}
+                    value={value[k]}
+                    required={req.has(k)}
+                    mode={mode}
+                    onChange={(v) => set(k, v)}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
-      )}
+      ))}
       {blocks.map((k) => {
         const ps = schema.properties![k];
         return (
@@ -370,12 +415,30 @@ function FieldSet({
   );
 }
 
-// summary is an object list item's one-line description: its required
-// fields, then other set scalars.
-function summary(schema: Schema, v: Obj): string {
+const fmt = (x: unknown) =>
+  Array.isArray(x) ? x.join(", ") : typeof x === "object" ? "…" : String(x);
+
+// fill renders an x-summary template: {field} is the field's value (a set
+// boolean its name), [ … ] a part shown only when its fields are all set.
+function fill(tmpl: string, v: Obj): string {
+  const val = (k: string) => (v[k] === true ? label(k) : fmt(v[k]));
+  const out = tmpl.replace(/\[([^\]]*)\]/g, (_, part: string) => {
+    const ks = [...part.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+    return ks.every((k) => isSet(v[k]) && v[k] !== false)
+      ? part.replace(/\{(\w+)\}/g, (_m, k: string) => val(k))
+      : "";
+  });
+  return out
+    .replace(/\{(\w+)\}/g, (_m, k: string) => (isSet(v[k]) ? val(k) : ""))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// summary is an object list item's one-line description: the list's
+// x-summary, else its required fields, then other set scalars.
+function summary(list: Schema, schema: Schema, v: Obj): string {
+  if (list["x-summary"]) return fill(list["x-summary"], v) || "(empty)";
   const req = new Set(schema.required ?? []);
-  const fmt = (x: unknown) =>
-    Array.isArray(x) ? x.join(", ") : typeof x === "object" ? "…" : String(x);
   const parts: string[] = [];
   for (const k of order(schema)) {
     if (req.has(k) && isSet(v[k])) parts.push(fmt(v[k]));
@@ -415,7 +478,7 @@ function ObjectList({
               aria-expanded={open === i}
             >
               <span className="caret">{open === i ? "▾" : "▸"}</span>
-              <span className="obj-item-text">{summary(item, it ?? {})}</span>
+              <span className="obj-item-text">{summary(schema, item, it ?? {})}</span>
             </button>
             <button
               type="button"

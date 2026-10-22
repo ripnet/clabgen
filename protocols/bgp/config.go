@@ -11,48 +11,48 @@ import (
 // Config is one BGP speaker on a device with its peers and the routes it
 // injects.
 type Config struct {
-	LocalAS  uint32 `json:"local_as" jsonschema:"minimum=1,maximum=4294967295,description=Our AS (4-byte AS numbers are fine)"`
+	LocalAS  uint32 `json:"local_as" jsonschema:"required,minimum=1,maximum=4294967295,description=Our AS (4-byte AS numbers are fine)"`
 	RouterID string `json:"router_id,omitempty" jsonschema:"description=BGP identifier. Default: the device's first IPv4 address"`
 	HoldTime int    `json:"hold_time" jsonschema:"minimum=0,maximum=65535,description=Seconds (0: no keepalives; else at least 3)"`
 	// Peers we talk to; each is dialled (unless passive) and accepted.
-	Peers []Peer `json:"peers,omitempty"`
+	Peers []Peer `json:"peers,omitempty" jsonschema_extras:"x-summary={address} AS {remote_as}[ · {description}][ · {families}]"`
 	// Routes we advertise to every peer of a matching family.
-	Routes []Route      `json:"routes,omitempty" jsonschema:"description=Routes to advertise (route injection); with an rd: VPNv4 / VPNv6"`
-	EVPN   []EVPNRoute  `json:"evpn,omitempty" jsonschema:"description=EVPN routes (family evpn)"`
-	L2VPN  []L2VPNRoute `json:"l2vpn,omitempty" jsonschema:"description=BGP VPLS / VPWS label blocks (family l2vpn)"`
+	Routes []Route      `json:"routes,omitempty" jsonschema:"description=Routes to advertise (route injection); with an rd: VPNv4 / VPNv6" jsonschema_extras:"x-summary={prefix}[ ×{count}][ rd {rd}][ label {label}][ nh {next_hop}]"`
+	EVPN   []EVPNRoute  `json:"evpn,omitempty" jsonschema:"description=EVPN routes (family evpn)" jsonschema_extras:"x-summary={type} {rd}[ {mac}][ {prefix}][ ×{count}][ label {label}]"`
+	L2VPN  []L2VPNRoute `json:"l2vpn,omitempty" jsonschema:"description=BGP VPLS / VPWS label blocks (family l2vpn)" jsonschema_extras:"x-summary=[{kind} ]{rd} ve {ve_id} labels from {label_base}"`
 }
 
 type Peer struct {
-	Address      string   `json:"address" jsonschema:"description=Peer IP address"`
-	RemoteAS     uint32   `json:"remote_as" jsonschema:"minimum=1"`
-	LocalAddress string   `json:"local_address,omitempty" jsonschema:"description=Our source address. Default: the device address toward the peer"`
-	Passive      bool     `json:"passive,omitempty" jsonschema:"description=Only accept the peer's connection; don't dial"`
-	Families     []string `json:"families,omitempty" jsonschema:"enum=ipv4-unicast,enum=ipv6-unicast,enum=ipv4-vpn,enum=ipv6-vpn,enum=evpn,enum=l2vpn,description=Address families. Default: the peer address's unicast family"`
-	HoldTime     int      `json:"hold_time,omitempty" jsonschema:"description=Default: the speaker's"`
-	TTL          int      `json:"ttl,omitempty" jsonschema:"minimum=0,maximum=255,description=TTL of our packets (eBGP multihop / GTSM 255). Default 64 (eBGP 1)"`
-	Description  string   `json:"description,omitempty"`
-	ConnectRetry int      `json:"connect_retry,omitempty" jsonschema:"description=Seconds between connection attempts. Default 5"`
+	Address      string   `json:"address" jsonschema:"required,description=Peer IP address" jsonschema_extras:"x-group=Session"`
+	RemoteAS     uint32   `json:"remote_as" jsonschema:"required,minimum=1" jsonschema_extras:"x-group=Session"`
+	LocalAddress string   `json:"local_address,omitempty" jsonschema:"description=Our source address. Default: the device address toward the peer" jsonschema_extras:"x-group=Session"`
+	Passive      bool     `json:"passive,omitempty" jsonschema:"description=Only accept the peer's connection; don't dial" jsonschema_extras:"x-group=Transport,x-advanced=true"`
+	Families     []string `json:"families,omitempty" jsonschema:"enum=ipv4-unicast,enum=ipv6-unicast,enum=ipv4-vpn,enum=ipv6-vpn,enum=evpn,enum=l2vpn,description=Address families. Default: the peer address's unicast family" jsonschema_extras:"x-group=Session"`
+	HoldTime     int      `json:"hold_time,omitempty" jsonschema:"description=Default: the speaker's" jsonschema_extras:"x-group=Timers"`
+	TTL          int      `json:"ttl,omitempty" jsonschema:"minimum=0,maximum=255,description=TTL of our packets (eBGP multihop / GTSM 255). Default 64 (eBGP 1)" jsonschema_extras:"x-group=Transport,x-advanced=true"`
+	Description  string   `json:"description,omitempty" jsonschema_extras:"x-group=Session"`
+	ConnectRetry int      `json:"connect_retry,omitempty" jsonschema:"description=Seconds between connection attempts. Default 5" jsonschema_extras:"x-group=Timers"`
 }
 
 // Route is a route (or count consecutive prefixes) with its attributes.
 type Route struct {
-	Prefix  string `json:"prefix" jsonschema:"description=e.g. 198.51.100.0/24 or 2001:db8:1::/48"`
-	Count   int    `json:"count,omitempty" jsonschema:"description=Consecutive prefixes of this length. Default 1"`
-	NextHop string `json:"next_hop,omitempty" jsonschema:"description=Default: our address toward each peer (next-hop self)"`
-	Origin  string `json:"origin,omitempty" jsonschema:"enum=igp,enum=egp,enum=incomplete,description=Default igp"`
+	Prefix  string `json:"prefix" jsonschema:"required,description=e.g. 198.51.100.0/24 or 2001:db8:1::/48" jsonschema_extras:"x-group=Prefixes"`
+	Count   int    `json:"count,omitempty" jsonschema:"description=Consecutive prefixes of this length. Default 1" jsonschema_extras:"x-group=Prefixes"`
+	NextHop string `json:"next_hop,omitempty" jsonschema:"description=Default: our address toward each peer (next-hop self)" jsonschema_extras:"x-group=Path attributes"`
+	Origin  string `json:"origin,omitempty" jsonschema:"enum=igp,enum=egp,enum=incomplete,description=Default igp" jsonschema_extras:"x-group=Path attributes"`
 	// AS path: after our AS on eBGP (as received on iBGP).
-	ASPath           []uint32 `json:"as_path,omitempty" jsonschema:"description=AS numbers after ours (eBGP) / the whole path (iBGP)"`
-	MED              *uint32  `json:"med,omitempty"`
-	LocalPref        *uint32  `json:"local_pref,omitempty" jsonschema:"description=iBGP only. Default 100"`
-	Communities      []string `json:"communities,omitempty" jsonschema:"description=Standard communities: 65000:100, no-export, no-advertise, no-export-subconfed, blackhole"`
-	LargeCommunities []string `json:"large_communities,omitempty" jsonschema:"description=Large communities global:local1:local2"`
-	ExtCommunities   []string `json:"ext_communities,omitempty" jsonschema:"description=Extended communities: rt:65000:100, soo:65000:1, rt:192.0.2.1:7"`
-	AtomicAggregate  bool     `json:"atomic_aggregate,omitempty"`
-	Peers            []string `json:"peers,omitempty" jsonschema:"description=Only to these peers (addresses). Default: all"`
+	ASPath           []uint32 `json:"as_path,omitempty" jsonschema:"description=AS numbers after ours (eBGP) / the whole path (iBGP)" jsonschema_extras:"x-group=Path attributes"`
+	MED              *uint32  `json:"med,omitempty" jsonschema_extras:"x-group=Path attributes"`
+	LocalPref        *uint32  `json:"local_pref,omitempty" jsonschema:"description=iBGP only. Default 100" jsonschema_extras:"x-group=Path attributes"`
+	Communities      []string `json:"communities,omitempty" jsonschema:"description=Standard communities: 65000:100, no-export, no-advertise, no-export-subconfed, blackhole" jsonschema_extras:"x-group=Path attributes"`
+	LargeCommunities []string `json:"large_communities,omitempty" jsonschema:"description=Large communities global:local1:local2" jsonschema_extras:"x-group=Path attributes"`
+	ExtCommunities   []string `json:"ext_communities,omitempty" jsonschema:"description=Extended communities: rt:65000:100, soo:65000:1, rt:192.0.2.1:7" jsonschema_extras:"x-group=Path attributes"`
+	AtomicAggregate  bool     `json:"atomic_aggregate,omitempty" jsonschema_extras:"x-group=Path attributes"`
+	Peers            []string `json:"peers,omitempty" jsonschema:"description=Only to these peers (addresses). Default: all" jsonschema_extras:"x-group=Advanced,x-advanced=true"`
 	// VPN (RFC 4364 / 4659): a route distinguisher makes the route VPNv4/v6.
-	RD           string   `json:"rd,omitempty" jsonschema:"description=Route distinguisher (65100:500 or 192.0.2.50:500): advertise as VPNv4 / VPNv6"`
-	Label        uint32   `json:"label,omitempty" jsonschema:"description=VPN label. Default 30000"`
-	RouteTargets []string `json:"route_targets,omitempty" jsonschema:"description=Route targets, e.g. 65100:500"`
+	RD           string   `json:"rd,omitempty" jsonschema:"description=Route distinguisher (65100:500 or 192.0.2.50:500): advertise as VPNv4 / VPNv6" jsonschema_extras:"x-group=VPN"`
+	Label        uint32   `json:"label,omitempty" jsonschema:"description=VPN label. Default 30000" jsonschema_extras:"x-group=VPN"`
+	RouteTargets []string `json:"route_targets,omitempty" jsonschema:"description=Route targets, e.g. 65100:500" jsonschema_extras:"x-group=VPN"`
 }
 
 func defaultConfig() *Config {

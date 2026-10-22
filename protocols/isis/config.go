@@ -9,45 +9,45 @@ import (
 
 // Config is one emulated IS-IS router with one interface (its device).
 type Config struct {
-	SystemID string   `json:"system_id,omitempty" jsonschema:"description=Default: derived from the device MAC (0200.xxxx.xxxx style)"`
-	Hostname string   `json:"hostname,omitempty" jsonschema:"description=Dynamic hostname (TLV 137). Default: the instance name"`
-	Areas    []string `json:"areas" jsonschema:"description=Area addresses like 49.0001"`
-	Level    string   `json:"level" jsonschema:"enum=L1,enum=L2,enum=L1L2,description=Levels this router runs"`
-	Circuit  string   `json:"circuit" jsonschema:"enum=point-to-point,enum=broadcast,description=Interface type"`
-	Priority uint8    `json:"priority" jsonschema:"minimum=0,maximum=127,description=DIS election priority (broadcast circuits)"`
-	Passive  bool     `json:"passive,omitempty" jsonschema:"description=Advertise this interface's subnets without hellos (no adjacency)"`
+	SystemID string   `json:"system_id,omitempty" jsonschema:"description=Default: derived from the device MAC (0200.xxxx.xxxx style)" jsonschema_extras:"x-group=Router"`
+	Hostname string   `json:"hostname,omitempty" jsonschema:"description=Dynamic hostname (TLV 137). Default: the instance name" jsonschema_extras:"x-group=Router"`
+	Areas    []string `json:"areas" jsonschema:"description=Area addresses like 49.0001" jsonschema_extras:"x-group=Router"`
+	Level    string   `json:"level" jsonschema:"enum=L1,enum=L2,enum=L1L2,description=Levels this router runs" jsonschema_extras:"x-group=Router"`
+	Circuit  string   `json:"circuit" jsonschema:"enum=point-to-point,enum=broadcast,description=Interface type" jsonschema_extras:"x-group=First interface"`
+	Priority uint8    `json:"priority" jsonschema:"minimum=0,maximum=127,description=DIS election priority (broadcast circuits)" jsonschema_extras:"x-group=First interface"`
+	Passive  bool     `json:"passive,omitempty" jsonschema:"description=Advertise this interface's subnets without hellos (no adjacency)" jsonschema_extras:"x-group=First interface"`
 
 	// Interfaces are further devices of this router (the instance's own
 	// device is its first interface, with the settings above).
-	Interfaces []Interface `json:"interfaces,omitempty" jsonschema:"description=Further interfaces: devices of this router besides the instance's own"`
-	Metric     uint32      `json:"metric" jsonschema:"minimum=1,maximum=16777214,description=Wide metric toward the neighbor"`
+	Interfaces []Interface `json:"interfaces,omitempty" jsonschema:"description=Further interfaces: devices of this router besides the instance's own" jsonschema_extras:"x-summary={device}[ {circuit}][ metric {metric}][ {passive}]"`
+	Metric     uint32      `json:"metric" jsonschema:"minimum=1,maximum=16777214,description=Wide metric toward the neighbor" jsonschema_extras:"x-group=First interface"`
 	// TE attributes of the first interface (for flex-algo).
-	TEMetric    uint32 `json:"te_metric,omitempty" jsonschema:"maximum=16777215,description=TE metric of the first interface (flex-algo metric type te)"`
-	DelayUS     uint32 `json:"delay_us,omitempty" jsonschema:"maximum=16777215,description=Link delay in µs of the first interface (flex-algo metric type delay)"`
-	AdminGroups []int  `json:"admin_groups,omitempty" jsonschema:"description=Admin groups (0-31) of the first interface (flex-algo include/exclude)"`
+	TEMetric    uint32 `json:"te_metric,omitempty" jsonschema:"maximum=16777215,description=TE metric of the first interface (flex-algo metric type te)" jsonschema_extras:"x-group=TE attributes,x-advanced=true"`
+	DelayUS     uint32 `json:"delay_us,omitempty" jsonschema:"maximum=16777215,description=Link delay in µs of the first interface (flex-algo metric type delay)" jsonschema_extras:"x-group=TE attributes,x-advanced=true"`
+	AdminGroups []int  `json:"admin_groups,omitempty" jsonschema:"description=Admin groups (0-31) of the first interface (flex-algo include/exclude)" jsonschema_extras:"x-group=TE attributes,x-advanced=true"`
 
-	Topologies []string `json:"topologies,omitempty" jsonschema:"description=Multi-topology (RFC 5120) besides IPv4 unicast: ipv6-unicast / ipv4-multicast / ipv6-multicast. Empty: single topology"`
+	Topologies []string `json:"topologies,omitempty" jsonschema:"description=Multi-topology (RFC 5120) besides IPv4 unicast: ipv6-unicast / ipv4-multicast / ipv6-multicast. Empty: single topology" jsonschema_extras:"x-group=Router"`
 
-	HelloInterval   int  `json:"hello_interval" jsonschema:"minimum=1,maximum=20000,description=Seconds"`
-	HelloMultiplier int  `json:"hello_multiplier" jsonschema:"minimum=2,maximum=100,description=Hold time = interval × multiplier"`
-	HelloPadding    bool `json:"hello_padding,omitempty" jsonschema:"description=Pad hellos to the port MTU (detects MTU mismatches)"`
-	CSNPInterval    int  `json:"csnp_interval" jsonschema:"minimum=1,maximum=65535,description=Seconds between periodic CSNPs on the point-to-point link"`
-	LSPLifetime     int  `json:"lsp_lifetime" jsonschema:"minimum=350,maximum=65535,description=Seconds"`
-	LSPRefresh      int  `json:"lsp_refresh" jsonschema:"minimum=1,maximum=65535,description=Seconds between refreshes of our LSPs (below the lifetime)"`
-	LSPMTU          int  `json:"lsp_mtu" jsonschema:"minimum=512,maximum=9190,description=Largest LSP we originate; more prefixes go in further fragments"`
+	HelloInterval   int  `json:"hello_interval" jsonschema:"minimum=1,maximum=20000,description=Seconds" jsonschema_extras:"x-group=Timers and LSPs"`
+	HelloMultiplier int  `json:"hello_multiplier" jsonschema:"minimum=2,maximum=100,description=Hold time = interval × multiplier" jsonschema_extras:"x-group=Timers and LSPs"`
+	HelloPadding    bool `json:"hello_padding,omitempty" jsonschema:"description=Pad hellos to the port MTU (detects MTU mismatches)" jsonschema_extras:"x-group=Timers and LSPs,x-advanced=true"`
+	CSNPInterval    int  `json:"csnp_interval" jsonschema:"minimum=1,maximum=65535,description=Seconds between periodic CSNPs on the point-to-point link" jsonschema_extras:"x-group=Timers and LSPs"`
+	LSPLifetime     int  `json:"lsp_lifetime" jsonschema:"minimum=350,maximum=65535,description=Seconds" jsonschema_extras:"x-group=Timers and LSPs"`
+	LSPRefresh      int  `json:"lsp_refresh" jsonschema:"minimum=1,maximum=65535,description=Seconds between refreshes of our LSPs (below the lifetime)" jsonschema_extras:"x-group=Timers and LSPs"`
+	LSPMTU          int  `json:"lsp_mtu" jsonschema:"minimum=512,maximum=9190,description=Largest LSP we originate; more prefixes go in further fragments" jsonschema_extras:"x-group=Timers and LSPs"`
 
 	HelloAuth Auth `json:"hello_auth" jsonschema:"description=Authentication of hellos on the interface"`
 	LSPAuth   Auth `json:"lsp_auth" jsonschema:"description=Area (L1) / domain (L2) authentication of LSPs (and CSNPs/PSNPs with snp_auth)"`
 	SNPAuth   bool `json:"snp_auth" jsonschema:"description=Also authenticate CSNPs and PSNPs with the LSP key"`
 
-	Overload bool `json:"overload,omitempty" jsonschema:"description=Set the overload bit"`
+	Overload bool `json:"overload,omitempty" jsonschema:"description=Set the overload bit" jsonschema_extras:"x-group=Router"`
 	// Interface subnets are advertised automatically.
-	Prefixes []Prefix `json:"prefixes,omitempty" jsonschema:"description=Extra prefixes to advertise (route injection)"`
+	Prefixes []Prefix `json:"prefixes,omitempty" jsonschema:"description=Extra prefixes to advertise (route injection)" jsonschema_extras:"x-summary={prefix}[ ×{count}][ metric {metric}]"`
 	// Loopbacks are the router's own addresses, answered on every interface.
-	Loopbacks []string `json:"loopbacks,omitempty" jsonschema:"description=Router loopback addresses (e.g. 192.0.2.50/32): advertised at metric 0 and answered (ping, flows) on every interface; the first IPv4 one is the router ID"`
+	Loopbacks []string `json:"loopbacks,omitempty" jsonschema:"description=Router loopback addresses (e.g. 192.0.2.50/32): advertised at metric 0 and answered (ping, flows) on every interface; the first IPv4 one is the router ID" jsonschema_extras:"x-group=Router"`
 
 	SegmentRouting SegmentRouting `json:"segment_routing" jsonschema:"description=Segment routing (RFC 8667; MPLS): SRGB, node SIDs, adjacency SIDs"`
-	FlexAlgos      []FlexAlgo     `json:"flex_algos,omitempty" jsonschema:"description=Flexible algorithms (RFC 9350) we take part in, optionally with their definitions"`
+	FlexAlgos      []FlexAlgo     `json:"flex_algos,omitempty" jsonschema:"description=Flexible algorithms (RFC 9350) we take part in, optionally with their definitions" jsonschema_extras:"x-summary={algorithm}[ {metric_type}][ {participate_only}]"`
 	SRv6           SRv6           `json:"srv6" jsonschema:"description=SRv6 (RFC 9352): locators with End SIDs, End.X SIDs on adjacencies"`
 
 	Topology Topology `json:"topology" jsonschema:"description=Simulated routers behind this one; their LSPs are originated here"`
@@ -56,16 +56,16 @@ type Config struct {
 // Interface is one more circuit of the router. Empty fields take the
 // router-wide value.
 type Interface struct {
-	Device    string `json:"device" jsonschema:"description=Device name"`
+	Device    string `json:"device" jsonschema:"required,description=Device name"`
 	Circuit   string `json:"circuit,omitempty" jsonschema:"enum=point-to-point,enum=broadcast"`
 	Metric    uint32 `json:"metric,omitempty" jsonschema:"minimum=1,maximum=16777214"`
 	Priority  *uint8 `json:"priority,omitempty" jsonschema:"minimum=0,maximum=127"`
 	Passive   bool   `json:"passive,omitempty" jsonschema:"description=Advertise the subnets without hellos"`
 	HelloAuth *Auth  `json:"hello_auth,omitempty" jsonschema:"description=Default: the router's hello_auth"`
 
-	TEMetric    uint32 `json:"te_metric,omitempty" jsonschema:"maximum=16777215"`
-	DelayUS     uint32 `json:"delay_us,omitempty" jsonschema:"maximum=16777215,description=Link delay in µs"`
-	AdminGroups []int  `json:"admin_groups,omitempty" jsonschema:"description=Admin groups 0-31"`
+	TEMetric    uint32 `json:"te_metric,omitempty" jsonschema:"maximum=16777215" jsonschema_extras:"x-group=TE attributes,x-advanced=true"`
+	DelayUS     uint32 `json:"delay_us,omitempty" jsonschema:"maximum=16777215,description=Link delay in µs" jsonschema_extras:"x-group=TE attributes,x-advanced=true"`
+	AdminGroups []int  `json:"admin_groups,omitempty" jsonschema:"description=Admin groups 0-31" jsonschema_extras:"x-group=TE attributes,x-advanced=true"`
 }
 
 // SegmentRouting configures SR-MPLS advertisements.
@@ -73,12 +73,12 @@ type SegmentRouting struct {
 	Enabled    bool      `json:"enabled"`
 	SRGBBase   uint32    `json:"srgb_base" jsonschema:"minimum=16,maximum=1048575,description=First label of the SR global block"`
 	SRGBSize   uint32    `json:"srgb_size" jsonschema:"minimum=1,maximum=1048560"`
-	NodeSIDs   []NodeSID `json:"node_sids,omitempty" jsonschema:"description=Prefix-SIDs on our prefixes (a missing prefix is advertised); /32 and /128 get the node flag"`
+	NodeSIDs   []NodeSID `json:"node_sids,omitempty" jsonschema:"description=Prefix-SIDs on our prefixes (a missing prefix is advertised); /32 and /128 get the node flag" jsonschema_extras:"x-summary={prefix} index {index}[ algo {algorithm}]"`
 	AdjSIDBase uint32    `json:"adj_sid_base" jsonschema:"description=Local label for our first adjacency SID (the others count up); 0: no adjacency SIDs"`
 	SRLBBase   uint32    `json:"srlb_base,omitempty" jsonschema:"description=First label of the SR local block (advertised; 0: none)"`
 	SRLBSize   uint32    `json:"srlb_size,omitempty"`
 	// Mapping server (RFC 8667 2.4): SIDs for prefixes of routers without SR.
-	Mappings []SIDMapping `json:"mappings,omitempty" jsonschema:"description=Mapping server entries: SID indexes for ranges of prefixes (SID/Label Binding TLV)"`
+	Mappings []SIDMapping `json:"mappings,omitempty" jsonschema:"description=Mapping server entries: SID indexes for ranges of prefixes (SID/Label Binding TLV)" jsonschema_extras:"x-summary={prefix}[ ×{range}] index {index}"`
 }
 
 // SIDMapping maps Range consecutive prefixes from Prefix to indexes from Index.
@@ -128,8 +128,8 @@ type SIDStructureConfig struct {
 }
 
 type NodeSID struct {
-	Prefix       string `json:"prefix" jsonschema:"description=e.g. 192.0.2.50/32"`
-	Index        uint32 `json:"index" jsonschema:"description=Index into the SRGB"`
+	Prefix       string `json:"prefix" jsonschema:"required,description=e.g. 192.0.2.50/32"`
+	Index        uint32 `json:"index" jsonschema:"required,description=Index into the SRGB"`
 	Algorithm    byte   `json:"algorithm,omitempty" jsonschema:"description=0 (SPF) or a flex-algo (128-255) from flex_algos"`
 	NoPHP        bool   `json:"no_php,omitempty" jsonschema:"description=Ask the penultimate hop not to pop (P flag)"`
 	ExplicitNull bool   `json:"explicit_null,omitempty" jsonschema:"description=Ask for explicit null (E flag)"`
@@ -248,11 +248,11 @@ type Topology struct {
 	FlexAlgoSIDs    []AlgoSIDBase `json:"flex_algo_sids,omitempty" jsonschema:"description=Node SIDs per flex-algo for the simulated loopbacks"`
 	LinkDelayUS     uint32        `json:"link_delay_us,omitempty" jsonschema:"description=Delay of every simulated link in µs (flex-algo delay); custom links can override"`
 
-	Custom []SimNode `json:"custom,omitempty" jsonschema:"description=Nodes for kind custom"`
+	Custom []SimNode `json:"custom,omitempty" jsonschema:"description=Nodes for kind custom" jsonschema_extras:"x-summary={name}[ {system_id}]"`
 }
 
 type SimNode struct {
-	Name     string    `json:"name"`
+	Name     string    `json:"name" jsonschema:"required"`
 	SystemID string    `json:"system_id,omitempty"`
 	Links    []SimLink `json:"links,omitempty" jsonschema:"description=Links to other nodes (by name; us for this router). Links are two-way"`
 	Prefixes []Prefix  `json:"prefixes,omitempty"`
@@ -274,7 +274,7 @@ type AlgoSIDBase struct {
 }
 
 type Prefix struct {
-	Prefix string `json:"prefix" jsonschema:"description=e.g. 198.51.100.0/24 or 2001:db8:1::/48"`
+	Prefix string `json:"prefix" jsonschema:"required,description=e.g. 198.51.100.0/24 or 2001:db8:1::/48"`
 	Metric uint32 `json:"metric,omitempty" jsonschema:"description=Default 10"`
 	Count  int    `json:"count,omitempty" jsonschema:"description=How many consecutive prefixes of this length (e.g. 10.0.0.0/24 count 3 = 10.0.0-2.0/24). Default 1"`
 }
