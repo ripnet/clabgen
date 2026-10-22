@@ -200,7 +200,7 @@ func main() {
 			return printMsg(r.Msg)
 		}})
 
-	root.AddCommand(portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), eventsCmd(), scenarioCmd(),
+	root.AddCommand(portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), groupsCmd(), groupCmd(), eventsCmd(), scenarioCmd(),
 		flowCmd("start"), flowCmd("stop"), pingCmd(), receivedCmd())
 
 	if err := root.Execute(); err != nil {
@@ -262,10 +262,19 @@ func portCmd() *cobra.Command {
 	return cmd
 }
 
+// memberFilter keeps group members out of lists unless asked for: groups
+// can have thousands. It returns whether to show an item of group g.
+func memberFilter(all bool, only string) func(g string) bool {
+	return func(g string) bool { return all || g == only }
+}
+
 func devicesCmd() *cobra.Command {
-	return &cobra.Command{
-		Use: "devices", Short: "List emulated devices",
+	var all bool
+	var only string
+	cmd := &cobra.Command{
+		Use: "devices", Short: "List emulated devices (group members with --all or --group)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			show, hidden := memberFilter(all, only), 0
 			c, cancel := ctx()
 			defer cancel()
 			r, err := client().ListDevices(c, connect.NewRequest(&v1.ListDevicesRequest{}))
@@ -275,6 +284,12 @@ func devicesCmd() *cobra.Command {
 			w := table()
 			fmt.Fprintln(w, "DEVICE\tPORT\tMAC\tVLANS\tADDRESSES")
 			for _, d := range r.Msg.Devices {
+				if !show(d.Group) {
+					if d.Group != "" && only == "" {
+						hidden++
+					}
+					continue
+				}
 				var tags []string
 				for _, t := range d.Vlans {
 					s := strconv.Itoa(int(t.Vid))
@@ -289,8 +304,17 @@ func devicesCmd() *cobra.Command {
 				}
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", d.Name, d.Port, d.Mac, strings.Join(tags, ","), addrs)
 			}
-			return w.Flush()
+			if err := w.Flush(); err != nil {
+				return err
+			}
+			if hidden > 0 {
+				fmt.Printf("(%d group members not shown: --all, or --group NAME)\n", hidden)
+			}
+			return nil
 		}}
+	cmd.Flags().BoolVar(&all, "all", false, "include group members")
+	cmd.Flags().StringVar(&only, "group", "", "only this group's members")
+	return cmd
 }
 
 func deviceCmd() *cobra.Command {
@@ -654,22 +678,42 @@ func summary(p *v1.Protocol) string {
 }
 
 func protocolsCmd() *cobra.Command {
-	return &cobra.Command{
-		Use: "protocols", Aliases: []string{"protos"}, Short: "List protocol instances",
+	var all bool
+	var only string
+	cmd := &cobra.Command{
+		Use: "protocols", Aliases: []string{"protos"}, Short: "List protocol instances (group members with --all or --group)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			show, hidden := memberFilter(all, only), 0
 			c, cancel := ctx()
 			defer cancel()
-			r, err := client().ListProtocols(c, connect.NewRequest(&v1.ListProtocolsRequest{WithStatus: true, Brief: true}))
+			r, err := client().ListProtocols(c, connect.NewRequest(&v1.ListProtocolsRequest{WithStatus: true, Brief: true, NoGroupMembers: !all && only == ""}))
 			if err != nil {
 				return err
 			}
 			w := table()
 			fmt.Fprintln(w, "NAME\tTYPE\tDEVICE\tSTATE\tSUMMARY")
 			for _, p := range r.Msg.Protocols {
+				if !show(p.Group) {
+					if p.Group != "" && only == "" {
+						hidden++
+					}
+					continue
+				}
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", p.Name, p.Type, p.Device, p.State, summary(p))
 			}
-			return w.Flush()
+			if err := w.Flush(); err != nil {
+				return err
+			}
+			if !all && only == "" {
+				if g, err := client().ListDeviceGroups(c, connect.NewRequest(&v1.ListDeviceGroupsRequest{})); err == nil && len(g.Msg.Groups) > 0 {
+					fmt.Printf("(group members not shown: --all, or --group NAME; `groups` summarises them)\n")
+				}
+			}
+			return nil
 		}}
+	cmd.Flags().BoolVar(&all, "all", false, "include group members")
+	cmd.Flags().StringVar(&only, "group", "", "only this group's members")
+	return cmd
 }
 
 func protoCmd() *cobra.Command {

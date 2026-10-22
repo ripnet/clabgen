@@ -8,7 +8,7 @@ import { Empty, ErrorBox, HealthText, Modal, useBusy } from "../ui";
 
 export function ProtocolsTab({ agentId }: { agentId: string }) {
   const c = client(agentId);
-  const list = usePoll(() => c.listProtocols({ withStatus: true, brief: true }), [agentId], 1500);
+  const list = usePoll(() => c.listProtocols({ withStatus: true, brief: true, noGroupMembers: true }), [agentId], 1500);
   const types = usePoll(() => c.listProtocolTypes({}), [agentId]);
   const [creating, setCreating] = useState(false);
   const { busy, run } = useBusy();

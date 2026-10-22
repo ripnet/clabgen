@@ -6,6 +6,7 @@ import { Dot, ErrorBox, Modal, useBusy, useTheme, type Theme } from "./ui";
 import { Overview } from "./pages/Overview";
 import { AgentPage } from "./pages/AgentPage";
 import { ProtocolDetail } from "./pages/ProtocolDetail";
+import { GroupDetail } from "./pages/GroupsTab";
 
 export function App() {
   const route = useRoute();
@@ -36,6 +37,7 @@ export function App() {
         {route.page === "overview" && <Overview />}
         {route.page === "agent" && <AgentPage key={route.agent} agentId={route.agent} tab={route.tab} />}
         {route.page === "protocol" && <ProtocolDetail key={route.agent + "/" + route.protocol} agentId={route.agent} name={route.protocol} />}
+        {route.page === "group" && <GroupDetail key={route.agent + "/" + route.group} agentId={route.agent} name={route.group} />}
       </main>
     </div>
   );

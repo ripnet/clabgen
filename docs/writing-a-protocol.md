@@ -69,6 +69,10 @@ type Session interface {
 - Don't hold your lock while calling `env.Send` or `env.Emit`.
 - Actions run synchronously in the API call. Honour `ctx` cancellation for
   long-running tests.
+- Optional: `Brief() any` (`protocol.Briefer`) returns a smaller status for
+  lists that poll often, and `Health() string` (`protocol.Healther`) sums
+  up the state in one word (`established`, `up`, `ok`) for device group
+  summaries, which count members per word. Keep the set of words small.
 
 ## 4. Use the Env
 

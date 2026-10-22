@@ -48,6 +48,19 @@ service AgentService {
   rpc DeleteProtocol(DeleteProtocolRequest) returns (DeleteProtocolResponse);
   rpc RunProtocolAction(RunProtocolActionRequest) returns (RunProtocolActionResponse);
 
+  // Device groups are many devices from one template, each with the same
+  // set of protocol instances. Members are listed as ordinary devices and
+  // protocols (with group set) and change only through their group.
+  rpc ListDeviceGroups(ListDeviceGroupsRequest) returns (ListDeviceGroupsResponse);
+  rpc GetDeviceGroup(GetDeviceGroupRequest) returns (GetDeviceGroupResponse);
+  rpc CreateDeviceGroup(CreateDeviceGroupRequest) returns (CreateDeviceGroupResponse);
+  // UpdateDeviceGroup replaces a group's spec; members whose rendered
+  // device and protocols are unchanged keep running.
+  rpc UpdateDeviceGroup(UpdateDeviceGroupRequest) returns (UpdateDeviceGroupResponse);
+  rpc DeleteDeviceGroup(DeleteDeviceGroupRequest) returns (DeleteDeviceGroupResponse);
+  // RunGroupAction runs a protocol action on some or all members.
+  rpc RunGroupAction(RunGroupActionRequest) returns (RunGroupActionResponse);
+
   rpc WatchEvents(WatchEventsRequest) returns (stream Event);
 
   // Scenarios are the whole agent config as YAML.
@@ -111,6 +124,8 @@ message Device {
   repeated string addresses = 6;
   string gateway4 = 7;
   string gateway6 = 8;
+  // Output only: the device group this device is a member of.
+  string group = 9;
 }
 
 message ListDevicesRequest {}
@@ -203,6 +218,8 @@ message Protocol {
   string state = 5;
   string error = 6;
   google.protobuf.Struct status = 7;
+  // Output only: the device group this instance is a member of.
+  string group = 8;
 }
 
 message ListProtocolsRequest {
@@ -211,6 +228,8 @@ message ListProtocolsRequest {
   // With with_status: compact statuses where a protocol offers one (e.g.
   // IS-IS without its LSDB rows), for lists that poll often.
   bool brief = 2;
+  // Leave out device group members (ListDeviceGroups summarises them).
+  bool no_group_members = 3;
 }
 message ListProtocolsResponse { repeated Protocol protocols = 1; }
 message GetProtocolRequest { string name = 1; }
@@ -231,6 +250,54 @@ message RunProtocolActionRequest {
   google.protobuf.Struct args = 3;
 }
 message RunProtocolActionResponse { google.protobuf.Struct result = 1; }
+
+message DeviceGroup {
+  string name = 1;
+  // name, count, device (a device template) and protocols (type, name,
+  // config template); see the README for stepped values and placeholders.
+  google.protobuf.Struct spec = 2;
+  // Output only: devices (how many exist), protocols (per group protocol:
+  // states and health counts) and, from GetDeviceGroup, members.
+  google.protobuf.Struct status = 3;
+  // The spec as YAML. Always set in replies; on create and update it is
+  // used when spec is unset.
+  string yaml = 4;
+}
+
+message ListDeviceGroupsRequest {}
+message ListDeviceGroupsResponse { repeated DeviceGroup groups = 1; }
+message GetDeviceGroupRequest {
+  string name = 1;
+  // Leave out the per-member list.
+  bool summary_only = 2;
+}
+message GetDeviceGroupResponse { DeviceGroup group = 1; }
+message CreateDeviceGroupRequest { DeviceGroup group = 1; }
+message CreateDeviceGroupResponse { DeviceGroup group = 1; }
+message UpdateDeviceGroupRequest { DeviceGroup group = 1; }
+message UpdateDeviceGroupResponse { DeviceGroup group = 1; }
+message DeleteDeviceGroupRequest { string name = 1; }
+message DeleteDeviceGroupResponse {}
+
+message RunGroupActionRequest {
+  string group = 1;
+  // The group protocol's name; may be empty when the group has one.
+  string protocol = 2;
+  string action = 3;
+  google.protobuf.Struct args = 4;
+  // Empty or "all", or 1-based indices and ranges like "1-10,15".
+  string members = 5;
+  // Run on this many of the selected members, picked at random.
+  uint32 random = 6;
+}
+message GroupActionResult {
+  // 1-based member index.
+  uint32 index = 1;
+  string protocol = 2;
+  string error = 3;
+  google.protobuf.Struct result = 4;
+}
+message RunGroupActionResponse { repeated GroupActionResult results = 1; }
 
 message WatchEventsRequest {
   // Replay buffered recent events before streaming live ones.

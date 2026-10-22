@@ -464,3 +464,17 @@ func (s *session) Action(_ context.Context, name string, args any) (any, error) 
 	}
 	return nil, fmt.Errorf("unknown action %q", name)
 }
+
+// Health counts neighbors (protocol.Healther).
+func (s *session) Health() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch n := len(s.neighbors); n {
+	case 0:
+		return "no neighbor"
+	case 1:
+		return "1 neighbor"
+	default:
+		return fmt.Sprintf("%d neighbors", n)
+	}
+}

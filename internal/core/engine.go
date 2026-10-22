@@ -43,7 +43,8 @@ type DeviceSpec struct {
 	Gateway4  string   `json:"gateway4,omitempty"`
 	Gateway6  string   `json:"gateway6,omitempty"`
 
-	MACDerived bool `json:"-"` // set by Devices when MAC was not configured
+	MACDerived bool   `json:"-"` // set by Devices when MAC was not configured
+	Group      string `json:"-"` // set by Devices for group members
 }
 
 // sameL2 reports whether two specs put the device on the same wire
@@ -75,6 +76,7 @@ const (
 
 type ProtocolView struct {
 	ProtocolSpec
+	Group  string // set for group members
 	State  string
 	Error  string
 	Status any
@@ -92,6 +94,7 @@ type device struct {
 	ip    *ipstack.Stack
 	insts []*instance
 	taps  []*tap // sessions of other devices attached here
+	group string
 	e     *Engine
 }
 
@@ -129,6 +132,7 @@ type instance struct {
 	err   string
 	ets   map[uint16]bool
 	taps  []*tap // devices this instance attached to (Env.Attach)
+	group string
 }
 
 type Engine struct {
@@ -141,6 +145,8 @@ type Engine struct {
 	devices map[string]*device
 	byPort  map[string][]*device
 	insts   map[string]*instance
+	groups  map[string]*group
+	gmu     sync.Mutex // serialises group changes
 
 	// Frames a device sends are also delivered to the other devices on the
 	// same port, like hosts on one segment (the port only sends them out).
@@ -157,7 +163,7 @@ type localFrame struct {
 func New(ports PortIO, bus *events.Bus, log *slog.Logger) *Engine {
 	host, _ := os.Hostname()
 	e := &Engine{ports: ports, bus: bus, log: log, host: host,
-		devices: map[string]*device{}, byPort: map[string][]*device{}, insts: map[string]*instance{},
+		devices: map[string]*device{}, byPort: map[string][]*device{}, insts: map[string]*instance{}, groups: map[string]*group{},
 		local: make(chan localFrame, 4096)}
 	go func() {
 		// One worker keeps local frames in order.
@@ -310,7 +316,20 @@ func (e *Engine) checkDevice(s DeviceSpec) (DeviceSpec, pkt.MAC, ipstack.Config,
 	return s, m, cfg, nil
 }
 
-func (e *Engine) CreateDevice(s DeviceSpec) (DeviceSpec, error) {
+func (e *Engine) CreateDevice(s DeviceSpec) (DeviceSpec, error) { return e.createDevice(s, "") }
+
+// memberErr refuses a change to a group member from outside its group.
+func memberErr(kind, name, member, by string) error {
+	if member == by {
+		return nil
+	}
+	if member != "" {
+		return fmt.Errorf("%s %s belongs to group %s: change the group", kind, name, member)
+	}
+	return fmt.Errorf("%s %s is not in group %s", kind, name, by)
+}
+
+func (e *Engine) createDevice(s DeviceSpec, group string) (DeviceSpec, error) {
 	s, mac, cfg, err := e.checkDevice(s)
 	if err != nil {
 		return s, err
@@ -321,6 +340,7 @@ func (e *Engine) CreateDevice(s DeviceSpec) (DeviceSpec, error) {
 		return s, fmt.Errorf("device %s: %w", s.Name, ErrExists)
 	}
 	d := e.newDevice(s, mac, cfg)
+	d.group = group
 	e.devices[s.Name] = d
 	e.byPort[s.Port] = append(e.byPort[s.Port], d)
 	var waiting []*instance
@@ -342,7 +362,9 @@ func (e *Engine) CreateDevice(s DeviceSpec) (DeviceSpec, error) {
 // change to the port, MAC or VLANs restarts the device's protocols, since
 // their peers' state (learned MACs, sequence numbers) no longer applies; an
 // IP-only change is applied in place.
-func (e *Engine) UpdateDevice(s DeviceSpec) (DeviceSpec, error) {
+func (e *Engine) UpdateDevice(s DeviceSpec) (DeviceSpec, error) { return e.updateDevice(s, "") }
+
+func (e *Engine) updateDevice(s DeviceSpec, group string) (DeviceSpec, error) {
 	s, mac, cfg, err := e.checkDevice(s)
 	if err != nil {
 		return s, err
@@ -352,6 +374,10 @@ func (e *Engine) UpdateDevice(s DeviceSpec) (DeviceSpec, error) {
 	if !ok {
 		e.mu.Unlock()
 		return s, fmt.Errorf("device %s: %w", s.Name, ErrNotFound)
+	}
+	if err := memberErr("device", s.Name, old.group, group); err != nil {
+		e.mu.Unlock()
+		return s, err
 	}
 	if old.mac == mac && sameL2(old.spec, s) {
 		old.spec = s
@@ -365,6 +391,7 @@ func (e *Engine) UpdateDevice(s DeviceSpec) (DeviceSpec, error) {
 	old.ip.Close()
 	e.closeDeviceTapsLocked(old)
 	d := e.newDevice(s, mac, cfg)
+	d.group = group
 	e.devices[s.Name] = d
 	e.byPort[s.Port] = append(e.byPort[s.Port], d)
 	insts := old.insts
@@ -434,12 +461,18 @@ func (e *Engine) unindex(d *device) {
 	}
 }
 
-func (e *Engine) DeleteDevice(name string) error {
+func (e *Engine) DeleteDevice(name string) error { return e.deleteDevice(name, "") }
+
+func (e *Engine) deleteDevice(name, group string) error {
 	e.mu.Lock()
 	d, ok := e.devices[name]
 	if !ok {
 		e.mu.Unlock()
 		return fmt.Errorf("device %s: %w", name, ErrNotFound)
+	}
+	if err := memberErr("device", name, d.group, group); err != nil {
+		e.mu.Unlock()
+		return err
 	}
 	delete(e.devices, name)
 	e.unindex(d)
@@ -471,6 +504,7 @@ func (e *Engine) Devices() []DeviceSpec {
 		s := d.spec
 		s.MACDerived = s.MAC == ""
 		s.MAC = d.mac.String()
+		s.Group = d.group
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -479,7 +513,9 @@ func (e *Engine) Devices() []DeviceSpec {
 
 // ---- protocols ----
 
-func (e *Engine) CreateProtocol(s ProtocolSpec) (ProtocolView, error) {
+func (e *Engine) CreateProtocol(s ProtocolSpec) (ProtocolView, error) { return e.createProtocol(s, "") }
+
+func (e *Engine) createProtocol(s ProtocolSpec, group string) (ProtocolView, error) {
 	if !nameRE.MatchString(s.Name) {
 		return ProtocolView{}, fmt.Errorf("invalid protocol name %q", s.Name)
 	}
@@ -492,7 +528,7 @@ func (e *Engine) CreateProtocol(s ProtocolSpec) (ProtocolView, error) {
 		return ProtocolView{}, err
 	}
 	s.Config, _ = json.Marshal(cfg) // normalised, defaults filled in
-	in := &instance{spec: s, typ: t, cfg: cfg, state: StateWaiting, err: "device does not exist", ets: map[uint16]bool{}}
+	in := &instance{spec: s, typ: t, cfg: cfg, state: StateWaiting, err: "device does not exist", ets: map[uint16]bool{}, group: group}
 	for _, et := range t.EtherTypes() {
 		in.ets[et] = true
 	}
@@ -525,11 +561,18 @@ func (e *Engine) startInstance(in *instance, d *device) {
 }
 
 func (e *Engine) UpdateProtocol(name string, raw json.RawMessage) (ProtocolView, error) {
+	return e.updateProtocol(name, raw, "")
+}
+
+func (e *Engine) updateProtocol(name string, raw json.RawMessage, group string) (ProtocolView, error) {
 	e.mu.RLock()
 	in, ok := e.insts[name]
 	e.mu.RUnlock()
 	if !ok {
 		return ProtocolView{}, fmt.Errorf("protocol %s: %w", name, ErrNotFound)
+	}
+	if err := memberErr("protocol", name, in.group, group); err != nil {
+		return ProtocolView{}, err
 	}
 	cfg := in.typ.NewConfig()
 	if err := protocol.Decode(cfg, raw); err != nil {
@@ -537,18 +580,24 @@ func (e *Engine) UpdateProtocol(name string, raw json.RawMessage) (ProtocolView,
 	}
 	spec := in.spec
 	spec.Config, _ = json.Marshal(cfg)
-	if err := e.DeleteProtocol(name); err != nil {
+	if err := e.deleteProtocol(name, group); err != nil {
 		return ProtocolView{}, err
 	}
-	return e.CreateProtocol(spec)
+	return e.createProtocol(spec, group)
 }
 
-func (e *Engine) DeleteProtocol(name string) error {
+func (e *Engine) DeleteProtocol(name string) error { return e.deleteProtocol(name, "") }
+
+func (e *Engine) deleteProtocol(name, group string) error {
 	e.mu.Lock()
 	in, ok := e.insts[name]
 	if !ok {
 		e.mu.Unlock()
 		return fmt.Errorf("protocol %s: %w", name, ErrNotFound)
+	}
+	if err := memberErr("protocol", name, in.group, group); err != nil {
+		e.mu.Unlock()
+		return err
 	}
 	delete(e.insts, name)
 	if in.dev != nil {
@@ -582,7 +631,7 @@ func (e *Engine) GetProtocol(name string) (ProtocolView, error) {
 
 func (e *Engine) view(in *instance, withStatus, brief bool) ProtocolView {
 	e.mu.RLock()
-	v := ProtocolView{ProtocolSpec: in.spec, State: in.state, Error: in.err}
+	v := ProtocolView{ProtocolSpec: in.spec, Group: in.group, State: in.state, Error: in.err}
 	sess := in.sess
 	e.mu.RUnlock()
 	if withStatus && sess != nil {
@@ -595,15 +644,18 @@ func (e *Engine) view(in *instance, withStatus, brief bool) ProtocolView {
 	return v
 }
 
-func (e *Engine) Protocols(withStatus bool) []ProtocolView { return e.ProtocolList(withStatus, false) }
+func (e *Engine) Protocols(withStatus bool) []ProtocolView { return e.ProtocolList(withStatus, false, false) }
 
-// ProtocolList lists all instances; with brief, sessions that offer a
-// compact status (protocol.Briefer) report that instead.
-func (e *Engine) ProtocolList(withStatus, brief bool) []ProtocolView {
+// ProtocolList lists instances; with brief, sessions that offer a compact
+// status (protocol.Briefer) report that instead; noMembers leaves out
+// group members.
+func (e *Engine) ProtocolList(withStatus, brief, noMembers bool) []ProtocolView {
 	e.mu.RLock()
 	list := make([]*instance, 0, len(e.insts))
 	for _, in := range e.insts {
-		list = append(list, in)
+		if !noMembers || in.group == "" {
+			list = append(list, in)
+		}
 	}
 	e.mu.RUnlock()
 	out := make([]ProtocolView, 0, len(list))

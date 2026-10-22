@@ -1187,3 +1187,13 @@ func (m *mep) clear() {
 		r.ccmRx, r.seqErrors = 0, 0
 	}
 }
+
+// Health is the highest defect, or ok (protocol.Healther).
+func (m *mep) Health() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if h := m.cur.highest(); h != "none" {
+		return h
+	}
+	return "ok"
+}

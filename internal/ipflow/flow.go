@@ -656,3 +656,10 @@ func DecodeIP(fr *pkt.Frame, dst netip.Addr, proto uint8) (src netip.Addr, ttl u
 	}
 	return
 }
+
+// Health is the flow's state (protocol.Healther).
+func (f *Flow) Health() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.state
+}

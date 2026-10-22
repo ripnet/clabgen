@@ -10,7 +10,7 @@ import { ReceivedTable, useClearFlows, useFlowIndex, useReceived } from "../comp
 // category) with their live statistics.
 export function TrafficTab({ agentId }: { agentId: string }) {
   const c = client(agentId);
-  const list = usePoll(() => c.listProtocols({ withStatus: true, brief: true }), [agentId], 1000);
+  const list = usePoll(() => c.listProtocols({ withStatus: true, brief: true, noGroupMembers: true }), [agentId], 1000);
   const types = usePoll(() => c.listProtocolTypes({}), [agentId]);
   const devices = usePoll(() => c.listDevices({}), [agentId], 5000);
   // Before a flow first runs it hasn't picked a source: show the device's

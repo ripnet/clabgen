@@ -477,3 +477,24 @@ func notifyText(code, sub uint8, data []byte) string {
 	}
 	return strings.TrimSpace(t)
 }
+
+// Health is the peers' state, or how many are established when they
+// differ (protocol.Healther).
+func (s *session) Health() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.peers) == 0 {
+		return "no peers"
+	}
+	est, first, same := 0, s.peers[0].state, true
+	for _, p := range s.peers {
+		if p.state == stEstablished {
+			est++
+		}
+		same = same && p.state == first
+	}
+	if same {
+		return first
+	}
+	return fmt.Sprintf("%d/%d established", est, len(s.peers))
+}

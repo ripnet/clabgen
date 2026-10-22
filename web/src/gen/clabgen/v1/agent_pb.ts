@@ -12,7 +12,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file clabgen/v1/agent.proto.
  */
 export const file_clabgen_v1_agent: GenFile = /*@__PURE__*/
-  fileDesc("ChZjbGFiZ2VuL3YxL2FnZW50LnByb3RvEgpjbGFiZ2VuLnYxIhAKDkdldEluZm9SZXF1ZXN0ImQKD0dldEluZm9SZXNwb25zZRIQCghob3N0bmFtZRgBIAEoCRIPCgd2ZXJzaW9uGAIgASgJEi4KCnN0YXJ0X3RpbWUYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIoEBCgxQb3J0Q291bnRlcnMSEQoJcnhfZnJhbWVzGAEgASgEEhAKCHJ4X2J5dGVzGAIgASgEEhEKCXR4X2ZyYW1lcxgDIAEoBBIQCgh0eF9ieXRlcxgEIAEoBBIRCgl0eF9lcnJvcnMYBSABKAQSFAoMcnhfdW5tYXRjaGVkGAYgASgEIowBCgRQb3J0EgwKBG5hbWUYASABKAkSDQoFaW5kZXgYAiABKAUSCwoDbWFjGAMgASgJEhAKCGFkbWluX3VwGAQgASgIEg8KB29wZXJfdXAYBSABKAgSCwoDbXR1GAYgASgFEioKCGNvdW50ZXJzGAcgASgLMhguY2xhYmdlbi52MS5Qb3J0Q291bnRlcnMiEgoQTGlzdFBvcnRzUmVxdWVzdCI0ChFMaXN0UG9ydHNSZXNwb25zZRIfCgVwb3J0cxgBIAMoCzIQLmNsYWJnZW4udjEuUG9ydCIvChNTZXRQb3J0QWRtaW5SZXF1ZXN0EgwKBG5hbWUYASABKAkSCgoCdXAYAiABKAgiNgoUU2V0UG9ydEFkbWluUmVzcG9uc2USHgoEcG9ydBgBIAEoCzIQLmNsYWJnZW4udjEuUG9ydCIxCgdWbGFuVGFnEgwKBHRwaWQYASABKA0SCwoDdmlkGAIgASgNEgsKA3BjcBgDIAEoDSKhAQoGRGV2aWNlEgwKBG5hbWUYASABKAkSDAoEcG9ydBgCIAEoCRILCgNtYWMYAyABKAkSIgoFdmxhbnMYBCADKAsyEy5jbGFiZ2VuLnYxLlZsYW5UYWcSEwoLbWFjX2Rlcml2ZWQYBSABKAgSEQoJYWRkcmVzc2VzGAYgAygJEhAKCGdhdGV3YXk0GAcgASgJEhAKCGdhdGV3YXk2GAggASgJIhQKEkxpc3REZXZpY2VzUmVxdWVzdCI6ChNMaXN0RGV2aWNlc1Jlc3BvbnNlEiMKB2RldmljZXMYASADKAsyEi5jbGFiZ2VuLnYxLkRldmljZSI5ChNDcmVhdGVEZXZpY2VSZXF1ZXN0EiIKBmRldmljZRgBIAEoCzISLmNsYWJnZW4udjEuRGV2aWNlIjoKFENyZWF0ZURldmljZVJlc3BvbnNlEiIKBmRldmljZRgBIAEoCzISLmNsYWJnZW4udjEuRGV2aWNlIjkKE1VwZGF0ZURldmljZVJlcXVlc3QSIgoGZGV2aWNlGAEgASgLMhIuY2xhYmdlbi52MS5EZXZpY2UiOgoUVXBkYXRlRGV2aWNlUmVzcG9uc2USIgoGZGV2aWNlGAEgASgLMhIuY2xhYmdlbi52MS5EZXZpY2UiIwoTRGVsZXRlRGV2aWNlUmVxdWVzdBIMCgRuYW1lGAEgASgJIhYKFERlbGV0ZURldmljZVJlc3BvbnNlIkIKCE5laWdoYm9yEgoKAmlwGAEgASgJEgsKA21hYxgCIAEoCRINCgVzdGF0ZRgDIAEoCRIOCgZhZ2VfbXMYBCABKAMiIgoSR2V0RGV2aWNlSVBSZXF1ZXN0EgwKBG5hbWUYASABKAki5wEKE0dldERldmljZUlQUmVzcG9uc2USEQoJYWRkcmVzc2VzGAEgAygJEhAKCGdhdGV3YXk0GAIgASgJEhAKCGdhdGV3YXk2GAMgASgJEicKCW5laWdoYm9ycxgEIAMoCzIULmNsYWJnZW4udjEuTmVpZ2hib3ISPwoIY291bnRlcnMYBSADKAsyLS5jbGFiZ2VuLnYxLkdldERldmljZUlQUmVzcG9uc2UuQ291bnRlcnNFbnRyeRovCg1Db3VudGVyc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoBDoCOAEiNAoWUmVzb2x2ZU5laWdoYm9yUmVxdWVzdBIOCgZkZXZpY2UYASABKAkSCgoCaXAYAiABKAkiWAoXUmVzb2x2ZU5laWdoYm9yUmVzcG9uc2USEAoIbmV4dF9ob3AYASABKAkSCwoDbWFjGAIgASgJEg4KBmNhY2hlZBgDIAEoCBIOCgZydHRfdXMYBCABKAMiJwoVQ2xlYXJOZWlnaGJvcnNSZXF1ZXN0Eg4KBmRldmljZRgBIAEoCSIYChZDbGVhck5laWdoYm9yc1Jlc3BvbnNlIkYKDFJlY2VpdmVkRmxvdxIOCgZkZXZpY2UYASABKAkSJgoFc3RhdHMYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IioKGExpc3RSZWNlaXZlZEZsb3dzUmVxdWVzdBIOCgZkZXZpY2UYASABKAkiRAoZTGlzdFJlY2VpdmVkRmxvd3NSZXNwb25zZRInCgVmbG93cxgBIAMoCzIYLmNsYWJnZW4udjEuUmVjZWl2ZWRGbG93IjwKGUNsZWFyUmVjZWl2ZWRGbG93c1JlcXVlc3QSDgoGZGV2aWNlGAEgASgJEg8KB2Zsb3dfaWQYAiABKAkiHAoaQ2xlYXJSZWNlaXZlZEZsb3dzUmVzcG9uc2UiRAoKQWN0aW9uVHlwZRIMCgRuYW1lGAEgASgJEhMKC2Rlc2NyaXB0aW9uGAIgASgJEhMKC2FyZ3Nfc2NoZW1hGAMgASgJIoMBCgxQcm90b2NvbFR5cGUSDAoEbmFtZRgBIAEoCRITCgtkZXNjcmlwdGlvbhgCIAEoCRIVCg1jb25maWdfc2NoZW1hGAMgASgJEicKB2FjdGlvbnMYBCADKAsyFi5jbGFiZ2VuLnYxLkFjdGlvblR5cGUSEAoIY2F0ZWdvcnkYBSABKAkiGgoYTGlzdFByb3RvY29sVHlwZXNSZXF1ZXN0IkQKGUxpc3RQcm90b2NvbFR5cGVzUmVzcG9uc2USJwoFdHlwZXMYASADKAsyGC5jbGFiZ2VuLnYxLlByb3RvY29sVHlwZSKmAQoIUHJvdG9jb2wSDAoEbmFtZRgBIAEoCRIMCgR0eXBlGAIgASgJEg4KBmRldmljZRgDIAEoCRInCgZjb25maWcYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0Eg0KBXN0YXRlGAUgASgJEg0KBWVycm9yGAYgASgJEicKBnN0YXR1cxgHIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QiOgoUTGlzdFByb3RvY29sc1JlcXVlc3QSEwoLd2l0aF9zdGF0dXMYASABKAgSDQoFYnJpZWYYAiABKAgiQAoVTGlzdFByb3RvY29sc1Jlc3BvbnNlEicKCXByb3RvY29scxgBIAMoCzIULmNsYWJnZW4udjEuUHJvdG9jb2wiIgoSR2V0UHJvdG9jb2xSZXF1ZXN0EgwKBG5hbWUYASABKAkiPQoTR2V0UHJvdG9jb2xSZXNwb25zZRImCghwcm90b2NvbBgBIAEoCzIULmNsYWJnZW4udjEuUHJvdG9jb2wiPwoVQ3JlYXRlUHJvdG9jb2xSZXF1ZXN0EiYKCHByb3RvY29sGAEgASgLMhQuY2xhYmdlbi52MS5Qcm90b2NvbCJAChZDcmVhdGVQcm90b2NvbFJlc3BvbnNlEiYKCHByb3RvY29sGAEgASgLMhQuY2xhYmdlbi52MS5Qcm90b2NvbCJOChVVcGRhdGVQcm90b2NvbFJlcXVlc3QSDAoEbmFtZRgBIAEoCRInCgZjb25maWcYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IkAKFlVwZGF0ZVByb3RvY29sUmVzcG9uc2USJgoIcHJvdG9jb2wYASABKAsyFC5jbGFiZ2VuLnYxLlByb3RvY29sIiUKFURlbGV0ZVByb3RvY29sUmVxdWVzdBIMCgRuYW1lGAEgASgJIhgKFkRlbGV0ZVByb3RvY29sUmVzcG9uc2UiXwoYUnVuUHJvdG9jb2xBY3Rpb25SZXF1ZXN0EgwKBG5hbWUYASABKAkSDgoGYWN0aW9uGAIgASgJEiUKBGFyZ3MYAyABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IkQKGVJ1blByb3RvY29sQWN0aW9uUmVzcG9uc2USJwoGcmVzdWx0GAEgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCIkChJXYXRjaEV2ZW50c1JlcXVlc3QSDgoGcmVwbGF5GAEgASgIIocBCgVFdmVudBIoCgR0aW1lGAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIOCgZzb3VyY2UYAiABKAkSDAoEa2luZBgDIAEoCRIPCgdtZXNzYWdlGAQgASgJEiUKBGRhdGEYBSABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IhQKEkdldFNjZW5hcmlvUmVxdWVzdCIjChNHZXRTY2VuYXJpb1Jlc3BvbnNlEgwKBHlhbWwYASABKAkiNQoUQXBwbHlTY2VuYXJpb1JlcXVlc3QSDAoEeWFtbBgBIAEoCRIPCgdyZXBsYWNlGAIgASgIIhcKFUFwcGx5U2NlbmFyaW9SZXNwb25zZTLjDgoMQWdlbnRTZXJ2aWNlEkIKB0dldEluZm8SGi5jbGFiZ2VuLnYxLkdldEluZm9SZXF1ZXN0GhsuY2xhYmdlbi52MS5HZXRJbmZvUmVzcG9uc2USSAoJTGlzdFBvcnRzEhwuY2xhYmdlbi52MS5MaXN0UG9ydHNSZXF1ZXN0Gh0uY2xhYmdlbi52MS5MaXN0UG9ydHNSZXNwb25zZRJRCgxTZXRQb3J0QWRtaW4SHy5jbGFiZ2VuLnYxLlNldFBvcnRBZG1pblJlcXVlc3QaIC5jbGFiZ2VuLnYxLlNldFBvcnRBZG1pblJlc3BvbnNlEk4KC0xpc3REZXZpY2VzEh4uY2xhYmdlbi52MS5MaXN0RGV2aWNlc1JlcXVlc3QaHy5jbGFiZ2VuLnYxLkxpc3REZXZpY2VzUmVzcG9uc2USUQoMQ3JlYXRlRGV2aWNlEh8uY2xhYmdlbi52MS5DcmVhdGVEZXZpY2VSZXF1ZXN0GiAuY2xhYmdlbi52MS5DcmVhdGVEZXZpY2VSZXNwb25zZRJRCgxVcGRhdGVEZXZpY2USHy5jbGFiZ2VuLnYxLlVwZGF0ZURldmljZVJlcXVlc3QaIC5jbGFiZ2VuLnYxLlVwZGF0ZURldmljZVJlc3BvbnNlElEKDERlbGV0ZURldmljZRIfLmNsYWJnZW4udjEuRGVsZXRlRGV2aWNlUmVxdWVzdBogLmNsYWJnZW4udjEuRGVsZXRlRGV2aWNlUmVzcG9uc2USTgoLR2V0RGV2aWNlSVASHi5jbGFiZ2VuLnYxLkdldERldmljZUlQUmVxdWVzdBofLmNsYWJnZW4udjEuR2V0RGV2aWNlSVBSZXNwb25zZRJaCg9SZXNvbHZlTmVpZ2hib3ISIi5jbGFiZ2VuLnYxLlJlc29sdmVOZWlnaGJvclJlcXVlc3QaIy5jbGFiZ2VuLnYxLlJlc29sdmVOZWlnaGJvclJlc3BvbnNlElcKDkNsZWFyTmVpZ2hib3JzEiEuY2xhYmdlbi52MS5DbGVhck5laWdoYm9yc1JlcXVlc3QaIi5jbGFiZ2VuLnYxLkNsZWFyTmVpZ2hib3JzUmVzcG9uc2USYAoRTGlzdFJlY2VpdmVkRmxvd3MSJC5jbGFiZ2VuLnYxLkxpc3RSZWNlaXZlZEZsb3dzUmVxdWVzdBolLmNsYWJnZW4udjEuTGlzdFJlY2VpdmVkRmxvd3NSZXNwb25zZRJjChJDbGVhclJlY2VpdmVkRmxvd3MSJS5jbGFiZ2VuLnYxLkNsZWFyUmVjZWl2ZWRGbG93c1JlcXVlc3QaJi5jbGFiZ2VuLnYxLkNsZWFyUmVjZWl2ZWRGbG93c1Jlc3BvbnNlEmAKEUxpc3RQcm90b2NvbFR5cGVzEiQuY2xhYmdlbi52MS5MaXN0UHJvdG9jb2xUeXBlc1JlcXVlc3QaJS5jbGFiZ2VuLnYxLkxpc3RQcm90b2NvbFR5cGVzUmVzcG9uc2USVAoNTGlzdFByb3RvY29scxIgLmNsYWJnZW4udjEuTGlzdFByb3RvY29sc1JlcXVlc3QaIS5jbGFiZ2VuLnYxLkxpc3RQcm90b2NvbHNSZXNwb25zZRJOCgtHZXRQcm90b2NvbBIeLmNsYWJnZW4udjEuR2V0UHJvdG9jb2xSZXF1ZXN0Gh8uY2xhYmdlbi52MS5HZXRQcm90b2NvbFJlc3BvbnNlElcKDkNyZWF0ZVByb3RvY29sEiEuY2xhYmdlbi52MS5DcmVhdGVQcm90b2NvbFJlcXVlc3QaIi5jbGFiZ2VuLnYxLkNyZWF0ZVByb3RvY29sUmVzcG9uc2USVwoOVXBkYXRlUHJvdG9jb2wSIS5jbGFiZ2VuLnYxLlVwZGF0ZVByb3RvY29sUmVxdWVzdBoiLmNsYWJnZW4udjEuVXBkYXRlUHJvdG9jb2xSZXNwb25zZRJXCg5EZWxldGVQcm90b2NvbBIhLmNsYWJnZW4udjEuRGVsZXRlUHJvdG9jb2xSZXF1ZXN0GiIuY2xhYmdlbi52MS5EZWxldGVQcm90b2NvbFJlc3BvbnNlEmAKEVJ1blByb3RvY29sQWN0aW9uEiQuY2xhYmdlbi52MS5SdW5Qcm90b2NvbEFjdGlvblJlcXVlc3QaJS5jbGFiZ2VuLnYxLlJ1blByb3RvY29sQWN0aW9uUmVzcG9uc2USQgoLV2F0Y2hFdmVudHMSHi5jbGFiZ2VuLnYxLldhdGNoRXZlbnRzUmVxdWVzdBoRLmNsYWJnZW4udjEuRXZlbnQwARJOCgtHZXRTY2VuYXJpbxIeLmNsYWJnZW4udjEuR2V0U2NlbmFyaW9SZXF1ZXN0Gh8uY2xhYmdlbi52MS5HZXRTY2VuYXJpb1Jlc3BvbnNlElQKDUFwcGx5U2NlbmFyaW8SIC5jbGFiZ2VuLnYxLkFwcGx5U2NlbmFyaW9SZXF1ZXN0GiEuY2xhYmdlbi52MS5BcHBseVNjZW5hcmlvUmVzcG9uc2VCNFoyZ2l0aHViLmNvbS9yaXBuZXQvY2xhYmdlbi9nZW4vY2xhYmdlbi92MTtjbGFiZ2VudjFiBnByb3RvMw", [file_google_protobuf_struct, file_google_protobuf_timestamp]);
+  fileDesc("ChZjbGFiZ2VuL3YxL2FnZW50LnByb3RvEgpjbGFiZ2VuLnYxIhAKDkdldEluZm9SZXF1ZXN0ImQKD0dldEluZm9SZXNwb25zZRIQCghob3N0bmFtZRgBIAEoCRIPCgd2ZXJzaW9uGAIgASgJEi4KCnN0YXJ0X3RpbWUYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIoEBCgxQb3J0Q291bnRlcnMSEQoJcnhfZnJhbWVzGAEgASgEEhAKCHJ4X2J5dGVzGAIgASgEEhEKCXR4X2ZyYW1lcxgDIAEoBBIQCgh0eF9ieXRlcxgEIAEoBBIRCgl0eF9lcnJvcnMYBSABKAQSFAoMcnhfdW5tYXRjaGVkGAYgASgEIowBCgRQb3J0EgwKBG5hbWUYASABKAkSDQoFaW5kZXgYAiABKAUSCwoDbWFjGAMgASgJEhAKCGFkbWluX3VwGAQgASgIEg8KB29wZXJfdXAYBSABKAgSCwoDbXR1GAYgASgFEioKCGNvdW50ZXJzGAcgASgLMhguY2xhYmdlbi52MS5Qb3J0Q291bnRlcnMiEgoQTGlzdFBvcnRzUmVxdWVzdCI0ChFMaXN0UG9ydHNSZXNwb25zZRIfCgVwb3J0cxgBIAMoCzIQLmNsYWJnZW4udjEuUG9ydCIvChNTZXRQb3J0QWRtaW5SZXF1ZXN0EgwKBG5hbWUYASABKAkSCgoCdXAYAiABKAgiNgoUU2V0UG9ydEFkbWluUmVzcG9uc2USHgoEcG9ydBgBIAEoCzIQLmNsYWJnZW4udjEuUG9ydCIxCgdWbGFuVGFnEgwKBHRwaWQYASABKA0SCwoDdmlkGAIgASgNEgsKA3BjcBgDIAEoDSKwAQoGRGV2aWNlEgwKBG5hbWUYASABKAkSDAoEcG9ydBgCIAEoCRILCgNtYWMYAyABKAkSIgoFdmxhbnMYBCADKAsyEy5jbGFiZ2VuLnYxLlZsYW5UYWcSEwoLbWFjX2Rlcml2ZWQYBSABKAgSEQoJYWRkcmVzc2VzGAYgAygJEhAKCGdhdGV3YXk0GAcgASgJEhAKCGdhdGV3YXk2GAggASgJEg0KBWdyb3VwGAkgASgJIhQKEkxpc3REZXZpY2VzUmVxdWVzdCI6ChNMaXN0RGV2aWNlc1Jlc3BvbnNlEiMKB2RldmljZXMYASADKAsyEi5jbGFiZ2VuLnYxLkRldmljZSI5ChNDcmVhdGVEZXZpY2VSZXF1ZXN0EiIKBmRldmljZRgBIAEoCzISLmNsYWJnZW4udjEuRGV2aWNlIjoKFENyZWF0ZURldmljZVJlc3BvbnNlEiIKBmRldmljZRgBIAEoCzISLmNsYWJnZW4udjEuRGV2aWNlIjkKE1VwZGF0ZURldmljZVJlcXVlc3QSIgoGZGV2aWNlGAEgASgLMhIuY2xhYmdlbi52MS5EZXZpY2UiOgoUVXBkYXRlRGV2aWNlUmVzcG9uc2USIgoGZGV2aWNlGAEgASgLMhIuY2xhYmdlbi52MS5EZXZpY2UiIwoTRGVsZXRlRGV2aWNlUmVxdWVzdBIMCgRuYW1lGAEgASgJIhYKFERlbGV0ZURldmljZVJlc3BvbnNlIkIKCE5laWdoYm9yEgoKAmlwGAEgASgJEgsKA21hYxgCIAEoCRINCgVzdGF0ZRgDIAEoCRIOCgZhZ2VfbXMYBCABKAMiIgoSR2V0RGV2aWNlSVBSZXF1ZXN0EgwKBG5hbWUYASABKAki5wEKE0dldERldmljZUlQUmVzcG9uc2USEQoJYWRkcmVzc2VzGAEgAygJEhAKCGdhdGV3YXk0GAIgASgJEhAKCGdhdGV3YXk2GAMgASgJEicKCW5laWdoYm9ycxgEIAMoCzIULmNsYWJnZW4udjEuTmVpZ2hib3ISPwoIY291bnRlcnMYBSADKAsyLS5jbGFiZ2VuLnYxLkdldERldmljZUlQUmVzcG9uc2UuQ291bnRlcnNFbnRyeRovCg1Db3VudGVyc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoBDoCOAEiNAoWUmVzb2x2ZU5laWdoYm9yUmVxdWVzdBIOCgZkZXZpY2UYASABKAkSCgoCaXAYAiABKAkiWAoXUmVzb2x2ZU5laWdoYm9yUmVzcG9uc2USEAoIbmV4dF9ob3AYASABKAkSCwoDbWFjGAIgASgJEg4KBmNhY2hlZBgDIAEoCBIOCgZydHRfdXMYBCABKAMiJwoVQ2xlYXJOZWlnaGJvcnNSZXF1ZXN0Eg4KBmRldmljZRgBIAEoCSIYChZDbGVhck5laWdoYm9yc1Jlc3BvbnNlIkYKDFJlY2VpdmVkRmxvdxIOCgZkZXZpY2UYASABKAkSJgoFc3RhdHMYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IioKGExpc3RSZWNlaXZlZEZsb3dzUmVxdWVzdBIOCgZkZXZpY2UYASABKAkiRAoZTGlzdFJlY2VpdmVkRmxvd3NSZXNwb25zZRInCgVmbG93cxgBIAMoCzIYLmNsYWJnZW4udjEuUmVjZWl2ZWRGbG93IjwKGUNsZWFyUmVjZWl2ZWRGbG93c1JlcXVlc3QSDgoGZGV2aWNlGAEgASgJEg8KB2Zsb3dfaWQYAiABKAkiHAoaQ2xlYXJSZWNlaXZlZEZsb3dzUmVzcG9uc2UiRAoKQWN0aW9uVHlwZRIMCgRuYW1lGAEgASgJEhMKC2Rlc2NyaXB0aW9uGAIgASgJEhMKC2FyZ3Nfc2NoZW1hGAMgASgJIoMBCgxQcm90b2NvbFR5cGUSDAoEbmFtZRgBIAEoCRITCgtkZXNjcmlwdGlvbhgCIAEoCRIVCg1jb25maWdfc2NoZW1hGAMgASgJEicKB2FjdGlvbnMYBCADKAsyFi5jbGFiZ2VuLnYxLkFjdGlvblR5cGUSEAoIY2F0ZWdvcnkYBSABKAkiGgoYTGlzdFByb3RvY29sVHlwZXNSZXF1ZXN0IkQKGUxpc3RQcm90b2NvbFR5cGVzUmVzcG9uc2USJwoFdHlwZXMYASADKAsyGC5jbGFiZ2VuLnYxLlByb3RvY29sVHlwZSK1AQoIUHJvdG9jb2wSDAoEbmFtZRgBIAEoCRIMCgR0eXBlGAIgASgJEg4KBmRldmljZRgDIAEoCRInCgZjb25maWcYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0Eg0KBXN0YXRlGAUgASgJEg0KBWVycm9yGAYgASgJEicKBnN0YXR1cxgHIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSDQoFZ3JvdXAYCCABKAkiVAoUTGlzdFByb3RvY29sc1JlcXVlc3QSEwoLd2l0aF9zdGF0dXMYASABKAgSDQoFYnJpZWYYAiABKAgSGAoQbm9fZ3JvdXBfbWVtYmVycxgDIAEoCCJAChVMaXN0UHJvdG9jb2xzUmVzcG9uc2USJwoJcHJvdG9jb2xzGAEgAygLMhQuY2xhYmdlbi52MS5Qcm90b2NvbCIiChJHZXRQcm90b2NvbFJlcXVlc3QSDAoEbmFtZRgBIAEoCSI9ChNHZXRQcm90b2NvbFJlc3BvbnNlEiYKCHByb3RvY29sGAEgASgLMhQuY2xhYmdlbi52MS5Qcm90b2NvbCI/ChVDcmVhdGVQcm90b2NvbFJlcXVlc3QSJgoIcHJvdG9jb2wYASABKAsyFC5jbGFiZ2VuLnYxLlByb3RvY29sIkAKFkNyZWF0ZVByb3RvY29sUmVzcG9uc2USJgoIcHJvdG9jb2wYASABKAsyFC5jbGFiZ2VuLnYxLlByb3RvY29sIk4KFVVwZGF0ZVByb3RvY29sUmVxdWVzdBIMCgRuYW1lGAEgASgJEicKBmNvbmZpZxgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QiQAoWVXBkYXRlUHJvdG9jb2xSZXNwb25zZRImCghwcm90b2NvbBgBIAEoCzIULmNsYWJnZW4udjEuUHJvdG9jb2wiJQoVRGVsZXRlUHJvdG9jb2xSZXF1ZXN0EgwKBG5hbWUYASABKAkiGAoWRGVsZXRlUHJvdG9jb2xSZXNwb25zZSJfChhSdW5Qcm90b2NvbEFjdGlvblJlcXVlc3QSDAoEbmFtZRgBIAEoCRIOCgZhY3Rpb24YAiABKAkSJQoEYXJncxgDIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QiRAoZUnVuUHJvdG9jb2xBY3Rpb25SZXNwb25zZRInCgZyZXN1bHQYASABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0InkKC0RldmljZUdyb3VwEgwKBG5hbWUYASABKAkSJQoEc3BlYxgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSJwoGc3RhdHVzGAMgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIMCgR5YW1sGAQgASgJIhkKF0xpc3REZXZpY2VHcm91cHNSZXF1ZXN0IkMKGExpc3REZXZpY2VHcm91cHNSZXNwb25zZRInCgZncm91cHMYASADKAsyFy5jbGFiZ2VuLnYxLkRldmljZUdyb3VwIjsKFUdldERldmljZUdyb3VwUmVxdWVzdBIMCgRuYW1lGAEgASgJEhQKDHN1bW1hcnlfb25seRgCIAEoCCJAChZHZXREZXZpY2VHcm91cFJlc3BvbnNlEiYKBWdyb3VwGAEgASgLMhcuY2xhYmdlbi52MS5EZXZpY2VHcm91cCJCChhDcmVhdGVEZXZpY2VHcm91cFJlcXVlc3QSJgoFZ3JvdXAYASABKAsyFy5jbGFiZ2VuLnYxLkRldmljZUdyb3VwIkMKGUNyZWF0ZURldmljZUdyb3VwUmVzcG9uc2USJgoFZ3JvdXAYASABKAsyFy5jbGFiZ2VuLnYxLkRldmljZUdyb3VwIkIKGFVwZGF0ZURldmljZUdyb3VwUmVxdWVzdBImCgVncm91cBgBIAEoCzIXLmNsYWJnZW4udjEuRGV2aWNlR3JvdXAiQwoZVXBkYXRlRGV2aWNlR3JvdXBSZXNwb25zZRImCgVncm91cBgBIAEoCzIXLmNsYWJnZW4udjEuRGV2aWNlR3JvdXAiKAoYRGVsZXRlRGV2aWNlR3JvdXBSZXF1ZXN0EgwKBG5hbWUYASABKAkiGwoZRGVsZXRlRGV2aWNlR3JvdXBSZXNwb25zZSKQAQoVUnVuR3JvdXBBY3Rpb25SZXF1ZXN0Eg0KBWdyb3VwGAEgASgJEhAKCHByb3RvY29sGAIgASgJEg4KBmFjdGlvbhgDIAEoCRIlCgRhcmdzGAQgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIPCgdtZW1iZXJzGAUgASgJEg4KBnJhbmRvbRgGIAEoDSJsChFHcm91cEFjdGlvblJlc3VsdBINCgVpbmRleBgBIAEoDRIQCghwcm90b2NvbBgCIAEoCRINCgVlcnJvchgDIAEoCRInCgZyZXN1bHQYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IkgKFlJ1bkdyb3VwQWN0aW9uUmVzcG9uc2USLgoHcmVzdWx0cxgBIAMoCzIdLmNsYWJnZW4udjEuR3JvdXBBY3Rpb25SZXN1bHQiJAoSV2F0Y2hFdmVudHNSZXF1ZXN0Eg4KBnJlcGxheRgBIAEoCCKHAQoFRXZlbnQSKAoEdGltZRgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGc291cmNlGAIgASgJEgwKBGtpbmQYAyABKAkSDwoHbWVzc2FnZRgEIAEoCRIlCgRkYXRhGAUgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCIUChJHZXRTY2VuYXJpb1JlcXVlc3QiIwoTR2V0U2NlbmFyaW9SZXNwb25zZRIMCgR5YW1sGAEgASgJIjUKFEFwcGx5U2NlbmFyaW9SZXF1ZXN0EgwKBHlhbWwYASABKAkSDwoHcmVwbGFjZRgCIAEoCCIXChVBcHBseVNjZW5hcmlvUmVzcG9uc2UymhMKDEFnZW50U2VydmljZRJCCgdHZXRJbmZvEhouY2xhYmdlbi52MS5HZXRJbmZvUmVxdWVzdBobLmNsYWJnZW4udjEuR2V0SW5mb1Jlc3BvbnNlEkgKCUxpc3RQb3J0cxIcLmNsYWJnZW4udjEuTGlzdFBvcnRzUmVxdWVzdBodLmNsYWJnZW4udjEuTGlzdFBvcnRzUmVzcG9uc2USUQoMU2V0UG9ydEFkbWluEh8uY2xhYmdlbi52MS5TZXRQb3J0QWRtaW5SZXF1ZXN0GiAuY2xhYmdlbi52MS5TZXRQb3J0QWRtaW5SZXNwb25zZRJOCgtMaXN0RGV2aWNlcxIeLmNsYWJnZW4udjEuTGlzdERldmljZXNSZXF1ZXN0Gh8uY2xhYmdlbi52MS5MaXN0RGV2aWNlc1Jlc3BvbnNlElEKDENyZWF0ZURldmljZRIfLmNsYWJnZW4udjEuQ3JlYXRlRGV2aWNlUmVxdWVzdBogLmNsYWJnZW4udjEuQ3JlYXRlRGV2aWNlUmVzcG9uc2USUQoMVXBkYXRlRGV2aWNlEh8uY2xhYmdlbi52MS5VcGRhdGVEZXZpY2VSZXF1ZXN0GiAuY2xhYmdlbi52MS5VcGRhdGVEZXZpY2VSZXNwb25zZRJRCgxEZWxldGVEZXZpY2USHy5jbGFiZ2VuLnYxLkRlbGV0ZURldmljZVJlcXVlc3QaIC5jbGFiZ2VuLnYxLkRlbGV0ZURldmljZVJlc3BvbnNlEk4KC0dldERldmljZUlQEh4uY2xhYmdlbi52MS5HZXREZXZpY2VJUFJlcXVlc3QaHy5jbGFiZ2VuLnYxLkdldERldmljZUlQUmVzcG9uc2USWgoPUmVzb2x2ZU5laWdoYm9yEiIuY2xhYmdlbi52MS5SZXNvbHZlTmVpZ2hib3JSZXF1ZXN0GiMuY2xhYmdlbi52MS5SZXNvbHZlTmVpZ2hib3JSZXNwb25zZRJXCg5DbGVhck5laWdoYm9ycxIhLmNsYWJnZW4udjEuQ2xlYXJOZWlnaGJvcnNSZXF1ZXN0GiIuY2xhYmdlbi52MS5DbGVhck5laWdoYm9yc1Jlc3BvbnNlEmAKEUxpc3RSZWNlaXZlZEZsb3dzEiQuY2xhYmdlbi52MS5MaXN0UmVjZWl2ZWRGbG93c1JlcXVlc3QaJS5jbGFiZ2VuLnYxLkxpc3RSZWNlaXZlZEZsb3dzUmVzcG9uc2USYwoSQ2xlYXJSZWNlaXZlZEZsb3dzEiUuY2xhYmdlbi52MS5DbGVhclJlY2VpdmVkRmxvd3NSZXF1ZXN0GiYuY2xhYmdlbi52MS5DbGVhclJlY2VpdmVkRmxvd3NSZXNwb25zZRJgChFMaXN0UHJvdG9jb2xUeXBlcxIkLmNsYWJnZW4udjEuTGlzdFByb3RvY29sVHlwZXNSZXF1ZXN0GiUuY2xhYmdlbi52MS5MaXN0UHJvdG9jb2xUeXBlc1Jlc3BvbnNlElQKDUxpc3RQcm90b2NvbHMSIC5jbGFiZ2VuLnYxLkxpc3RQcm90b2NvbHNSZXF1ZXN0GiEuY2xhYmdlbi52MS5MaXN0UHJvdG9jb2xzUmVzcG9uc2USTgoLR2V0UHJvdG9jb2wSHi5jbGFiZ2VuLnYxLkdldFByb3RvY29sUmVxdWVzdBofLmNsYWJnZW4udjEuR2V0UHJvdG9jb2xSZXNwb25zZRJXCg5DcmVhdGVQcm90b2NvbBIhLmNsYWJnZW4udjEuQ3JlYXRlUHJvdG9jb2xSZXF1ZXN0GiIuY2xhYmdlbi52MS5DcmVhdGVQcm90b2NvbFJlc3BvbnNlElcKDlVwZGF0ZVByb3RvY29sEiEuY2xhYmdlbi52MS5VcGRhdGVQcm90b2NvbFJlcXVlc3QaIi5jbGFiZ2VuLnYxLlVwZGF0ZVByb3RvY29sUmVzcG9uc2USVwoORGVsZXRlUHJvdG9jb2wSIS5jbGFiZ2VuLnYxLkRlbGV0ZVByb3RvY29sUmVxdWVzdBoiLmNsYWJnZW4udjEuRGVsZXRlUHJvdG9jb2xSZXNwb25zZRJgChFSdW5Qcm90b2NvbEFjdGlvbhIkLmNsYWJnZW4udjEuUnVuUHJvdG9jb2xBY3Rpb25SZXF1ZXN0GiUuY2xhYmdlbi52MS5SdW5Qcm90b2NvbEFjdGlvblJlc3BvbnNlEl0KEExpc3REZXZpY2VHcm91cHMSIy5jbGFiZ2VuLnYxLkxpc3REZXZpY2VHcm91cHNSZXF1ZXN0GiQuY2xhYmdlbi52MS5MaXN0RGV2aWNlR3JvdXBzUmVzcG9uc2USVwoOR2V0RGV2aWNlR3JvdXASIS5jbGFiZ2VuLnYxLkdldERldmljZUdyb3VwUmVxdWVzdBoiLmNsYWJnZW4udjEuR2V0RGV2aWNlR3JvdXBSZXNwb25zZRJgChFDcmVhdGVEZXZpY2VHcm91cBIkLmNsYWJnZW4udjEuQ3JlYXRlRGV2aWNlR3JvdXBSZXF1ZXN0GiUuY2xhYmdlbi52MS5DcmVhdGVEZXZpY2VHcm91cFJlc3BvbnNlEmAKEVVwZGF0ZURldmljZUdyb3VwEiQuY2xhYmdlbi52MS5VcGRhdGVEZXZpY2VHcm91cFJlcXVlc3QaJS5jbGFiZ2VuLnYxLlVwZGF0ZURldmljZUdyb3VwUmVzcG9uc2USYAoRRGVsZXRlRGV2aWNlR3JvdXASJC5jbGFiZ2VuLnYxLkRlbGV0ZURldmljZUdyb3VwUmVxdWVzdBolLmNsYWJnZW4udjEuRGVsZXRlRGV2aWNlR3JvdXBSZXNwb25zZRJXCg5SdW5Hcm91cEFjdGlvbhIhLmNsYWJnZW4udjEuUnVuR3JvdXBBY3Rpb25SZXF1ZXN0GiIuY2xhYmdlbi52MS5SdW5Hcm91cEFjdGlvblJlc3BvbnNlEkIKC1dhdGNoRXZlbnRzEh4uY2xhYmdlbi52MS5XYXRjaEV2ZW50c1JlcXVlc3QaES5jbGFiZ2VuLnYxLkV2ZW50MAESTgoLR2V0U2NlbmFyaW8SHi5jbGFiZ2VuLnYxLkdldFNjZW5hcmlvUmVxdWVzdBofLmNsYWJnZW4udjEuR2V0U2NlbmFyaW9SZXNwb25zZRJUCg1BcHBseVNjZW5hcmlvEiAuY2xhYmdlbi52MS5BcHBseVNjZW5hcmlvUmVxdWVzdBohLmNsYWJnZW4udjEuQXBwbHlTY2VuYXJpb1Jlc3BvbnNlQjRaMmdpdGh1Yi5jb20vcmlwbmV0L2NsYWJnZW4vZ2VuL2NsYWJnZW4vdjE7Y2xhYmdlbnYxYgZwcm90bzM", [file_google_protobuf_struct, file_google_protobuf_timestamp]);
 
 /**
  * @generated from message clabgen.v1.GetInfoRequest
@@ -293,6 +293,13 @@ export type Device = Message<"clabgen.v1.Device"> & {
    * @generated from field: string gateway6 = 8;
    */
   gateway6: string;
+
+  /**
+   * Output only: the device group this device is a member of.
+   *
+   * @generated from field: string group = 9;
+   */
+  group: string;
 };
 
 /**
@@ -849,6 +856,13 @@ export type Protocol = Message<"clabgen.v1.Protocol"> & {
    * @generated from field: google.protobuf.Struct status = 7;
    */
   status?: JsonObject;
+
+  /**
+   * Output only: the device group this instance is a member of.
+   *
+   * @generated from field: string group = 8;
+   */
+  group: string;
 };
 
 /**
@@ -876,6 +890,13 @@ export type ListProtocolsRequest = Message<"clabgen.v1.ListProtocolsRequest"> & 
    * @generated from field: bool brief = 2;
    */
   brief: boolean;
+
+  /**
+   * Leave out device group members (ListDeviceGroups summarises them).
+   *
+   * @generated from field: bool no_group_members = 3;
+   */
+  noGroupMembers: boolean;
 };
 
 /**
@@ -1084,6 +1105,315 @@ export const RunProtocolActionResponseSchema: GenMessage<RunProtocolActionRespon
   messageDesc(file_clabgen_v1_agent, 46);
 
 /**
+ * @generated from message clabgen.v1.DeviceGroup
+ */
+export type DeviceGroup = Message<"clabgen.v1.DeviceGroup"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * name, count, device (a device template) and protocols (type, name,
+   * config template); see the README for stepped values and placeholders.
+   *
+   * @generated from field: google.protobuf.Struct spec = 2;
+   */
+  spec?: JsonObject;
+
+  /**
+   * Output only: devices (how many exist), protocols (per group protocol:
+   * states and health counts) and, from GetDeviceGroup, members.
+   *
+   * @generated from field: google.protobuf.Struct status = 3;
+   */
+  status?: JsonObject;
+
+  /**
+   * The spec as YAML. Always set in replies; on create and update it is
+   * used when spec is unset.
+   *
+   * @generated from field: string yaml = 4;
+   */
+  yaml: string;
+};
+
+/**
+ * Describes the message clabgen.v1.DeviceGroup.
+ * Use `create(DeviceGroupSchema)` to create a new message.
+ */
+export const DeviceGroupSchema: GenMessage<DeviceGroup> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 47);
+
+/**
+ * @generated from message clabgen.v1.ListDeviceGroupsRequest
+ */
+export type ListDeviceGroupsRequest = Message<"clabgen.v1.ListDeviceGroupsRequest"> & {
+};
+
+/**
+ * Describes the message clabgen.v1.ListDeviceGroupsRequest.
+ * Use `create(ListDeviceGroupsRequestSchema)` to create a new message.
+ */
+export const ListDeviceGroupsRequestSchema: GenMessage<ListDeviceGroupsRequest> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 48);
+
+/**
+ * @generated from message clabgen.v1.ListDeviceGroupsResponse
+ */
+export type ListDeviceGroupsResponse = Message<"clabgen.v1.ListDeviceGroupsResponse"> & {
+  /**
+   * @generated from field: repeated clabgen.v1.DeviceGroup groups = 1;
+   */
+  groups: DeviceGroup[];
+};
+
+/**
+ * Describes the message clabgen.v1.ListDeviceGroupsResponse.
+ * Use `create(ListDeviceGroupsResponseSchema)` to create a new message.
+ */
+export const ListDeviceGroupsResponseSchema: GenMessage<ListDeviceGroupsResponse> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 49);
+
+/**
+ * @generated from message clabgen.v1.GetDeviceGroupRequest
+ */
+export type GetDeviceGroupRequest = Message<"clabgen.v1.GetDeviceGroupRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * Leave out the per-member list.
+   *
+   * @generated from field: bool summary_only = 2;
+   */
+  summaryOnly: boolean;
+};
+
+/**
+ * Describes the message clabgen.v1.GetDeviceGroupRequest.
+ * Use `create(GetDeviceGroupRequestSchema)` to create a new message.
+ */
+export const GetDeviceGroupRequestSchema: GenMessage<GetDeviceGroupRequest> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 50);
+
+/**
+ * @generated from message clabgen.v1.GetDeviceGroupResponse
+ */
+export type GetDeviceGroupResponse = Message<"clabgen.v1.GetDeviceGroupResponse"> & {
+  /**
+   * @generated from field: clabgen.v1.DeviceGroup group = 1;
+   */
+  group?: DeviceGroup;
+};
+
+/**
+ * Describes the message clabgen.v1.GetDeviceGroupResponse.
+ * Use `create(GetDeviceGroupResponseSchema)` to create a new message.
+ */
+export const GetDeviceGroupResponseSchema: GenMessage<GetDeviceGroupResponse> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 51);
+
+/**
+ * @generated from message clabgen.v1.CreateDeviceGroupRequest
+ */
+export type CreateDeviceGroupRequest = Message<"clabgen.v1.CreateDeviceGroupRequest"> & {
+  /**
+   * @generated from field: clabgen.v1.DeviceGroup group = 1;
+   */
+  group?: DeviceGroup;
+};
+
+/**
+ * Describes the message clabgen.v1.CreateDeviceGroupRequest.
+ * Use `create(CreateDeviceGroupRequestSchema)` to create a new message.
+ */
+export const CreateDeviceGroupRequestSchema: GenMessage<CreateDeviceGroupRequest> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 52);
+
+/**
+ * @generated from message clabgen.v1.CreateDeviceGroupResponse
+ */
+export type CreateDeviceGroupResponse = Message<"clabgen.v1.CreateDeviceGroupResponse"> & {
+  /**
+   * @generated from field: clabgen.v1.DeviceGroup group = 1;
+   */
+  group?: DeviceGroup;
+};
+
+/**
+ * Describes the message clabgen.v1.CreateDeviceGroupResponse.
+ * Use `create(CreateDeviceGroupResponseSchema)` to create a new message.
+ */
+export const CreateDeviceGroupResponseSchema: GenMessage<CreateDeviceGroupResponse> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 53);
+
+/**
+ * @generated from message clabgen.v1.UpdateDeviceGroupRequest
+ */
+export type UpdateDeviceGroupRequest = Message<"clabgen.v1.UpdateDeviceGroupRequest"> & {
+  /**
+   * @generated from field: clabgen.v1.DeviceGroup group = 1;
+   */
+  group?: DeviceGroup;
+};
+
+/**
+ * Describes the message clabgen.v1.UpdateDeviceGroupRequest.
+ * Use `create(UpdateDeviceGroupRequestSchema)` to create a new message.
+ */
+export const UpdateDeviceGroupRequestSchema: GenMessage<UpdateDeviceGroupRequest> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 54);
+
+/**
+ * @generated from message clabgen.v1.UpdateDeviceGroupResponse
+ */
+export type UpdateDeviceGroupResponse = Message<"clabgen.v1.UpdateDeviceGroupResponse"> & {
+  /**
+   * @generated from field: clabgen.v1.DeviceGroup group = 1;
+   */
+  group?: DeviceGroup;
+};
+
+/**
+ * Describes the message clabgen.v1.UpdateDeviceGroupResponse.
+ * Use `create(UpdateDeviceGroupResponseSchema)` to create a new message.
+ */
+export const UpdateDeviceGroupResponseSchema: GenMessage<UpdateDeviceGroupResponse> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 55);
+
+/**
+ * @generated from message clabgen.v1.DeleteDeviceGroupRequest
+ */
+export type DeleteDeviceGroupRequest = Message<"clabgen.v1.DeleteDeviceGroupRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message clabgen.v1.DeleteDeviceGroupRequest.
+ * Use `create(DeleteDeviceGroupRequestSchema)` to create a new message.
+ */
+export const DeleteDeviceGroupRequestSchema: GenMessage<DeleteDeviceGroupRequest> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 56);
+
+/**
+ * @generated from message clabgen.v1.DeleteDeviceGroupResponse
+ */
+export type DeleteDeviceGroupResponse = Message<"clabgen.v1.DeleteDeviceGroupResponse"> & {
+};
+
+/**
+ * Describes the message clabgen.v1.DeleteDeviceGroupResponse.
+ * Use `create(DeleteDeviceGroupResponseSchema)` to create a new message.
+ */
+export const DeleteDeviceGroupResponseSchema: GenMessage<DeleteDeviceGroupResponse> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 57);
+
+/**
+ * @generated from message clabgen.v1.RunGroupActionRequest
+ */
+export type RunGroupActionRequest = Message<"clabgen.v1.RunGroupActionRequest"> & {
+  /**
+   * @generated from field: string group = 1;
+   */
+  group: string;
+
+  /**
+   * The group protocol's name; may be empty when the group has one.
+   *
+   * @generated from field: string protocol = 2;
+   */
+  protocol: string;
+
+  /**
+   * @generated from field: string action = 3;
+   */
+  action: string;
+
+  /**
+   * @generated from field: google.protobuf.Struct args = 4;
+   */
+  args?: JsonObject;
+
+  /**
+   * Empty or "all", or 1-based indices and ranges like "1-10,15".
+   *
+   * @generated from field: string members = 5;
+   */
+  members: string;
+
+  /**
+   * Run on this many of the selected members, picked at random.
+   *
+   * @generated from field: uint32 random = 6;
+   */
+  random: number;
+};
+
+/**
+ * Describes the message clabgen.v1.RunGroupActionRequest.
+ * Use `create(RunGroupActionRequestSchema)` to create a new message.
+ */
+export const RunGroupActionRequestSchema: GenMessage<RunGroupActionRequest> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 58);
+
+/**
+ * @generated from message clabgen.v1.GroupActionResult
+ */
+export type GroupActionResult = Message<"clabgen.v1.GroupActionResult"> & {
+  /**
+   * 1-based member index.
+   *
+   * @generated from field: uint32 index = 1;
+   */
+  index: number;
+
+  /**
+   * @generated from field: string protocol = 2;
+   */
+  protocol: string;
+
+  /**
+   * @generated from field: string error = 3;
+   */
+  error: string;
+
+  /**
+   * @generated from field: google.protobuf.Struct result = 4;
+   */
+  result?: JsonObject;
+};
+
+/**
+ * Describes the message clabgen.v1.GroupActionResult.
+ * Use `create(GroupActionResultSchema)` to create a new message.
+ */
+export const GroupActionResultSchema: GenMessage<GroupActionResult> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 59);
+
+/**
+ * @generated from message clabgen.v1.RunGroupActionResponse
+ */
+export type RunGroupActionResponse = Message<"clabgen.v1.RunGroupActionResponse"> & {
+  /**
+   * @generated from field: repeated clabgen.v1.GroupActionResult results = 1;
+   */
+  results: GroupActionResult[];
+};
+
+/**
+ * Describes the message clabgen.v1.RunGroupActionResponse.
+ * Use `create(RunGroupActionResponseSchema)` to create a new message.
+ */
+export const RunGroupActionResponseSchema: GenMessage<RunGroupActionResponse> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 60);
+
+/**
  * @generated from message clabgen.v1.WatchEventsRequest
  */
 export type WatchEventsRequest = Message<"clabgen.v1.WatchEventsRequest"> & {
@@ -1100,7 +1430,7 @@ export type WatchEventsRequest = Message<"clabgen.v1.WatchEventsRequest"> & {
  * Use `create(WatchEventsRequestSchema)` to create a new message.
  */
 export const WatchEventsRequestSchema: GenMessage<WatchEventsRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 47);
+  messageDesc(file_clabgen_v1_agent, 61);
 
 /**
  * @generated from message clabgen.v1.Event
@@ -1139,7 +1469,7 @@ export type Event = Message<"clabgen.v1.Event"> & {
  * Use `create(EventSchema)` to create a new message.
  */
 export const EventSchema: GenMessage<Event> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 48);
+  messageDesc(file_clabgen_v1_agent, 62);
 
 /**
  * @generated from message clabgen.v1.GetScenarioRequest
@@ -1152,7 +1482,7 @@ export type GetScenarioRequest = Message<"clabgen.v1.GetScenarioRequest"> & {
  * Use `create(GetScenarioRequestSchema)` to create a new message.
  */
 export const GetScenarioRequestSchema: GenMessage<GetScenarioRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 49);
+  messageDesc(file_clabgen_v1_agent, 63);
 
 /**
  * @generated from message clabgen.v1.GetScenarioResponse
@@ -1169,7 +1499,7 @@ export type GetScenarioResponse = Message<"clabgen.v1.GetScenarioResponse"> & {
  * Use `create(GetScenarioResponseSchema)` to create a new message.
  */
 export const GetScenarioResponseSchema: GenMessage<GetScenarioResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 50);
+  messageDesc(file_clabgen_v1_agent, 64);
 
 /**
  * @generated from message clabgen.v1.ApplyScenarioRequest
@@ -1193,7 +1523,7 @@ export type ApplyScenarioRequest = Message<"clabgen.v1.ApplyScenarioRequest"> & 
  * Use `create(ApplyScenarioRequestSchema)` to create a new message.
  */
 export const ApplyScenarioRequestSchema: GenMessage<ApplyScenarioRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 51);
+  messageDesc(file_clabgen_v1_agent, 65);
 
 /**
  * @generated from message clabgen.v1.ApplyScenarioResponse
@@ -1206,7 +1536,7 @@ export type ApplyScenarioResponse = Message<"clabgen.v1.ApplyScenarioResponse"> 
  * Use `create(ApplyScenarioResponseSchema)` to create a new message.
  */
 export const ApplyScenarioResponseSchema: GenMessage<ApplyScenarioResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 52);
+  messageDesc(file_clabgen_v1_agent, 66);
 
 /**
  * AgentService is exposed by every clabgen-agent. It is served over
@@ -1388,6 +1718,63 @@ export const AgentService: GenService<{
     methodKind: "unary";
     input: typeof RunProtocolActionRequestSchema;
     output: typeof RunProtocolActionResponseSchema;
+  },
+  /**
+   * Device groups are many devices from one template, each with the same
+   * set of protocol instances. Members are listed as ordinary devices and
+   * protocols (with group set) and change only through their group.
+   *
+   * @generated from rpc clabgen.v1.AgentService.ListDeviceGroups
+   */
+  listDeviceGroups: {
+    methodKind: "unary";
+    input: typeof ListDeviceGroupsRequestSchema;
+    output: typeof ListDeviceGroupsResponseSchema;
+  },
+  /**
+   * @generated from rpc clabgen.v1.AgentService.GetDeviceGroup
+   */
+  getDeviceGroup: {
+    methodKind: "unary";
+    input: typeof GetDeviceGroupRequestSchema;
+    output: typeof GetDeviceGroupResponseSchema;
+  },
+  /**
+   * @generated from rpc clabgen.v1.AgentService.CreateDeviceGroup
+   */
+  createDeviceGroup: {
+    methodKind: "unary";
+    input: typeof CreateDeviceGroupRequestSchema;
+    output: typeof CreateDeviceGroupResponseSchema;
+  },
+  /**
+   * UpdateDeviceGroup replaces a group's spec; members whose rendered
+   * device and protocols are unchanged keep running.
+   *
+   * @generated from rpc clabgen.v1.AgentService.UpdateDeviceGroup
+   */
+  updateDeviceGroup: {
+    methodKind: "unary";
+    input: typeof UpdateDeviceGroupRequestSchema;
+    output: typeof UpdateDeviceGroupResponseSchema;
+  },
+  /**
+   * @generated from rpc clabgen.v1.AgentService.DeleteDeviceGroup
+   */
+  deleteDeviceGroup: {
+    methodKind: "unary";
+    input: typeof DeleteDeviceGroupRequestSchema;
+    output: typeof DeleteDeviceGroupResponseSchema;
+  },
+  /**
+   * RunGroupAction runs a protocol action on some or all members.
+   *
+   * @generated from rpc clabgen.v1.AgentService.RunGroupAction
+   */
+  runGroupAction: {
+    methodKind: "unary";
+    input: typeof RunGroupActionRequestSchema;
+    output: typeof RunGroupActionResponseSchema;
   },
   /**
    * @generated from rpc clabgen.v1.AgentService.WatchEvents

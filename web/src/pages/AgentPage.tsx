@@ -5,6 +5,7 @@ import { ago } from "../components/ValueView";
 import { ProtocolsTab } from "./ProtocolsTab";
 import { TrafficTab } from "./TrafficTab";
 import { DevicesTab } from "./DevicesTab";
+import { GroupsTab } from "./GroupsTab";
 import { PortsTab } from "./PortsTab";
 import { EventsTab } from "./EventsTab";
 import { ScenarioTab } from "./ScenarioTab";
@@ -60,6 +61,7 @@ export function AgentPage({ agentId, tab }: { agentId: string; tab: AgentTab }) 
       </AgentHeader>
       {tab === "ports" && <PortsTab agentId={agentId} />}
       {tab === "devices" && <DevicesTab agentId={agentId} />}
+      {tab === "groups" && <GroupsTab agentId={agentId} />}
       {tab === "protocols" && <ProtocolsTab agentId={agentId} />}
       {tab === "traffic" && <TrafficTab agentId={agentId} />}
       {tab === "events" && <EventsTab agentId={agentId} />}

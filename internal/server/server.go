@@ -2,6 +2,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"sigs.k8s.io/yaml"
 
 	"github.com/ripnet/clabgen/internal/core"
 	"github.com/ripnet/clabgen/internal/events"
@@ -132,7 +134,7 @@ func (s *Server) SetPortAdmin(ctx context.Context, r *connect.Request[v1.SetPort
 }
 
 func devicePB(d core.DeviceSpec) *v1.Device {
-	out := &v1.Device{Name: d.Name, Port: d.Port, Mac: d.MAC, MacDerived: d.MACDerived,
+	out := &v1.Device{Name: d.Name, Port: d.Port, Mac: d.MAC, MacDerived: d.MACDerived, Group: d.Group,
 		Addresses: d.Addresses, Gateway4: d.Gateway4, Gateway6: d.Gateway6}
 	for _, t := range d.VLANs {
 		out.Vlans = append(out.Vlans, &v1.VlanTag{Tpid: uint32(t.TPID), Vid: uint32(t.VID), Pcp: uint32(t.PCP)})
@@ -285,12 +287,12 @@ func protocolPB(v core.ProtocolView) (*v1.Protocol, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &v1.Protocol{Name: v.Name, Type: v.Type, Device: v.Device, Config: cfg, State: v.State, Error: v.Error, Status: st}, nil
+	return &v1.Protocol{Name: v.Name, Type: v.Type, Device: v.Device, Config: cfg, State: v.State, Error: v.Error, Status: st, Group: v.Group}, nil
 }
 
 func (s *Server) ListProtocols(ctx context.Context, r *connect.Request[v1.ListProtocolsRequest]) (*connect.Response[v1.ListProtocolsResponse], error) {
 	out := &v1.ListProtocolsResponse{}
-	for _, v := range s.eng.ProtocolList(r.Msg.WithStatus, r.Msg.Brief) {
+	for _, v := range s.eng.ProtocolList(r.Msg.WithStatus, r.Msg.Brief, r.Msg.NoGroupMembers) {
 		p, err := protocolPB(v)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, err)
@@ -407,4 +409,135 @@ func (s *Server) ApplyScenario(ctx context.Context, r *connect.Request[v1.ApplyS
 		return nil, connectErr(err)
 	}
 	return connect.NewResponse(&v1.ApplyScenarioResponse{}), connectErr(s.eng.Apply(sc, r.Msg.Replace))
+}
+
+func groupPB(v core.GroupView) (*v1.DeviceGroup, error) {
+	spec, err := toStruct(v.Spec)
+	if err != nil {
+		return nil, err
+	}
+	st, err := toStruct(v)
+	if err != nil {
+		return nil, err
+	}
+	y, err := yaml.Marshal(v.Spec)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeviceGroup{Name: v.Spec.Name, Spec: spec, Status: st, Yaml: string(y)}, nil
+}
+
+func groupSpec(g *v1.DeviceGroup) (core.GroupSpec, error) {
+	var spec core.GroupSpec
+	if g != nil && g.Spec == nil && g.Yaml != "" {
+		if err := yaml.UnmarshalStrict([]byte(g.Yaml), &spec); err != nil {
+			return spec, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("group spec: %w", err))
+		}
+		if spec.Name == "" {
+			spec.Name = g.Name
+		}
+		return spec, nil
+	}
+	if g == nil || g.Spec == nil {
+		return spec, connect.NewError(connect.CodeInvalidArgument, errors.New("group spec is required"))
+	}
+	raw, err := fromStruct(g.Spec)
+	if err != nil {
+		return spec, connectErr(err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&spec); err != nil {
+		return spec, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("group spec: %w", err))
+	}
+	if spec.Name == "" {
+		spec.Name = g.Name
+	}
+	return spec, nil
+}
+
+// groupReply converts a create/update result; a partly failed change still
+// returns the error.
+func groupReply(v core.GroupView, err error) (*v1.DeviceGroup, error) {
+	if err != nil {
+		return nil, connectErr(err)
+	}
+	out, err := groupPB(v)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return out, nil
+}
+
+func (s *Server) ListDeviceGroups(ctx context.Context, _ *connect.Request[v1.ListDeviceGroupsRequest]) (*connect.Response[v1.ListDeviceGroupsResponse], error) {
+	out := &v1.ListDeviceGroupsResponse{}
+	for _, v := range s.eng.Groups() {
+		g, err := groupPB(v)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+		out.Groups = append(out.Groups, g)
+	}
+	return connect.NewResponse(out), nil
+}
+
+func (s *Server) GetDeviceGroup(ctx context.Context, r *connect.Request[v1.GetDeviceGroupRequest]) (*connect.Response[v1.GetDeviceGroupResponse], error) {
+	v, err := s.eng.GetGroup(r.Msg.Name, !r.Msg.SummaryOnly)
+	if err != nil {
+		return nil, connectErr(err)
+	}
+	g, err := groupReply(v, nil)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&v1.GetDeviceGroupResponse{Group: g}), nil
+}
+
+func (s *Server) CreateDeviceGroup(ctx context.Context, r *connect.Request[v1.CreateDeviceGroupRequest]) (*connect.Response[v1.CreateDeviceGroupResponse], error) {
+	spec, err := groupSpec(r.Msg.Group)
+	if err != nil {
+		return nil, err
+	}
+	g, err := groupReply(s.eng.CreateGroup(spec))
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&v1.CreateDeviceGroupResponse{Group: g}), nil
+}
+
+func (s *Server) UpdateDeviceGroup(ctx context.Context, r *connect.Request[v1.UpdateDeviceGroupRequest]) (*connect.Response[v1.UpdateDeviceGroupResponse], error) {
+	spec, err := groupSpec(r.Msg.Group)
+	if err != nil {
+		return nil, err
+	}
+	g, err := groupReply(s.eng.UpdateGroup(spec))
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&v1.UpdateDeviceGroupResponse{Group: g}), nil
+}
+
+func (s *Server) DeleteDeviceGroup(ctx context.Context, r *connect.Request[v1.DeleteDeviceGroupRequest]) (*connect.Response[v1.DeleteDeviceGroupResponse], error) {
+	return connect.NewResponse(&v1.DeleteDeviceGroupResponse{}), connectErr(s.eng.DeleteGroup(r.Msg.Name))
+}
+
+func (s *Server) RunGroupAction(ctx context.Context, r *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error) {
+	raw, err := fromStruct(r.Msg.Args)
+	if err != nil {
+		return nil, connectErr(err)
+	}
+	res, err := s.eng.RunGroupAction(ctx, core.GroupActionRequest{Group: r.Msg.Group, Protocol: r.Msg.Protocol, Action: r.Msg.Action,
+		Args: raw, Members: r.Msg.Members, Random: int(r.Msg.Random)})
+	if err != nil {
+		return nil, connectErr(err)
+	}
+	out := &v1.RunGroupActionResponse{}
+	for _, x := range res {
+		st, err := toStruct(x.Result)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+		out.Results = append(out.Results, &v1.GroupActionResult{Index: uint32(x.Index), Protocol: x.Protocol, Error: x.Error, Result: st})
+	}
+	return connect.NewResponse(out), nil
 }

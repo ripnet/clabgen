@@ -28,7 +28,15 @@ export function ProtocolDetail({ agentId, name }: { agentId: string; name: strin
     <div className="page">
       <AgentHeader agentId={agentId}>
         <div className="crumbs">
-          <a href={href({ page: "agent", agent: agentId, tab: section })}>{section}</a> / <span className="mono">{name}</span>
+          {proto?.group ? (
+            <>
+              <a href={href({ page: "agent", agent: agentId, tab: "groups" })}>groups</a> /{" "}
+              <a href={href({ page: "group", agent: agentId, group: proto.group })}>{proto.group}</a>
+            </>
+          ) : (
+            <a href={href({ page: "agent", agent: agentId, tab: section })}>{section}</a>
+          )}{" "}
+          / <span className="mono">{name}</span>
         </div>
       </AgentHeader>
       {p.error && !proto && <ErrorBox error={p.error} />}
@@ -39,10 +47,15 @@ export function ProtocolDetail({ agentId, name }: { agentId: string; name: strin
               <h2 className="mono">{proto.name}</h2>
               <div className="muted">
                 <span className="mono">{proto.type}</span> on device <span className="mono">{proto.device}</span>
+                {proto.group && (
+                  <>
+                    {" "}· member of group <a href={href({ page: "group", agent: agentId, group: proto.group })} className="mono">{proto.group}</a>
+                  </>
+                )}
               </div>
             </div>
             <div className="proto-state">{s && <HealthText health={s.health}>{proto.state === "running" ? s.text : `${proto.state}: ${proto.error}`}</HealthText>}</div>
-            <div className="btn-row">
+            <div className="btn-row" hidden={!!proto.group} title="Group members change through their group">
               <button className="btn" onClick={() => setEditing(true)} disabled={!type}>
                 Edit config
               </button>

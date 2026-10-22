@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import type { Port, Protocol } from "../gen/clabgen/v1/agent_pb";
+import type { DeviceGroup, Port, Protocol } from "../gen/clabgen/v1/agent_pb";
 import { client, errorText } from "../api";
 import { agentLabel, useAgents } from "../agents";
 import { href } from "../router";
 import { summarize, type Health } from "../protocols/registry";
 import { Dot, Empty, HealthText } from "../ui";
+import { groupHealth, groupStatus } from "./GroupsTab";
 
-type Snapshot = { protocols?: Protocol[]; ports?: Port[]; error?: string };
+type Snapshot = { protocols?: Protocol[]; groups?: DeviceGroup[]; ports?: Port[]; error?: string };
 
 const rank: Record<Health, number> = { bad: 0, warn: 1, idle: 2, ok: 3 };
 
@@ -23,8 +24,13 @@ export function Overview() {
       if (document.visibilityState !== "visible") return;
       for (const a of agents) {
         const c = client(a.id);
-        Promise.all([c.listProtocols({ withStatus: true, brief: true }, { timeoutMs: 4000 }), c.listPorts({}, { timeoutMs: 4000 })]).then(
-          ([p, ports]) => !cancelled && setSnap((m) => ({ ...m, [a.id]: { protocols: p.protocols, ports: ports.ports } })),
+        Promise.all([
+          c.listProtocols({ withStatus: true, brief: true, noGroupMembers: true }, { timeoutMs: 4000 }),
+          // Agents from before device groups don't have the call.
+          c.listDeviceGroups({}, { timeoutMs: 4000 }).catch(() => ({ groups: [] as DeviceGroup[] })),
+          c.listPorts({}, { timeoutMs: 4000 }),
+        ]).then(
+          ([p, g, ports]) => !cancelled && setSnap((m) => ({ ...m, [a.id]: { protocols: p.protocols, groups: g.groups, ports: ports.ports } })),
           (e) => !cancelled && setSnap((m) => ({ ...m, [a.id]: { error: errorText(e) } })),
         );
       }
@@ -50,10 +56,31 @@ export function Overview() {
     );
   }
 
-  const rows = agents.flatMap((a) =>
-    (snap[a.id]?.protocols ?? []).map((p) => ({ a, p, s: summarize(p.type, p.state, p.error, p.status) })),
-  );
-  rows.sort((x, y) => rank[x.s.health] - rank[y.s.health] || agentLabel(x.a).localeCompare(agentLabel(y.a)) || x.p.name.localeCompare(y.p.name));
+  // One row per protocol, and per group protocol (its members rolled up).
+  const rows = agents.flatMap((a) => [
+    ...(snap[a.id]?.protocols ?? []).map((p) => ({
+      a,
+      key: p.name,
+      name: p.name,
+      type: p.type,
+      device: p.device,
+      link: href({ page: "protocol", agent: a.id, protocol: p.name }),
+      s: summarize(p.type, p.state, p.error, p.status),
+    })),
+    ...(snap[a.id]?.groups ?? []).flatMap((g) => {
+      const st = groupStatus(g);
+      return st.protocols.map((p) => ({
+        a,
+        key: "group/" + g.name + "/" + p.name,
+        name: `${g.name}/${p.name}`,
+        type: p.type,
+        device: `group ${g.name} (${st.devices})`,
+        link: href({ page: "group", agent: a.id, group: g.name }),
+        s: groupHealth(p),
+      }));
+    }),
+  ]);
+  rows.sort((x, y) => rank[x.s.health] - rank[y.s.health] || agentLabel(x.a).localeCompare(agentLabel(y.a)) || x.name.localeCompare(y.name));
   const counts = { ok: 0, warn: 0, bad: 0, idle: 0 } as Record<Health, number>;
   rows.forEach((r) => counts[r.s.health]++);
 
@@ -85,7 +112,7 @@ export function Overview() {
                 <div className="agent-card-body error-text">{s.error}</div>
               ) : (
                 <div className="agent-card-body muted">
-                  {s?.ports ? `${portsUp}/${s.ports.length} ports up · ${s.protocols?.length ?? 0} protocols` : "loading…"}
+                  {s?.ports ? `${portsUp}/${s.ports.length} ports up · ${s.protocols?.length ?? 0} protocols${s.groups?.length ? ` · ${s.groups.length} groups` : ""}` : "loading…"}
                 </div>
               )}
             </a>
@@ -113,12 +140,12 @@ export function Overview() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ a, p, s }) => (
-                  <tr key={a.id + "/" + p.name} onClick={() => (window.location.hash = href({ page: "protocol", agent: a.id, protocol: p.name }))}>
+                {rows.map(({ a, key, name, type, device, link, s }) => (
+                  <tr key={a.id + "/" + key} onClick={() => (window.location.hash = link)}>
                     <td>{agentLabel(a, info[a.id])}</td>
-                    <td className="mono strong">{p.name}</td>
-                    <td className="mono">{p.type}</td>
-                    <td className="mono">{p.device}</td>
+                    <td className="mono strong">{name}</td>
+                    <td className="mono">{type}</td>
+                    <td className="mono">{device}</td>
                     <td>
                       <HealthText health={s.health}>{s.text}</HealthText>
                     </td>

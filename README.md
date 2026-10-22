@@ -263,6 +263,47 @@ It lists the neighbors it hears (`clabgenctl proto show lldp-eth1`);
 `… run lldp-eth1 shutdown` / `resume` / `pause seconds=120` make
 neighbors drop or age it out, and `custom_tlvs` add arbitrary TLVs.
 
+### Device groups
+
+A device group is many devices from one template, each running the same
+protocols: 200 BGP peers, 500 MEPs on 500 VLANs, a host per subnet. Any
+value in the device or protocol template can be stepped per member with
+`{start, step, repeat, cycle}`, where `start` is an integer, an IP
+address, an address with a prefix length or a MAC, and `step` an integer
+or a value of the same form (`0.0.0.4`, `::1:0`). Member `i` (from 0)
+gets `start + k·step`, with `k = (i / repeat) % cycle`, so QinQ is an
+outer VLAN with `repeat: 100` and an inner one with `cycle: 100`. Strings
+take placeholders: `{i}` (from 1), `{i0}`, `{group}`, and in protocol
+configs the member's `{device}`, `{ipv4}`, `{ipv6}`, `{gateway4}`,
+`{gateway6}`, `{mac}`, `{vlan}` and `{inner_vlan}`.
+
+```yaml
+device_groups:
+  - name: ce
+    count: 200
+    device:                       # named ce-1 … ce-200 unless it sets a name
+      port: eth3
+      vlans: [{vid: {start: 1000}}]
+      addresses: [{start: 10.1.0.2/30, step: 0.0.0.4}]
+      gateway4: {start: 10.1.0.1, step: 0.0.0.4}
+    protocols:                    # instances ce-1-bgp … ce-200-bgp
+      - type: bgp
+        config:
+          local_as: {start: 65001}
+          peers: [{address: "{gateway4}", remote_as: 65100}]
+          routes: [{prefix: {start: 172.16.0.0/24, step: 0.0.10.0}, count: 10, communities: ["65100:{i}"]}]
+```
+
+Members are ordinary devices and protocol instances (their pages, actions
+and flows work as usual) but change only through the group. Changing a
+group (`clabgenctl group set ce.yml`) keeps members whose rendered config
+is the same running, so the count can grow or shrink without touching the
+rest. `clabgenctl groups` summarises each group protocol by the protocols'
+own state (e.g. `198 established, 2 active`), `group show ce` lists the
+members, and `group run ce flap --members 1-20` or `--random 5` runs an
+action on a selection in parallel. Lists leave members out unless asked
+(`devices --all`, `protocols --group ce`); the UI has a Groups tab.
+
 Mount the file in the topology and set `CLABGEN_SCENARIO`. See
 `examples/*/*.clab.yml`.
 

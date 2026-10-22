@@ -1665,3 +1665,29 @@ func (s *session) keyRolloverLocked(now time.Time) {
 		go s.event("auth-key-rollover", msg)
 	}
 }
+
+// Health is up or down, or how many non-passive interfaces have an Up
+// adjacency when there are several (protocol.Healther).
+func (s *session) Health() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n, up := 0, 0
+	for _, c := range s.circs {
+		if c.passive {
+			continue
+		}
+		n++
+		if c.attached() && (c.lan && (c.lanAdjUp(1) || c.lanAdjUp(2)) || !c.lan && c.adj.state == stUp) {
+			up++
+		}
+	}
+	switch {
+	case n == 0:
+		return "passive"
+	case n == 1 && up == 1:
+		return "up"
+	case n == 1:
+		return "down"
+	}
+	return fmt.Sprintf("%d/%d up", up, n)
+}

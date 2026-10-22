@@ -88,6 +88,24 @@ const (
 	// AgentServiceRunProtocolActionProcedure is the fully-qualified name of the AgentService's
 	// RunProtocolAction RPC.
 	AgentServiceRunProtocolActionProcedure = "/clabgen.v1.AgentService/RunProtocolAction"
+	// AgentServiceListDeviceGroupsProcedure is the fully-qualified name of the AgentService's
+	// ListDeviceGroups RPC.
+	AgentServiceListDeviceGroupsProcedure = "/clabgen.v1.AgentService/ListDeviceGroups"
+	// AgentServiceGetDeviceGroupProcedure is the fully-qualified name of the AgentService's
+	// GetDeviceGroup RPC.
+	AgentServiceGetDeviceGroupProcedure = "/clabgen.v1.AgentService/GetDeviceGroup"
+	// AgentServiceCreateDeviceGroupProcedure is the fully-qualified name of the AgentService's
+	// CreateDeviceGroup RPC.
+	AgentServiceCreateDeviceGroupProcedure = "/clabgen.v1.AgentService/CreateDeviceGroup"
+	// AgentServiceUpdateDeviceGroupProcedure is the fully-qualified name of the AgentService's
+	// UpdateDeviceGroup RPC.
+	AgentServiceUpdateDeviceGroupProcedure = "/clabgen.v1.AgentService/UpdateDeviceGroup"
+	// AgentServiceDeleteDeviceGroupProcedure is the fully-qualified name of the AgentService's
+	// DeleteDeviceGroup RPC.
+	AgentServiceDeleteDeviceGroupProcedure = "/clabgen.v1.AgentService/DeleteDeviceGroup"
+	// AgentServiceRunGroupActionProcedure is the fully-qualified name of the AgentService's
+	// RunGroupAction RPC.
+	AgentServiceRunGroupActionProcedure = "/clabgen.v1.AgentService/RunGroupAction"
 	// AgentServiceWatchEventsProcedure is the fully-qualified name of the AgentService's WatchEvents
 	// RPC.
 	AgentServiceWatchEventsProcedure = "/clabgen.v1.AgentService/WatchEvents"
@@ -133,6 +151,18 @@ type AgentServiceClient interface {
 	UpdateProtocol(context.Context, *connect.Request[v1.UpdateProtocolRequest]) (*connect.Response[v1.UpdateProtocolResponse], error)
 	DeleteProtocol(context.Context, *connect.Request[v1.DeleteProtocolRequest]) (*connect.Response[v1.DeleteProtocolResponse], error)
 	RunProtocolAction(context.Context, *connect.Request[v1.RunProtocolActionRequest]) (*connect.Response[v1.RunProtocolActionResponse], error)
+	// Device groups are many devices from one template, each with the same
+	// set of protocol instances. Members are listed as ordinary devices and
+	// protocols (with group set) and change only through their group.
+	ListDeviceGroups(context.Context, *connect.Request[v1.ListDeviceGroupsRequest]) (*connect.Response[v1.ListDeviceGroupsResponse], error)
+	GetDeviceGroup(context.Context, *connect.Request[v1.GetDeviceGroupRequest]) (*connect.Response[v1.GetDeviceGroupResponse], error)
+	CreateDeviceGroup(context.Context, *connect.Request[v1.CreateDeviceGroupRequest]) (*connect.Response[v1.CreateDeviceGroupResponse], error)
+	// UpdateDeviceGroup replaces a group's spec; members whose rendered
+	// device and protocols are unchanged keep running.
+	UpdateDeviceGroup(context.Context, *connect.Request[v1.UpdateDeviceGroupRequest]) (*connect.Response[v1.UpdateDeviceGroupResponse], error)
+	DeleteDeviceGroup(context.Context, *connect.Request[v1.DeleteDeviceGroupRequest]) (*connect.Response[v1.DeleteDeviceGroupResponse], error)
+	// RunGroupAction runs a protocol action on some or all members.
+	RunGroupAction(context.Context, *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error)
 	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest]) (*connect.ServerStreamForClient[v1.Event], error)
 	// Scenarios are the whole agent config as YAML.
 	GetScenario(context.Context, *connect.Request[v1.GetScenarioRequest]) (*connect.Response[v1.GetScenarioResponse], error)
@@ -264,6 +294,42 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(agentServiceMethods.ByName("RunProtocolAction")),
 			connect.WithClientOptions(opts...),
 		),
+		listDeviceGroups: connect.NewClient[v1.ListDeviceGroupsRequest, v1.ListDeviceGroupsResponse](
+			httpClient,
+			baseURL+AgentServiceListDeviceGroupsProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("ListDeviceGroups")),
+			connect.WithClientOptions(opts...),
+		),
+		getDeviceGroup: connect.NewClient[v1.GetDeviceGroupRequest, v1.GetDeviceGroupResponse](
+			httpClient,
+			baseURL+AgentServiceGetDeviceGroupProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("GetDeviceGroup")),
+			connect.WithClientOptions(opts...),
+		),
+		createDeviceGroup: connect.NewClient[v1.CreateDeviceGroupRequest, v1.CreateDeviceGroupResponse](
+			httpClient,
+			baseURL+AgentServiceCreateDeviceGroupProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("CreateDeviceGroup")),
+			connect.WithClientOptions(opts...),
+		),
+		updateDeviceGroup: connect.NewClient[v1.UpdateDeviceGroupRequest, v1.UpdateDeviceGroupResponse](
+			httpClient,
+			baseURL+AgentServiceUpdateDeviceGroupProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("UpdateDeviceGroup")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteDeviceGroup: connect.NewClient[v1.DeleteDeviceGroupRequest, v1.DeleteDeviceGroupResponse](
+			httpClient,
+			baseURL+AgentServiceDeleteDeviceGroupProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("DeleteDeviceGroup")),
+			connect.WithClientOptions(opts...),
+		),
+		runGroupAction: connect.NewClient[v1.RunGroupActionRequest, v1.RunGroupActionResponse](
+			httpClient,
+			baseURL+AgentServiceRunGroupActionProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("RunGroupAction")),
+			connect.WithClientOptions(opts...),
+		),
 		watchEvents: connect.NewClient[v1.WatchEventsRequest, v1.Event](
 			httpClient,
 			baseURL+AgentServiceWatchEventsProcedure,
@@ -306,6 +372,12 @@ type agentServiceClient struct {
 	updateProtocol     *connect.Client[v1.UpdateProtocolRequest, v1.UpdateProtocolResponse]
 	deleteProtocol     *connect.Client[v1.DeleteProtocolRequest, v1.DeleteProtocolResponse]
 	runProtocolAction  *connect.Client[v1.RunProtocolActionRequest, v1.RunProtocolActionResponse]
+	listDeviceGroups   *connect.Client[v1.ListDeviceGroupsRequest, v1.ListDeviceGroupsResponse]
+	getDeviceGroup     *connect.Client[v1.GetDeviceGroupRequest, v1.GetDeviceGroupResponse]
+	createDeviceGroup  *connect.Client[v1.CreateDeviceGroupRequest, v1.CreateDeviceGroupResponse]
+	updateDeviceGroup  *connect.Client[v1.UpdateDeviceGroupRequest, v1.UpdateDeviceGroupResponse]
+	deleteDeviceGroup  *connect.Client[v1.DeleteDeviceGroupRequest, v1.DeleteDeviceGroupResponse]
+	runGroupAction     *connect.Client[v1.RunGroupActionRequest, v1.RunGroupActionResponse]
 	watchEvents        *connect.Client[v1.WatchEventsRequest, v1.Event]
 	getScenario        *connect.Client[v1.GetScenarioRequest, v1.GetScenarioResponse]
 	applyScenario      *connect.Client[v1.ApplyScenarioRequest, v1.ApplyScenarioResponse]
@@ -406,6 +478,36 @@ func (c *agentServiceClient) RunProtocolAction(ctx context.Context, req *connect
 	return c.runProtocolAction.CallUnary(ctx, req)
 }
 
+// ListDeviceGroups calls clabgen.v1.AgentService.ListDeviceGroups.
+func (c *agentServiceClient) ListDeviceGroups(ctx context.Context, req *connect.Request[v1.ListDeviceGroupsRequest]) (*connect.Response[v1.ListDeviceGroupsResponse], error) {
+	return c.listDeviceGroups.CallUnary(ctx, req)
+}
+
+// GetDeviceGroup calls clabgen.v1.AgentService.GetDeviceGroup.
+func (c *agentServiceClient) GetDeviceGroup(ctx context.Context, req *connect.Request[v1.GetDeviceGroupRequest]) (*connect.Response[v1.GetDeviceGroupResponse], error) {
+	return c.getDeviceGroup.CallUnary(ctx, req)
+}
+
+// CreateDeviceGroup calls clabgen.v1.AgentService.CreateDeviceGroup.
+func (c *agentServiceClient) CreateDeviceGroup(ctx context.Context, req *connect.Request[v1.CreateDeviceGroupRequest]) (*connect.Response[v1.CreateDeviceGroupResponse], error) {
+	return c.createDeviceGroup.CallUnary(ctx, req)
+}
+
+// UpdateDeviceGroup calls clabgen.v1.AgentService.UpdateDeviceGroup.
+func (c *agentServiceClient) UpdateDeviceGroup(ctx context.Context, req *connect.Request[v1.UpdateDeviceGroupRequest]) (*connect.Response[v1.UpdateDeviceGroupResponse], error) {
+	return c.updateDeviceGroup.CallUnary(ctx, req)
+}
+
+// DeleteDeviceGroup calls clabgen.v1.AgentService.DeleteDeviceGroup.
+func (c *agentServiceClient) DeleteDeviceGroup(ctx context.Context, req *connect.Request[v1.DeleteDeviceGroupRequest]) (*connect.Response[v1.DeleteDeviceGroupResponse], error) {
+	return c.deleteDeviceGroup.CallUnary(ctx, req)
+}
+
+// RunGroupAction calls clabgen.v1.AgentService.RunGroupAction.
+func (c *agentServiceClient) RunGroupAction(ctx context.Context, req *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error) {
+	return c.runGroupAction.CallUnary(ctx, req)
+}
+
 // WatchEvents calls clabgen.v1.AgentService.WatchEvents.
 func (c *agentServiceClient) WatchEvents(ctx context.Context, req *connect.Request[v1.WatchEventsRequest]) (*connect.ServerStreamForClient[v1.Event], error) {
 	return c.watchEvents.CallServerStream(ctx, req)
@@ -455,6 +557,18 @@ type AgentServiceHandler interface {
 	UpdateProtocol(context.Context, *connect.Request[v1.UpdateProtocolRequest]) (*connect.Response[v1.UpdateProtocolResponse], error)
 	DeleteProtocol(context.Context, *connect.Request[v1.DeleteProtocolRequest]) (*connect.Response[v1.DeleteProtocolResponse], error)
 	RunProtocolAction(context.Context, *connect.Request[v1.RunProtocolActionRequest]) (*connect.Response[v1.RunProtocolActionResponse], error)
+	// Device groups are many devices from one template, each with the same
+	// set of protocol instances. Members are listed as ordinary devices and
+	// protocols (with group set) and change only through their group.
+	ListDeviceGroups(context.Context, *connect.Request[v1.ListDeviceGroupsRequest]) (*connect.Response[v1.ListDeviceGroupsResponse], error)
+	GetDeviceGroup(context.Context, *connect.Request[v1.GetDeviceGroupRequest]) (*connect.Response[v1.GetDeviceGroupResponse], error)
+	CreateDeviceGroup(context.Context, *connect.Request[v1.CreateDeviceGroupRequest]) (*connect.Response[v1.CreateDeviceGroupResponse], error)
+	// UpdateDeviceGroup replaces a group's spec; members whose rendered
+	// device and protocols are unchanged keep running.
+	UpdateDeviceGroup(context.Context, *connect.Request[v1.UpdateDeviceGroupRequest]) (*connect.Response[v1.UpdateDeviceGroupResponse], error)
+	DeleteDeviceGroup(context.Context, *connect.Request[v1.DeleteDeviceGroupRequest]) (*connect.Response[v1.DeleteDeviceGroupResponse], error)
+	// RunGroupAction runs a protocol action on some or all members.
+	RunGroupAction(context.Context, *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error)
 	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.Event]) error
 	// Scenarios are the whole agent config as YAML.
 	GetScenario(context.Context, *connect.Request[v1.GetScenarioRequest]) (*connect.Response[v1.GetScenarioResponse], error)
@@ -582,6 +696,42 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(agentServiceMethods.ByName("RunProtocolAction")),
 		connect.WithHandlerOptions(opts...),
 	)
+	agentServiceListDeviceGroupsHandler := connect.NewUnaryHandler(
+		AgentServiceListDeviceGroupsProcedure,
+		svc.ListDeviceGroups,
+		connect.WithSchema(agentServiceMethods.ByName("ListDeviceGroups")),
+		connect.WithHandlerOptions(opts...),
+	)
+	agentServiceGetDeviceGroupHandler := connect.NewUnaryHandler(
+		AgentServiceGetDeviceGroupProcedure,
+		svc.GetDeviceGroup,
+		connect.WithSchema(agentServiceMethods.ByName("GetDeviceGroup")),
+		connect.WithHandlerOptions(opts...),
+	)
+	agentServiceCreateDeviceGroupHandler := connect.NewUnaryHandler(
+		AgentServiceCreateDeviceGroupProcedure,
+		svc.CreateDeviceGroup,
+		connect.WithSchema(agentServiceMethods.ByName("CreateDeviceGroup")),
+		connect.WithHandlerOptions(opts...),
+	)
+	agentServiceUpdateDeviceGroupHandler := connect.NewUnaryHandler(
+		AgentServiceUpdateDeviceGroupProcedure,
+		svc.UpdateDeviceGroup,
+		connect.WithSchema(agentServiceMethods.ByName("UpdateDeviceGroup")),
+		connect.WithHandlerOptions(opts...),
+	)
+	agentServiceDeleteDeviceGroupHandler := connect.NewUnaryHandler(
+		AgentServiceDeleteDeviceGroupProcedure,
+		svc.DeleteDeviceGroup,
+		connect.WithSchema(agentServiceMethods.ByName("DeleteDeviceGroup")),
+		connect.WithHandlerOptions(opts...),
+	)
+	agentServiceRunGroupActionHandler := connect.NewUnaryHandler(
+		AgentServiceRunGroupActionProcedure,
+		svc.RunGroupAction,
+		connect.WithSchema(agentServiceMethods.ByName("RunGroupAction")),
+		connect.WithHandlerOptions(opts...),
+	)
 	agentServiceWatchEventsHandler := connect.NewServerStreamHandler(
 		AgentServiceWatchEventsProcedure,
 		svc.WatchEvents,
@@ -640,6 +790,18 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 			agentServiceDeleteProtocolHandler.ServeHTTP(w, r)
 		case AgentServiceRunProtocolActionProcedure:
 			agentServiceRunProtocolActionHandler.ServeHTTP(w, r)
+		case AgentServiceListDeviceGroupsProcedure:
+			agentServiceListDeviceGroupsHandler.ServeHTTP(w, r)
+		case AgentServiceGetDeviceGroupProcedure:
+			agentServiceGetDeviceGroupHandler.ServeHTTP(w, r)
+		case AgentServiceCreateDeviceGroupProcedure:
+			agentServiceCreateDeviceGroupHandler.ServeHTTP(w, r)
+		case AgentServiceUpdateDeviceGroupProcedure:
+			agentServiceUpdateDeviceGroupHandler.ServeHTTP(w, r)
+		case AgentServiceDeleteDeviceGroupProcedure:
+			agentServiceDeleteDeviceGroupHandler.ServeHTTP(w, r)
+		case AgentServiceRunGroupActionProcedure:
+			agentServiceRunGroupActionHandler.ServeHTTP(w, r)
 		case AgentServiceWatchEventsProcedure:
 			agentServiceWatchEventsHandler.ServeHTTP(w, r)
 		case AgentServiceGetScenarioProcedure:
@@ -729,6 +891,30 @@ func (UnimplementedAgentServiceHandler) DeleteProtocol(context.Context, *connect
 
 func (UnimplementedAgentServiceHandler) RunProtocolAction(context.Context, *connect.Request[v1.RunProtocolActionRequest]) (*connect.Response[v1.RunProtocolActionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.RunProtocolAction is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) ListDeviceGroups(context.Context, *connect.Request[v1.ListDeviceGroupsRequest]) (*connect.Response[v1.ListDeviceGroupsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.ListDeviceGroups is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) GetDeviceGroup(context.Context, *connect.Request[v1.GetDeviceGroupRequest]) (*connect.Response[v1.GetDeviceGroupResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.GetDeviceGroup is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) CreateDeviceGroup(context.Context, *connect.Request[v1.CreateDeviceGroupRequest]) (*connect.Response[v1.CreateDeviceGroupResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.CreateDeviceGroup is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) UpdateDeviceGroup(context.Context, *connect.Request[v1.UpdateDeviceGroupRequest]) (*connect.Response[v1.UpdateDeviceGroupResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.UpdateDeviceGroup is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) DeleteDeviceGroup(context.Context, *connect.Request[v1.DeleteDeviceGroupRequest]) (*connect.Response[v1.DeleteDeviceGroupResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.DeleteDeviceGroup is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) RunGroupAction(context.Context, *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.RunGroupAction is not implemented"))
 }
 
 func (UnimplementedAgentServiceHandler) WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.Event]) error {

@@ -21,7 +21,10 @@ export function DevicesTab({ agentId }: { agentId: string }) {
   const [ipOf, setIpOf] = useState<string>();
   const [pingFrom, setPingFrom] = useState<Device>();
   const { busy, run } = useBusy();
-  const list = devs.data?.devices ?? [];
+  const all = devs.data?.devices ?? [];
+  // Group members are listed in the Groups tab.
+  const list = all.filter((d) => !d.group);
+  const members = all.length - list.length;
   const using = (d: string) => (protos.data?.protocols ?? []).filter((p) => p.device === d).map((p) => p.name);
 
   return (
@@ -34,6 +37,11 @@ export function DevicesTab({ agentId }: { agentId: string }) {
       </div>
       <p className="muted">A device is an emulated endpoint on a port: a MAC address, a VLAN stack and optionally IP addresses (it answers ARP, ND and ping). Protocols run on devices.</p>
       <ErrorBox error={devs.error} />
+      {members > 0 && (
+        <p className="muted small-note">
+          {members} more devices belong to <a href={`#/a/${encodeURIComponent(agentId)}/groups`}>device groups</a>.
+        </p>
+      )}
       {!devs.loading && list.length === 0 ? (
         <Empty title="No devices yet" />
       ) : (

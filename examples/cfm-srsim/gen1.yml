@@ -156,3 +156,21 @@ protocols:
              routes: [{prefix: 100.64.0.0/24, count: 10000, communities: ["65050:1"], large_communities: ["65050:1:1"]},
                       {prefix: "2001:db8:abc::/48", count: 1000, med: 50},
                       {prefix: 203.0.113.0/24, as_path: [64512, 64513], communities: [no-export], peers: [10.0.50.1]}]}
+device_groups:
+  # Eight CE routers on the SR's router interfaces ce1000-ce1007 (eth3
+  # VLANs 1000-1007, 10.1.0.x/30), each in its own AS and advertising ten
+  # /24s, peering with the SR's dynamic-neighbor group "ce".
+  - name: ce
+    count: 8
+    device:
+      port: eth3
+      vlans: [{vid: {start: 1000}}]
+      addresses: [{start: 10.1.0.2/30, step: 0.0.0.4}]
+      gateway4: {start: 10.1.0.1, step: 0.0.0.4}
+    protocols:
+      - type: bgp
+        config:
+          local_as: {start: 65001}
+          hold_time: 30
+          peers: [{address: "{gateway4}", remote_as: 65100, description: sr1}]
+          routes: [{prefix: {start: 172.16.0.0/24, step: 0.0.10.0}, count: 10, communities: ["65100:{i}"]}]

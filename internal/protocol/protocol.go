@@ -130,6 +130,11 @@ type Type interface {
 // protocols; detail views still use Status.
 type Briefer interface{ Brief() any }
 
+// Healther may be implemented by a Session to summarise its state in one
+// short word for group views, e.g. "established" or "up". Counts of each
+// word are shown per group, so it should have few distinct values.
+type Healther interface{ Health() string }
+
 // Categorized may be implemented by a Type to group it in UIs. Types
 // without it are in CategoryProtocol.
 type Categorized interface{ Category() string }

@@ -116,3 +116,24 @@
 /configure router "Base" bgp group "clabgen" export policy ["export-to-clabgen"]
 /configure router "Base" bgp neighbor "10.0.50.2" group "clabgen"
 /configure router "Base" bgp neighbor "192.0.2.50" group "clabgen" multihop 5 local-address 192.0.2.100
+/configure router "Base" interface "ce1000" port 1/1/c3/1:1000
+/configure router "Base" interface "ce1000" ipv4 primary address 10.1.0.1 prefix-length 30
+/configure router "Base" interface "ce1001" port 1/1/c3/1:1001
+/configure router "Base" interface "ce1001" ipv4 primary address 10.1.0.5 prefix-length 30
+/configure router "Base" interface "ce1002" port 1/1/c3/1:1002
+/configure router "Base" interface "ce1002" ipv4 primary address 10.1.0.9 prefix-length 30
+/configure router "Base" interface "ce1003" port 1/1/c3/1:1003
+/configure router "Base" interface "ce1003" ipv4 primary address 10.1.0.13 prefix-length 30
+/configure router "Base" interface "ce1004" port 1/1/c3/1:1004
+/configure router "Base" interface "ce1004" ipv4 primary address 10.1.0.17 prefix-length 30
+/configure router "Base" interface "ce1005" port 1/1/c3/1:1005
+/configure router "Base" interface "ce1005" ipv4 primary address 10.1.0.21 prefix-length 30
+/configure router "Base" interface "ce1006" port 1/1/c3/1:1006
+/configure router "Base" interface "ce1006" ipv4 primary address 10.1.0.25 prefix-length 30
+/configure router "Base" interface "ce1007" port 1/1/c3/1:1007
+/configure router "Base" interface "ce1007" ipv4 primary address 10.1.0.29 prefix-length 30
+/configure policy-options policy-statement "reject-all" default-action action-type reject
+/configure router "Base" bgp group "ce" family ipv4 true
+/configure router "Base" bgp group "ce" import policy ["accept-all"]
+/configure router "Base" bgp group "ce" export policy ["reject-all"]
+/configure router "Base" bgp group "ce" dynamic-neighbor match prefix 10.1.0.0/16 allowed-peer-as ["65001..65999"]
