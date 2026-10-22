@@ -1,5 +1,6 @@
 GOBIN ?= $(shell go env GOPATH)/bin
 IMAGE ?= ghcr.io/ripnet/clabgen:dev
+UI_IMAGE ?= ghcr.io/ripnet/clabgen-ui:dev
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 WKT := Mgoogle/protobuf/struct.proto=google.golang.org/protobuf/types/known/structpb,Mgoogle/protobuf/timestamp.proto=google.golang.org/protobuf/types/known/timestamppb
 LDFLAGS := -s -w -X github.com/ripnet/clabgen/internal/version.Version=$(VERSION)
@@ -35,7 +36,8 @@ test:
 	go test ./...
 
 image:
-	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE) .
+	docker build --build-arg VERSION=$(VERSION) --target agent -t $(IMAGE) .
+	docker build --build-arg VERSION=$(VERSION) --target ui -t $(UI_IMAGE) .
 
 # The per-host UI container (deploy/compose.yml). Re-run ui-up after
 # `make image` to pick up a new build.

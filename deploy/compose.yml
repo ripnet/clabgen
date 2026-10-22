@@ -1,14 +1,14 @@
-# One clabgen-ui per lab host. It finds clabgen agents in every running
-# containerlab lab on the machine through the Docker socket.
-#   docker compose -f deploy/compose.yml up -d
-# Host networking lets it reach every lab's management bridge. It listens on
+# The lab-wide web UI for development (make ui-up / ui-down), from the
+# locally built clabgen-ui image. It finds clabgen agents in every running
+# containerlab lab on the machine through the Docker socket; host
+# networking lets it reach every lab's management bridge. It listens on
 # localhost only by default; set CLABGEN_UI_LISTEN=0.0.0.0:8090 to expose it.
 name: clabgen
 services:
   ui:
-    image: ${CLABGEN_IMAGE:-ghcr.io/ripnet/clabgen:dev}
+    image: ${CLABGEN_UI_IMAGE:-ghcr.io/ripnet/clabgen-ui:dev}
     container_name: clabgen-ui
-    entrypoint: ["/usr/local/bin/clabgen-ui", "-listen", "${CLABGEN_UI_LISTEN:-127.0.0.1:8090}"]
+    command: ["-listen", "${CLABGEN_UI_LISTEN:-127.0.0.1:8090}"]
     network_mode: host
     restart: unless-stopped
     volumes:

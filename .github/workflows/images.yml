@@ -1,5 +1,7 @@
-# Container images and releases, after the tests pass.
-#   push to dev       → ghcr.io/ripnet/clabgen:dev (and :sha-<commit>)
+# Container images (ghcr.io/ripnet/clabgen, the agent, and
+# ghcr.io/ripnet/clabgen-ui, the lab-wide UI) and releases, after the tests
+# pass.
+#   push to dev       → :dev (and :sha-<commit>)
 #   tag vX.Y.Z (main) → :X.Y.Z, :X.Y and :latest, plus a GitHub release with
 #                       clabgenctl binaries
 # :latest only ever moves on a release tag, so it never carries work in
@@ -23,6 +25,11 @@ jobs:
     needs: test
     runs-on: ubuntu-24.04 # Playwright 1.57 has no Chromium for newer Ubuntu
     timeout-minutes: 30
+    strategy:
+      matrix:
+        include:
+          - {name: clabgen, target: agent}
+          - {name: clabgen-ui, target: ui}
     permissions:
       contents: read
       packages: write
@@ -41,7 +48,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
           flavor: latest=false
           tags: |
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
@@ -59,13 +66,14 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          target: ${{ matrix.target }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: VERSION=${{ steps.version.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
   release:
     needs: image

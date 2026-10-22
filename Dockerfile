@@ -20,7 +20,16 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
       -ldflags "-s -w -X github.com/ripnet/clabgen/internal/version.Version=${VERSION}" \
       -o /out/ ./cmd/clabgen-agent ./cmd/clabgenctl ./cmd/clabgen-ui
 
-FROM alpine:3.20
+# ghcr.io/ripnet/clabgen-ui (docker build --target ui): the lab-wide web
+# UI, finding agents through the Docker socket.
+FROM alpine:3.20 AS ui
+COPY --from=build /out/clabgen-ui /usr/local/bin/
+EXPOSE 8090
+ENTRYPOINT ["/usr/local/bin/clabgen-ui"]
+
+# ghcr.io/ripnet/clabgen (the default target): the agent, with the CLI and
+# clabgen-ui.
+FROM alpine:3.20 AS agent
 RUN apk add --no-cache iproute2 tcpdump ethtool
 COPY --from=build /out/ /usr/local/bin/
 ENV CLABGEN_SERVER=localhost:8080
