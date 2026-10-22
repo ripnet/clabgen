@@ -720,7 +720,7 @@ func (s *session) interSIDsLocked(out map[LSAKey]want, b *area, summarised map[n
 type SRStatus struct {
 	SRGB       string        `json:"srgb,omitempty"`
 	SRLB       string        `json:"srlb,omitempty"`
-	Algorithms []byte        `json:"algorithms"`
+	Algorithms []int         `json:"algorithms"`
 	NodeSIDs   []SIDStatus   `json:"node_sids,omitempty"`
 	AdjSIDs    []AdjSIDState `json:"adj_sids,omitempty"`
 	TE         bool          `json:"traffic_engineering,omitempty"`
@@ -746,7 +746,10 @@ func (s *session) srStatusLocked() *SRStatus {
 	if !sr.Enabled && !s.flexAlgo() && !s.cfg.TrafficEngineering {
 		return nil
 	}
-	st := &SRStatus{Algorithms: s.srAlgos(), TE: s.cfg.TrafficEngineering}
+	st := &SRStatus{TE: s.cfg.TrafficEngineering}
+	for _, a := range s.srAlgos() {
+		st.Algorithms = append(st.Algorithms, int(a))
+	}
 	if !sr.Enabled {
 		return st
 	}
@@ -855,11 +858,13 @@ func opaqueDetail(id netip.Addr, b []byte) (string, map[string]any) {
 		for _, t := range readTLVs(b) {
 			switch t.t {
 			case riSRAlgo:
-				out["sr_algorithms"] = append([]byte(nil), t.v...)
 				var as []string
+				var ai []int
 				for _, x := range t.v {
 					as = append(as, fmt.Sprint(x))
+					ai = append(ai, int(x))
 				}
+				out["sr_algorithms"] = ai
 				parts = append(parts, "algos "+strings.Join(as, ","))
 			case riSRRange:
 				out["srgb"] = rangeText(t.v)

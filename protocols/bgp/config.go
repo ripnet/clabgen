@@ -27,7 +27,7 @@ type Peer struct {
 	RemoteAS     uint32   `json:"remote_as" jsonschema:"minimum=1"`
 	LocalAddress string   `json:"local_address,omitempty" jsonschema:"description=Our source address. Default: the device address toward the peer"`
 	Passive      bool     `json:"passive,omitempty" jsonschema:"description=Only accept the peer's connection; don't dial"`
-	Families     []string `json:"families,omitempty" jsonschema:"description=Address families: ipv4-unicast ipv6-unicast ipv4-vpn ipv6-vpn evpn l2vpn. Default: the peer address's unicast family"`
+	Families     []string `json:"families,omitempty" jsonschema:"enum=ipv4-unicast,enum=ipv6-unicast,enum=ipv4-vpn,enum=ipv6-vpn,enum=evpn,enum=l2vpn,description=Address families. Default: the peer address's unicast family"`
 	HoldTime     int      `json:"hold_time,omitempty" jsonschema:"description=Default: the speaker's"`
 	TTL          int      `json:"ttl,omitempty" jsonschema:"minimum=0,maximum=255,description=TTL of our packets (eBGP multihop / GTSM 255). Default 64 (eBGP 1)"`
 	Description  string   `json:"description,omitempty"`

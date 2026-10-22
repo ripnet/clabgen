@@ -309,7 +309,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 /* ---- modal ---- */
 .modal-back { position: fixed; inset: 0; background: rgba(10, 14, 20, 0.5); display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; z-index: 50; overflow-y: auto; }
 .modal { background: var(--surface); border-radius: 10px; box-shadow: var(--shadow-lg); width: 100%; max-width: 560px; border: 1px solid var(--border); }
-.modal.wide { max-width: 880px; }
+.modal.wide { max-width: 960px; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
 .modal-body { padding: 16px 18px; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
@@ -416,7 +416,35 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .lsp-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 4px 2px; }
 .pfx-list { max-height: 240px; overflow: auto; columns: 2 180px; font-size: 12px; }
 @media (max-width: 700px) { .lsp-grid { grid-template-columns: 1fr; } }
-.obj-list { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-.obj-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: start; width: 100%; }
+.obj-list { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; width: 100%; }
+.obj-item { width: 100%; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.obj-item.open { border-color: var(--border-strong); }
+.obj-item-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 2px; padding-right: 4px; }
+.obj-item-summary { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 10px; background: none; border: 0; color: var(--text); font-size: 12.5px; text-align: left; cursor: pointer; }
+.obj-item-summary:hover { color: var(--accent-text); }
+.obj-item-summary .caret { color: var(--text-3); flex: none; }
+.obj-item-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obj-item-body { padding: 10px 12px 12px; border-top: 1px solid var(--border); }
+.fieldset { display: flex; flex-direction: column; gap: 12px; }
+.field-block { display: flex; flex-direction: column; gap: 6px; }
+.nested-box { padding: 10px; border: 1px dashed var(--border); border-radius: 6px; }
+.field-label .info { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--border-strong); color: var(--text-3); font-size: 10px; font-weight: 600; cursor: help; }
+.show-all { align-self: flex-start; }
+.check-list { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 4px 0; }
+.field.wide { grid-column: span 2; }
+@media (max-width: 640px) { .field.wide { grid-column: auto; } }
+.sectioned { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 16px; align-items: start; }
+.section-nav { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; }
+.section-nav button { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--text-2); font-size: 13px; text-align: left; cursor: pointer; }
+.section-nav button:hover { background: var(--bg); color: var(--text); }
+.section-nav button.active { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.section-count { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
+.section-nav button.active .section-count { color: var(--accent-text); }
+.section-pane { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.section-desc { margin: 0; }
+@media (max-width: 640px) {
+  .sectioned { grid-template-columns: minmax(0, 1fr); }
+  .section-nav { flex-direction: row; flex-wrap: wrap; position: static; }
+}
 .kv-row.kv-wide { grid-column: 1 / -1; justify-content: flex-start; gap: 24px; }
 .kv-row.kv-wide dd { text-align: left; }

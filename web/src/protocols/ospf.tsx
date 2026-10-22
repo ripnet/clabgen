@@ -474,7 +474,7 @@ function Status({
             {[
               s.segment_routing.srgb && `SRGB ${s.segment_routing.srgb}`,
               s.segment_routing.srlb && `SRLB ${s.segment_routing.srlb}`,
-              `algorithms ${s.segment_routing.algorithms.join(", ")}`,
+              `algorithms ${(s.segment_routing.algorithms ?? []).join(", ")}`,
               s.segment_routing.traffic_engineering && "TE LSAs",
             ]
               .filter(Boolean)
