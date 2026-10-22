@@ -21,7 +21,7 @@ jobs:
 
   image:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.57 has no Chromium for newer Ubuntu
     timeout-minutes: 30
     permissions:
       contents: read
@@ -70,7 +70,7 @@ jobs:
   release:
     needs: image
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.57 has no Chromium for newer Ubuntu
     timeout-minutes: 20
     permissions:
       contents: write

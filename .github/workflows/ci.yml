@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   go:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.57 has no Chromium for newer Ubuntu
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
       - run: go test -race -count=1 ./...
 
   web:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.57 has no Chromium for newer Ubuntu
     timeout-minutes: 20
     defaults:
       run:
