@@ -9,6 +9,7 @@ import "./protocols/cfm";
 import "./protocols/icmp";
 import "./protocols/udp";
 import "./protocols/isis";
+import "./protocols/lldp";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

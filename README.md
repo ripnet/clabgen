@@ -226,6 +226,23 @@ links and prefixes). `topology-link a=r1-1 b=r1-2 up=false` (or `metric=…`)
 and `topology-node node=r2-2 up=false` (or `overload=true`) fail parts of
 it at runtime; `lsp id=sim-r2-2.00-00` shows one LSP.
 
+LLDP runs on an untagged device (LLDP frames carry no VLAN tag):
+
+```yaml
+devices:
+  - {name: lldp1, port: eth1}
+protocols:
+  - name: lldp-eth1
+    type: lldp
+    device: lldp1
+    config: {tx_interval: 30, system_name: gen1, capabilities: [bridge, router],
+             management_addresses: [192.0.2.50], port_vlan_id: 1, max_frame_size: 9212}
+```
+
+It lists the neighbors it hears (`clabgenctl proto show lldp-eth1`);
+`… run lldp-eth1 shutdown` / `resume` / `pause seconds=120` make
+neighbors drop or age it out, and `custom_tlvs` add arbitrary TLVs.
+
 Mount the file in the topology and set `CLABGEN_SCENARIO`. See
 `examples/*/*.clab.yml`.
 

@@ -16,6 +16,9 @@ devices:
   - {name: l501a, port: eth3, vlans: [{vid: 501}], addresses: [10.0.60.2/24]}
   - {name: l501b, port: eth3, vlans: [{vid: 501}], addresses: [10.0.60.3/24]}
   - {name: v401, port: eth2, vlans: [{vid: 401}], addresses: [10.0.41.2/24, 2001:db8:41::2/64], gateway4: 10.0.41.1, gateway6: 2001:db8:41::1}
+  # Untagged devices for LLDP on the SR's ports 1/1/c1/1 and 1/1/c3/1.
+  - {name: lldp1, port: eth1}
+  - {name: lldp3, port: eth3}
 protocols:
   # Peer: SR VPLS 100 SAP 1/1/c1/1:100 MEP 1, MD "lab" level 5, MA string "v100".
   - name: mep-v100
@@ -127,3 +130,16 @@ protocols:
     config: {system_id: 0000.0000.0062, hostname: lan-b, level: L2, circuit: broadcast, priority: 100,
              hello_auth: {type: hmac-sha256, key: clabgen-sha256, key_id: 1}, lsp_auth: {type: hmac-sha256, key: clabgen-sha256, key_id: 1},
              prefixes: [{prefix: 198.19.0.0/24, count: 5}]}
+  # LLDP with the SR on two ports (SR: tx-interval 10, all basic TLVs).
+  - name: lldp-eth1
+    type: lldp
+    device: lldp1
+    config: {tx_interval: 10, system_name: gen1, chassis_id_subtype: local, chassis_id: gen1,
+             capabilities: [bridge, router], management_addresses: [192.0.2.50],
+             port_vlan_id: 1, vlan_names: [{vid: 100, name: v100}, {vid: 400, name: ies400}],
+             max_frame_size: 9212, mac_phy: {autoneg_supported: false, autoneg_enabled: false, mau_type: 30}}
+  - name: lldp-eth3
+    type: lldp
+    device: lldp3
+    config: {tx_interval: 10, system_name: gen1, chassis_id_subtype: local, chassis_id: gen1,
+             management_addresses: [192.0.2.50, "2001:db8:ffff::50"]}

@@ -93,3 +93,11 @@
 /configure router "Base" segment-routing segment-routing-v6 locator "loc1" admin-state enable block-length 32 prefix ip-prefix fc00:0:64::/48
 /configure router "Base" isis 0 segment-routing-v6 admin-state enable
 /configure router "Base" isis 0 segment-routing-v6 locator "loc1"
+/configure system lldp admin-state enable
+/configure system lldp tx-interval 10
+/configure port 1/1/c1/1 ethernet lldp dest-mac nearest-bridge receive true transmit true
+/configure port 1/1/c1/1 ethernet lldp dest-mac nearest-bridge tx-tlvs port-desc true sys-name true sys-desc true sys-cap true
+/configure port 1/1/c1/1 ethernet lldp dest-mac nearest-bridge tx-mgmt-address system admin-state enable
+/configure port 1/1/c3/1 ethernet lldp dest-mac nearest-bridge receive true transmit true
+/configure port 1/1/c3/1 ethernet lldp dest-mac nearest-bridge tx-tlvs port-desc true sys-name true sys-desc true sys-cap true
+/configure port 1/1/c3/1 ethernet lldp dest-mac nearest-bridge tx-mgmt-address system admin-state enable
