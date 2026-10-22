@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { JsonObject } from "@bufbuild/protobuf";
-import { client, usePoll } from "../api";
+import { client, errorText, usePoll } from "../api";
 import { href, navigate } from "../router";
 import { summarize } from "../protocols/registry";
 import { SchemaForm, defaults, parseSchema, type Obj } from "../components/SchemaForm";
@@ -15,14 +15,37 @@ export function ProtocolsTab({ agentId }: { agentId: string }) {
   // Traffic flows have their own tab.
   const traffic = new Set(types.data?.types.filter((t) => t.category === "traffic").map((t) => t.name));
   const protos = (list.data?.protocols ?? []).filter((p) => !traffic.has(p.type));
+  const toggleAll = (disabled: boolean) => {
+    const names = protos.filter((p) => p.disabled !== disabled).map((p) => p.name);
+    if (disabled && !confirm(`Disable ${names.length} protocol${names.length > 1 ? "s" : ""}? They stop but keep their config.`)) return;
+    run(async () => {
+      const res = await Promise.allSettled(names.map((name) => c.setProtocolDisabled({ name, disabled })));
+      const failed = names.filter((_, i) => res[i].status === "rejected");
+      if (failed.length) throw new Error(`Could not ${disabled ? "disable" : "enable"} ${failed.join(", ")}: ${errorText((res.find((r) => r.status === "rejected") as PromiseRejectedResult).reason)}`);
+    }, `${disabled ? "Disabled" : "Enabled"} ${names.length} protocol${names.length > 1 ? "s" : ""}`).then(list.refresh);
+  };
+  const nOn = protos.filter((p) => !p.disabled).length;
+  const nOff = protos.length - nOn;
 
   return (
     <div className="card">
       <div className="card-head">
         <h2>Protocols</h2>
-        <button className="btn primary" onClick={() => setCreating(true)}>
-          New protocol
-        </button>
+        <div className="btn-row">
+          {nOff > 0 && (
+            <button className="btn" disabled={busy} onClick={() => toggleAll(false)} title="Start every disabled protocol on this agent">
+              Enable all ({nOff})
+            </button>
+          )}
+          {nOn > 0 && (
+            <button className="btn" disabled={busy} onClick={() => toggleAll(true)} title="Stop every protocol on this agent, keeping their config">
+              Disable all ({nOn})
+            </button>
+          )}
+          <button className="btn primary" onClick={() => setCreating(true)}>
+            New protocol
+          </button>
+        </div>
       </div>
       <ErrorBox error={list.error} />
       {!list.loading && protos.length === 0 ? (
