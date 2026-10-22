@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/netip"
@@ -156,18 +157,20 @@ type session struct {
 	sys  SysID
 	host string
 
-	mu       sync.Mutex
-	areas    [][]byte
-	overload bool
-	prefixes map[netip.Prefix]IPReach // configured + advertised
-	circs    []*circuit               // [0]: the instance's own device
-	lv       map[int]*level
+	mu        sync.Mutex
+	areas     [][]byte
+	overload  bool
+	prefixes  map[netip.Prefix]IPReach // configured + advertised
+	loopbacks []netip.Prefix
+	circs     []*circuit // [0]: the instance's own device
+	lv        map[int]*level
 
 	mts []uint16 // multi-topology: 0 plus the configured MTs (nil: single topology)
 
 	sendKeys map[string]int // keychain scope → key ID sending now (-1: none)
 
 	adjLabels map[string]map[string]uint32 // SR adjacency labels per originator
+	endXFuncs map[string]map[string]uint16 // SRv6 End.X functions per originator
 	sr        srState                      // what we advertise, for status
 
 	topo     *topology // simulated routers behind us (nil: none)
@@ -197,6 +200,10 @@ func (isisType) Start(env protocol.Env, c any) (protocol.Session, error) {
 		b, _ := ParseArea(a)
 		s.areas = append(s.areas, b)
 	}
+	for _, l := range cfg.Loopbacks {
+		p, _ := parseLoopback(l)
+		s.loopbacks = append(s.loopbacks, p)
+	}
 	for _, p := range cfg.Prefixes {
 		ps, _ := p.expand()
 		for _, r := range ps {
@@ -218,10 +225,24 @@ func (isisType) Start(env protocol.Env, c any) (protocol.Session, error) {
 			return nil, fmt.Errorf("topology: %w", err)
 		}
 		s.topo = t
+		if b := cfg.SRv6.TopologyLocatorBase; b != "" {
+			loc := netip.MustParsePrefix(b).Masked()
+			t.locators = map[string]netip.Prefix{}
+			for i, n := range t.nodes {
+				if i > 0 {
+					var ok bool
+					if loc, ok = nextPrefix(loc); !ok {
+						return nil, errors.New("srv6: topology_locator_base runs out of locators")
+					}
+				}
+				t.locators[n.name] = loc
+			}
+		}
 	}
-	first := Interface{Circuit: cfg.Circuit, Metric: cfg.Metric, Passive: cfg.Passive}
+	first := Interface{Circuit: cfg.Circuit, Metric: cfg.Metric, Passive: cfg.Passive, TEMetric: cfg.TEMetric, DelayUS: cfg.DelayUS, AdminGroups: cfg.AdminGroups}
 	s.circs = []*circuit{s.newCircuit(0, env.Device().Name(), first)}
 	s.circs[0].mac = env.Device().MAC()
+	s.addLocalsLocked(s.circs[0])
 	for i, ic := range cfg.Interfaces {
 		s.circs = append(s.circs, s.newCircuit(i+1, ic.Device, ic))
 	}
@@ -249,6 +270,7 @@ func (s *session) Stop() {
 	var atts []protocol.Attachment
 	s.mu.Lock()
 	for _, c := range s.circs {
+		s.releaseLocalsLocked(c)
 		if c.att != nil {
 			atts = append(atts, c.att)
 			c.att = nil
@@ -956,11 +978,11 @@ func (s *session) originateLocked(l *level, now time.Time) {
 		if !c.lan {
 			var nb NodeID
 			copy(nb[:], c.adj.sys[:])
-			body.Neighbors = append(body.Neighbors, ISReach{Neighbor: nb, Metric: c.metric})
+			body.Neighbors = append(body.Neighbors, ISReach{Neighbor: nb, Metric: c.metric, Attrs: s.circuitAttrs(c)})
 			continue
 		}
 		ll := c.lans[l.n]
-		body.Neighbors = append(body.Neighbors, ISReach{Neighbor: ll.lanID, Metric: c.metric})
+		body.Neighbors = append(body.Neighbors, ISReach{Neighbor: ll.lanID, Metric: c.metric, Attrs: s.circuitAttrs(c)})
 		var up []SysID
 		for _, a := range ll.adjs {
 			if a.state == stUp {
@@ -997,17 +1019,21 @@ func (s *session) originateLocked(l *level, now time.Time) {
 	}
 	isType := s.isType(l.n)
 	if s.topo != nil {
-		body.Neighbors = append(body.Neighbors, s.topo.attachedLocked(l.n)...)
+		body.Neighbors = append(body.Neighbors, s.topo.attachedLocked(s)...)
 	}
-	var sids map[netip.Prefix]PrefixSID
+	var sids map[netip.Prefix][]PrefixSID
 	if s.cfg.SegmentRouting.Enabled {
 		pfx, sids = srPrefixes(s.cfg.SegmentRouting.NodeSIDs, pfx)
-		body.SR = s.srCap(body.RouterID, len(v6g) > 0)
+		body.Bindings = s.bindings()
 	}
-	pfx = s.mtify(&body, pfx)
+	body.SR = s.srCap(body.RouterID, len(v6g) > 0, true)
 	st := &srState{}
+	body.Locators = s.ourLocators()
+	pfx = locatorPrefixes(body.Locators, pfx, st)
+	pfx = s.mtify(&body, pfx)
 	pfx = s.srDecorate("", &body, pfx, sids, lanNbrs, st)
-	if s.cfg.SegmentRouting.Enabled && (l.n == 2 || s.cfg.Level == "L1") {
+	s.endXDecorate("", &body, lanNbrs, st)
+	if (s.cfg.SegmentRouting.Enabled || s.cfg.SRv6.Enabled) && (l.n == 2 || s.cfg.Level == "L1") {
 		s.sr = *st
 	}
 	s.originateSys(l, s.sys, body, pfx, isType, now)
@@ -1225,8 +1251,8 @@ func (s *session) fitPrefixes(level int, isType byte, body lspBody, ps []IPReach
 			sz = 6
 		}
 		sz += (p.Prefix.Bits() + 7) / 8
-		if p.SID != nil {
-			sz += 1 + 8 // sub-TLV length + Prefix-SID sub-TLV
+		if len(p.SIDs) > 0 {
+			sz += 1 + 8*len(p.SIDs) // sub-TLV length + Prefix-SID sub-TLVs
 		}
 		hdr := 0 // MT TLVs start with the 2-byte MT ID
 		if p.MT != 0 {
@@ -1338,6 +1364,7 @@ type Status struct {
 	Overload    bool              `json:"overload"`
 	Flapping    bool              `json:"flapping,omitempty"`
 	Prefixes    int               `json:"advertised_prefixes"`
+	Loopbacks   []string          `json:"loopbacks,omitempty"`
 	Topologies  []string          `json:"topologies"` // multi-topology (ipv4-unicast alone: single topology)
 	SR          *SRStatus         `json:"segment_routing,omitempty"`
 	HelloAuth   string            `json:"hello_auth"` // the first interface's; type only, never the key
@@ -1363,8 +1390,32 @@ func (s *session) Status() any {
 	if len(s.mts) == 0 {
 		st.Topologies = []string{"ipv4-unicast (single topology)"}
 	}
-	if sr := s.cfg.SegmentRouting; sr.Enabled {
-		st.SR = &SRStatus{SRGBBase: sr.SRGBBase, SRGBSize: sr.SRGBSize, NodeSIDs: s.sr.NodeSIDs, AdjSIDs: s.sr.AdjSIDs}
+	for _, p := range s.loopbacks {
+		st.Loopbacks = append(st.Loopbacks, p.String())
+	}
+	if sr := s.cfg.SegmentRouting; sr.Enabled || s.cfg.SRv6.Enabled {
+		st.SR = &SRStatus{Enabled: sr.Enabled, NodeSIDs: s.sr.NodeSIDs, AdjSIDs: s.sr.AdjSIDs, SRv6SIDs: s.sr.SRv6SIDs}
+		if sr.Enabled {
+			st.SR.SRGBBase, st.SR.SRGBSize = sr.SRGBBase, sr.SRGBSize
+			if sr.SRLBSize > 0 {
+				st.SR.SRLB = &SRGBInfo{Base: sr.SRLBBase, Size: sr.SRLBSize}
+			}
+			for _, b := range s.bindings() {
+				st.SR.Mappings = append(st.SR.Mappings, BindingInfo{Prefix: b.Prefix.String(), Range: b.Range, Index: b.Index, Algo: b.Algo, MT: b.MT})
+			}
+		}
+		for _, f := range s.cfg.FlexAlgos {
+			fi := FADInfo{Algorithm: f.Algorithm, MetricType: f.MetricType, Priority: f.Priority,
+				ExcludeAny: groupMask(f.ExcludeAny), IncludeAny: groupMask(f.IncludeAny), IncludeAll: groupMask(f.IncludeAll)}
+			if fi.MetricType == "" {
+				fi.MetricType = "igp"
+			}
+			if fi.Priority == 0 {
+				fi.Priority = 128
+			}
+			fi.ParticipateOnly = f.ParticipateOnly
+			st.SR.FlexAlgos = append(st.SR.FlexAlgos, fi)
+		}
 	}
 	for k, v := range s.counters {
 		st.Counters[k] = v

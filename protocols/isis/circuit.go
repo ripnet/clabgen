@@ -23,8 +23,12 @@ type circuit struct {
 	helloAuth Auth
 	pn        byte // our pseudonode ID on this circuit (LAN)
 	mac       pkt.MAC
+	teMetric  uint32 // TE attributes (flex-algo)
+	delayUS   uint32
+	groups    uint32
 
 	att     protocol.Attachment // further interfaces; nil while detached
+	locals  []func()            // releases the loopbacks registered on its device
 	attErr  string
 	retryAt time.Time
 
@@ -42,7 +46,8 @@ const attachRetry = time.Second
 
 func (s *session) newCircuit(idx int, dev string, ic Interface) *circuit {
 	c := &circuit{idx: idx, device: dev, lan: ic.Circuit == "broadcast", passive: ic.Passive, metric: ic.Metric,
-		priority: s.cfg.Priority, helloAuth: s.cfg.HelloAuth, pn: byte(idx + 1), lastCSNP: map[int]time.Time{}}
+		priority: s.cfg.Priority, helloAuth: s.cfg.HelloAuth, pn: byte(idx + 1), lastCSNP: map[int]time.Time{},
+		teMetric: ic.TEMetric, delayUS: ic.DelayUS, groups: groupMask(ic.AdminGroups)}
 	if ic.Circuit == "" {
 		c.lan = s.cfg.Circuit == "broadcast"
 	}
@@ -128,6 +133,7 @@ func (s *session) attachLoop(now time.Time) {
 			}
 		} else {
 			c.att, c.attErr, c.mac, c.nextHelo = att, "", att.Device().MAC(), now
+			s.addLocalsLocked(c)
 			for _, ll := range c.lans {
 				ll.nextHello = now
 				s.electLocked(c, ll.n, now)
@@ -142,10 +148,29 @@ func (s *session) attachLoop(now time.Time) {
 // detachLocked drops a further interface whose attachment ended.
 func (s *session) detachLocked(c *circuit, now time.Time, why string) {
 	s.adjDownLocked(c, now, "interface "+why)
+	s.releaseLocalsLocked(c)
 	c.att, c.attErr = nil, why
 	c.retryAt = time.Time{}
 	s.dirtyLocked()
 	go s.event("interface-down", fmt.Sprintf("interface %s: %s", c.device, why))
+}
+
+// addLocalsLocked makes the circuit's device answer for our loopbacks.
+func (s *session) addLocalsLocked(c *circuit) {
+	ip := s.circuitIP(c)
+	if ip == nil {
+		return
+	}
+	for _, p := range s.loopbacks {
+		c.locals = append(c.locals, ip.AddLocal(p.Addr()))
+	}
+}
+
+func (s *session) releaseLocalsLocked(c *circuit) {
+	for _, r := range c.locals {
+		r()
+	}
+	c.locals = nil
 }
 
 func (s *session) dirtyLocked() {
@@ -245,6 +270,17 @@ func (s *session) ifStatusLocked(c *circuit, now time.Time) IfStatus {
 // with the circuit each came from (for connected-subnet metrics).
 func (s *session) interfaceAddrs() (v4, v6g []netip.Prefix, metric map[netip.Prefix]uint32) {
 	metric = map[netip.Prefix]uint32{}
+	// Loopbacks first (router ID), at metric 0.
+	for _, p := range s.loopbacks {
+		if _, ok := metric[p.Masked()]; !ok {
+			metric[p.Masked()] = 0
+		}
+		if p.Addr().Is4() {
+			v4 = append(v4, p)
+		} else {
+			v6g = append(v6g, p)
+		}
+	}
 	for _, c := range s.circs {
 		a4, _, a6 := s.addrs(c)
 		for _, p := range append(a4, a6...) {

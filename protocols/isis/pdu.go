@@ -574,21 +574,25 @@ type lspBody struct {
 	// IS reachability per non-zero MT (TLV 222).
 	MTs         []uint16
 	MTNeighbors map[uint16][]ISReach
-	SR          *SRCap // Router Capability TLV with SR capabilities
+	SR          *SRCap    // Router Capability TLV with SR capabilities
+	Locators    []Locator // SRv6 (TLV 27, per MT)
+	Bindings    []Binding // mapping server (TLV 149/150)
 }
 
 type ISReach struct {
 	Neighbor NodeID
 	Metric   uint32 // 24 bits
 	AdjSIDs  []AdjSID
+	Attrs    *LinkAttrs // ASLA for flex-algo
+	EndX     []EndXSID  // SRv6
 }
 
 type IPReach struct {
 	Prefix netip.Prefix
 	Metric uint32
-	Down   bool   // up/down bit (leaked from L2 to L1)
-	MT     uint16 // 0: standard TLVs 135/236; else TLV 235/237 for that MT
-	SID    *PrefixSID
+	Down   bool        // up/down bit (leaked from L2 to L1)
+	MT     uint16      // 0: standard TLVs 135/236; else TLV 235/237 for that MT
+	SIDs   []PrefixSID // Prefix-SIDs, one per algorithm
 }
 
 // EncodeLSP builds one LSP fragment. The checksum is computed.
@@ -636,6 +640,21 @@ func EncodeLSP(level int, id LSPID, seq uint32, lifetime uint16, isType byte, bo
 	if body.SR != nil {
 		w.add(TLVRouterCapab, body.SR.tlv())
 	}
+	for _, b := range body.Bindings {
+		w.add(b.tlv())
+	}
+	locs := map[uint16][][]byte{}
+	var locMTs []uint16
+	for _, l := range body.Locators {
+		if _, ok := locs[l.MT]; !ok {
+			locMTs = append(locMTs, l.MT)
+		}
+		locs[l.MT] = append(locs[l.MT], l.entry())
+	}
+	sort.Slice(locMTs, func(i, j int) bool { return locMTs[i] < locMTs[j] })
+	for _, mt := range locMTs {
+		w.addMTItems(TLVSRv6Locator, mt, locs[mt])
+	}
 	var items [][]byte
 	for _, a := range body.V4Addrs {
 		x := a.As4()
@@ -671,8 +690,8 @@ func EncodeLSP(level int, id LSPID, seq uint32, lifetime uint16, isType byte, bo
 		bits := p.Prefix.Bits()
 		addr := p.Prefix.Masked().Addr().AsSlice()[:(bits+7)/8]
 		var sub []byte
-		if p.SID != nil {
-			sub = p.SID.subTLV()
+		for _, x := range p.SIDs {
+			sub = append(sub, x.subTLV()...)
 		}
 		if p.Prefix.Addr().Is4() {
 			ctl := byte(bits)
@@ -737,31 +756,48 @@ func lspFitsMTU(n, mtu int) bool { return n+3 <= mtu }
 
 // LSPInfo is the decoded content of an LSP, for status.
 type LSPInfo struct {
-	SR         *SRCapInfo `json:"sr,omitempty"` // Router Capability TLV, SR part
-	Hostname   string     `json:"hostname,omitempty"`
-	Topologies []string   `json:"topologies,omitempty"` // TLV 229 (MT 0 alone when absent)
-	Areas      []string   `json:"areas,omitempty"`
-	Overload   bool       `json:"overload,omitempty"`
-	Attached   bool       `json:"attached,omitempty"`
-	RouterID   string     `json:"router_id,omitempty"`
-	Addresses  []string   `json:"addresses,omitempty"`
-	Neighbors  []NbrInfo  `json:"neighbors,omitempty"`
-	Prefixes   []PfxInfo  `json:"prefixes,omitempty"`
+	SR         *SRCapInfo    `json:"sr,omitempty"` // Router Capability TLV, SR part
+	Hostname   string        `json:"hostname,omitempty"`
+	Topologies []string      `json:"topologies,omitempty"` // TLV 229 (MT 0 alone when absent)
+	Areas      []string      `json:"areas,omitempty"`
+	Overload   bool          `json:"overload,omitempty"`
+	Attached   bool          `json:"attached,omitempty"`
+	RouterID   string        `json:"router_id,omitempty"`
+	Addresses  []string      `json:"addresses,omitempty"`
+	Neighbors  []NbrInfo     `json:"neighbors,omitempty"`
+	Prefixes   []PfxInfo     `json:"prefixes,omitempty"`
+	Locators   []LocatorInfo `json:"srv6_locators,omitempty"`
+	Bindings   []BindingInfo `json:"sid_bindings,omitempty"`
 }
 
 type NbrInfo struct {
-	ID      string       `json:"id"`
-	Metric  uint32       `json:"metric"`
-	MT      uint16       `json:"mt,omitempty"`
-	AdjSIDs []AdjSIDInfo `json:"adj_sids,omitempty"`
+	ID      string        `json:"id"`
+	Metric  uint32        `json:"metric"`
+	MT      uint16        `json:"mt,omitempty"`
+	AdjSIDs []AdjSIDInfo  `json:"adj_sids,omitempty"`
+	Attrs   *LinkAttrInfo `json:"link_attributes,omitempty"`
+	EndX    []SRv6SIDInfo `json:"end_x_sids,omitempty"`
 }
 
 type PfxInfo struct {
-	Prefix string   `json:"prefix"`
-	Metric uint32   `json:"metric"`
-	Down   bool     `json:"down,omitempty"`
-	MT     uint16   `json:"mt,omitempty"`
-	SID    *SIDInfo `json:"sid,omitempty"`
+	Prefix string    `json:"prefix"`
+	Metric uint32    `json:"metric"`
+	Down   bool      `json:"down,omitempty"`
+	MT     uint16    `json:"mt,omitempty"`
+	SID    *SIDInfo  `json:"sid,omitempty"`       // algorithm 0
+	Flex   []SIDInfo `json:"flex_sids,omitempty"` // other algorithms (flex-algo)
+}
+
+// setSIDs files decoded Prefix-SIDs by algorithm.
+func (p *PfxInfo) setSIDs(sub []byte) {
+	for _, s := range parsePrefixSIDs(sub) {
+		if s.Algo == 0 && p.SID == nil {
+			c := s
+			p.SID = &c
+		} else {
+			p.Flex = append(p.Flex, s)
+		}
+	}
 }
 
 // Info decodes the TLVs operators care about.
@@ -779,6 +815,16 @@ func (l *LSP) Info() LSPInfo {
 	}
 	if v, ok := l.TLVs.First(TLVRouterCapab); ok {
 		in.SR = parseRouterCap(v)
+	}
+	for _, v := range l.TLVs.All(TLVSRv6Locator) {
+		in.Locators = append(in.Locators, parseLocators(v)...)
+	}
+	for _, t := range []uint8{TLVSIDBinding, TLVMTSIDBinding} {
+		for _, v := range l.TLVs.All(t) {
+			if b, ok := parseBinding(v, t == TLVMTSIDBinding); ok {
+				in.Bindings = append(in.Bindings, b)
+			}
+		}
 	}
 	if v, ok := l.TLVs.First(TLVTERouterID); ok && len(v) == 4 {
 		in.RouterID = netip.AddrFrom4([4]byte(v)).String()
@@ -811,7 +857,9 @@ func (l *LSP) Info() LSPInfo {
 			if len(v) < 11+sl {
 				break
 			}
-			in.Neighbors = append(in.Neighbors, NbrInfo{ID: NodeID(v[:7]).String(), Metric: uint32(v[7])<<16 | uint32(v[8])<<8 | uint32(v[9]), MT: mt, AdjSIDs: parseAdjSIDs(v[11 : 11+sl])})
+			n := NbrInfo{ID: NodeID(v[:7]).String(), Metric: uint32(v[7])<<16 | uint32(v[8])<<8 | uint32(v[9]), MT: mt, AdjSIDs: parseAdjSIDs(v[11 : 11+sl])}
+			parseNbrSubTLVs(v[11:11+sl], &n)
+			in.Neighbors = append(in.Neighbors, n)
 			v = v[11+sl:]
 		}
 	}
@@ -845,7 +893,7 @@ func (l *LSP) Info() LSPInfo {
 			off := 5 + n
 			if ctl&0x40 != 0 && len(v) > off {
 				if end := off + 1 + int(v[off]); end <= len(v) {
-					p.SID = parsePrefixSID(v[off+1 : end])
+					p.setSIDs(v[off+1 : end])
 				}
 				off += 1 + int(v[off])
 			}
@@ -891,7 +939,7 @@ func (l *LSP) Info() LSPInfo {
 			off := 6 + n
 			if fl&0x20 != 0 && len(v) > off {
 				if end := off + 1 + int(v[off]); end <= len(v) {
-					p.SID = parsePrefixSID(v[off+1 : end])
+					p.setSIDs(v[off+1 : end])
 				}
 				off += 1 + int(v[off])
 			}

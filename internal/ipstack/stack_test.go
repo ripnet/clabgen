@@ -3,6 +3,7 @@ package ipstack
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"net/netip"
 	"strings"
 	"sync"
@@ -361,5 +362,39 @@ func TestClaimedFlowsNotRecorded(t *testing.T) {
 	a.HandleRx(signedUDP(src, dst, 7, 2))
 	if len(a.ReceivedFlows()) != 2 {
 		t.Fatal("released flow not recorded")
+	}
+}
+
+func TestLocalAddress(t *testing.T) {
+	w := &wire{}
+	a, _ := w.add(t, macA, mustCfg(t, "", "", "10.0.0.1/24"))
+	src, lo := netip.MustParseAddr("10.0.0.2"), netip.MustParseAddr("192.0.2.50")
+	if a.HandleRx(icmpEchoFrame(src, lo, 1, 1, nil)) {
+		t.Fatal("answered for a loopback before AddLocal")
+	}
+	r1, r2 := a.AddLocal(lo), a.AddLocal(lo) // e.g. two sessions sharing it
+	if !a.HandleRx(icmpEchoFrame(src, lo, 1, 2, nil)) || len(w.sent) != 1 {
+		t.Fatal("echo to the local address not answered")
+	}
+	if h, _ := pkt.DecodeIPv4(w.sent[0].Payload); h.Src != lo {
+		t.Fatalf("reply from %s", h.Src)
+	}
+	// Not on the link: no ARP replies, not among the addresses.
+	arp := pkt.ARP{Op: pkt.ARPRequest, SHA: macB, SPA: src, TPA: lo}
+	a.HandleRx(&pkt.Frame{Dst: pkt.Broadcast, Src: macB, EtherType: pkt.EtherTypeARP, Payload: arp.Encode()})
+	if len(w.sent) != 1 {
+		t.Fatal("ARP answered for a local address")
+	}
+	if fmt.Sprint(a.Status().Local) != "[192.0.2.50]" || len(a.Addresses()) != 1 {
+		t.Fatalf("status %v, addresses %v", a.Status().Local, a.Addresses())
+	}
+	r1()
+	r1() // idempotent
+	if !a.HandleRx(icmpEchoFrame(src, lo, 1, 3, nil)) {
+		t.Fatal("released while still referenced")
+	}
+	r2()
+	if a.HandleRx(icmpEchoFrame(src, lo, 1, 4, nil)) {
+		t.Fatal("answered after release")
 	}
 }

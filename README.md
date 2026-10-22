@@ -203,6 +203,24 @@ subnets in one LSP; `metric` and `flap` take `interface=…` to act on one.
              interfaces: [{device: i502, metric: 50}, {device: lan1, circuit: broadcast, priority: 100}]}
 ```
 
+`loopbacks: [192.0.2.50/32, "2001:db8:ffff::50/128"]` gives the router
+addresses of its own: advertised at metric 0 (the first IPv4 one is the
+router ID) and answered (ping, flows) on every interface.
+
+SR extensions: `segment_routing.srlb_base`/`srlb_size` (SRLB) and
+`mappings` (mapping server: `{prefix, range, index}`); `flex_algos`
+(`{algorithm: 128, metric_type: delay, priority: 200}`, or
+`participate_only: true` for an algorithm another router defines) with
+per-algorithm node SIDs (`node_sids[].algorithm`, topology
+`flex_algo_sids`) and link attributes (`te_metric`, `delay_us`,
+`admin_groups` on interfaces; `link_delay_us` and per-link values in
+topologies); SRv6:
+
+```yaml
+srv6: {enabled: true, behavior: un, end_x: true, topology_locator_base: "fc00:0:100::/48",
+       locators: [{prefix: "fc00:0:50::/48"}, {prefix: "fc00:80:50::/48", algorithm: 128}]}
+```
+
 Kinds are `grid`, `ring`, `line`, `full` and `custom` (named nodes with
 links and prefixes). `topology-link a=r1-1 b=r1-2 up=false` (or `metric=…`)
 and `topology-node node=r2-2 up=false` (or `overload=true`) fail parts of

@@ -282,8 +282,8 @@ func TestSegmentRoutingTLVs(t *testing.T) {
 			{Neighbor: NodeID{0, 0, 0, 0, 0, 3, 1}, Metric: 10, AdjSIDs: []AdjSID{{Label: 24002, Neighbor: &nb}}},
 		},
 		Prefixes: []IPReach{
-			{Prefix: netip.MustParsePrefix("192.0.2.1/32"), SID: &PrefixSID{Index: 1, Flags: PSIDNode}},
-			{Prefix: netip.MustParsePrefix("2001:db8::1/128"), SID: &PrefixSID{Index: 101, Flags: PSIDNode | PSIDNoPHP}},
+			{Prefix: netip.MustParsePrefix("192.0.2.1/32"), SIDs: []PrefixSID{{Index: 1, Flags: PSIDNode}}},
+			{Prefix: netip.MustParsePrefix("2001:db8::1/128"), SIDs: []PrefixSID{{Index: 101, Flags: PSIDNode | PSIDNoPHP}}},
 			{Prefix: netip.MustParsePrefix("10.0.0.0/24"), Metric: 10},
 		}}
 	p, err := Decode(frame(EncodeLSP(2, MakeLSPID(sysA, 0, 0), 1, 1200, lspTypeL1L2, body)))
@@ -320,7 +320,7 @@ func TestSIDPrefixesFit(t *testing.T) {
 	s := &session{cfg: *defaultConfig()}
 	var ps []IPReach
 	for i := 0; i < 300; i++ {
-		ps = append(ps, IPReach{Prefix: netip.PrefixFrom(netip.AddrFrom4([4]byte{10, 255, byte(i >> 8), byte(i)}), 32), SID: &PrefixSID{Index: uint32(i), Flags: PSIDNode}})
+		ps = append(ps, IPReach{Prefix: netip.PrefixFrom(netip.AddrFrom4([4]byte{10, 255, byte(i >> 8), byte(i)}), 32), SIDs: []PrefixSID{{Index: uint32(i), Flags: PSIDNode}}})
 	}
 	n := s.fitPrefixes(2, lspTypeL1L2, lspBody{}, ps, true)
 	if raw := EncodeLSP(2, MakeLSPID(sysA, 0, 0), 1, 1200, lspTypeL1L2, lspBody{Prefixes: ps[:n]}); len(raw)+3 > s.cfg.LSPMTU {
@@ -328,5 +328,57 @@ func TestSIDPrefixesFit(t *testing.T) {
 	}
 	if raw := EncodeLSP(2, MakeLSPID(sysA, 0, 0), 1, 1200, lspTypeL1L2, lspBody{Prefixes: ps[:n+1]}); len(raw)+3 <= s.cfg.LSPMTU {
 		t.Fatalf("estimate too low: %d+1 prefixes still fit", n)
+	}
+}
+
+func TestSRExtensionTLVs(t *testing.T) {
+	nb := SysID{0, 0, 0, 0, 0, 7}
+	loc := netip.MustParsePrefix("fc00:0:50::/48")
+	st := SIDStructure{LB: 32, LN: 16, Fun: 16}
+	body := lspBody{
+		SR: &SRCap{RouterID: netip.MustParseAddr("192.0.2.1"), SRGBBase: 16000, SRGBSize: 8000, SRLBBase: 15000, SRLBSize: 1000,
+			Algorithms: []byte{128, 129}, SRv6: true, MSD: []MSD{{msdBaseMPLS, 10}, {msdSRHMaxSL, 8}},
+			FADs: []FAD{{Algo: 128, MetricType: 1, Priority: 200, ExclAny: 1 << 3}, {Algo: 129, MetricType: 2, Priority: 128, InclAll: 0x6}}},
+		Neighbors: []ISReach{
+			{Neighbor: NodeID{0, 0, 0, 0, 0, 2, 0}, Metric: 10, Attrs: &LinkAttrs{TEMetric: 100, DelayUS: 1500, AdminGroups: 1 << 3},
+				EndX: []EndXSID{{SID: sidAt(loc, 0xe000), Behavior: 52, Struct: st}}},
+			{Neighbor: NodeID{0, 0, 0, 0, 0, 3, 1}, Metric: 10, EndX: []EndXSID{{SID: sidAt(loc, 0xe001), Behavior: 5, Neighbor: &nb}}},
+		},
+		Prefixes: []IPReach{{Prefix: netip.MustParsePrefix("192.0.2.1/32"), SIDs: []PrefixSID{{Index: 1, Flags: PSIDNode}, {Index: 201, Flags: PSIDNode, Algo: 128}}}},
+		Locators: []Locator{{Prefix: loc, Metric: 1, MT: 2, EndSIDs: []EndSID{{SID: loc.Addr(), Behavior: 43, Struct: st}}},
+			{Prefix: netip.MustParsePrefix("fc00:1:50::/48"), Algo: 128, MT: 2}},
+		Bindings: []Binding{{Prefix: netip.MustParsePrefix("10.255.1.1/32"), Range: 5, Index: 500},
+			{Prefix: netip.MustParsePrefix("2001:db8:ff::1/128"), Range: 2, Index: 600, MT: 2}},
+	}
+	p, err := Decode(frame(EncodeLSP(2, MakeLSPID(sysA, 0, 0), 1, 1200, lspTypeL1L2, body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := p.LSP.Info()
+	c := in.SR
+	if c == nil || fmt.Sprint(c.SRLB) != "[{15000 1000}]" || fmt.Sprint(c.Algorithms) != "[0 128 129]" || !c.SRv6 || c.MSD["base-mpls-imposition"] != 10 || c.MSD["srh-max-sl"] != 8 {
+		t.Fatalf("router capability %+v", c)
+	}
+	if len(c.FADs) != 2 || c.FADs[0] != (FADInfo{Algorithm: 128, MetricType: "delay", Priority: 200, ExcludeAny: 8}) || c.FADs[1] != (FADInfo{Algorithm: 129, MetricType: "te", Priority: 128, IncludeAll: 6}) {
+		t.Fatalf("FADs %+v", c.FADs)
+	}
+	n0, n1 := in.Neighbors[0], in.Neighbors[1]
+	if n0.Attrs == nil || *n0.Attrs != (LinkAttrInfo{FlexAlgo: true, TEMetric: 100, DelayUS: 1500, AdminGroups: 8}) {
+		t.Fatalf("ASLA %+v", n0.Attrs)
+	}
+	if fmt.Sprint(n0.EndX) != "[{fc00:0:50:e000:: ua 0 }]" || fmt.Sprint(n1.EndX) != "[{fc00:0:50:e001:: end.x 0 0000.0000.0007}]" {
+		t.Fatalf("End.X %v / %v", n0.EndX, n1.EndX)
+	}
+	if px := in.Prefixes[0]; px.SID == nil || px.SID.Index != 1 || len(px.Flex) != 1 || px.Flex[0].Index != 201 || px.Flex[0].Algo != 128 {
+		t.Fatalf("prefix SIDs %+v", px)
+	}
+	if len(in.Locators) != 2 || in.Locators[0].Locator != "fc00:0:50::/48" || in.Locators[0].MT != 2 || fmt.Sprint(in.Locators[0].EndSIDs) != "[{fc00:0:50:: un 0 }]" || in.Locators[1].Algo != 128 {
+		t.Fatalf("locators %+v", in.Locators)
+	}
+	if fmt.Sprint(in.Bindings) != "[{10.255.1.1/32 5 500 0 0} {2001:db8:ff::1/128 2 600 0 2}]" {
+		t.Fatalf("bindings %+v", in.Bindings)
+	}
+	if sidAt(netip.MustParsePrefix("fc00:0:50::/48"), 1).String() != "fc00:0:50:1::" || sidAt(netip.MustParsePrefix("fcbb:bb00:12::/44"), 0xe000).String() != "fcbb:bb00:1e::" {
+		t.Fatal("sidAt")
 	}
 }

@@ -4,9 +4,37 @@ import { client, usePoll } from "../api";
 import { registerView, type Health } from "./registry";
 
 type AdjSID = { label: number; neighbor?: string; ipv6?: boolean; backup?: boolean };
-type Nbr = { id: string; metric: number; mt?: number; adj_sids?: AdjSID[] };
-type Pfx = { prefix: string; metric: number; down?: boolean; mt?: number; sid?: { index?: number; label?: number; flags?: string } };
-type SRCap = { router_id: string; srgb?: { base: number; size: number }[]; mpls_ipv4: boolean; mpls_ipv6: boolean; algorithms?: number[] };
+type SRv6SID = { sid: string; behavior: string; algorithm?: number; neighbor?: string };
+type LinkAttrs = { flex_algo: boolean; te_metric?: number; delay_us?: number; admin_groups?: number };
+type Nbr = { id: string; metric: number; mt?: number; adj_sids?: AdjSID[]; link_attributes?: LinkAttrs; end_x_sids?: SRv6SID[] };
+type SID = { index?: number; label?: number; flags?: string; algorithm?: number };
+type Pfx = { prefix: string; metric: number; down?: boolean; mt?: number; sid?: SID; flex_sids?: SID[] };
+type FAD = { algorithm: number; metric_type: string; priority: number; exclude_any?: number; include_any?: number; include_all?: number; participate_only?: boolean };
+type Range = { base: number; size: number };
+type SRCap = {
+  router_id: string;
+  srgb?: Range[];
+  srlb?: Range[];
+  mpls_ipv4: boolean;
+  mpls_ipv6: boolean;
+  algorithms?: number[];
+  flex_algo_definitions?: FAD[];
+  srv6?: boolean;
+  msd?: Record<string, number>;
+};
+type Locator = { locator: string; metric: number; algorithm?: number; mt?: number; end_sids?: SRv6SID[] };
+type Binding = { prefix: string; range: number; index: number; algorithm?: number; mt?: number };
+const ranges = (rs?: Range[]) => (rs ?? []).map((g) => `${g.base}–${g.base + g.size - 1}`).join(", ");
+// Admin group bit mask → "3,5".
+const groups = (m?: number) =>
+  Array.from({ length: 32 }, (_, i) => i)
+    .filter((i) => ((m ?? 0) >>> i) & 1)
+    .join(",");
+const fadText = (f: FAD) =>
+  `algo ${f.algorithm}: ${f.metric_type}, prio ${f.priority}` +
+  (f.exclude_any ? `, exclude ${groups(f.exclude_any)}` : "") +
+  (f.include_any ? `, include-any ${groups(f.include_any)}` : "") +
+  (f.include_all ? `, include-all ${groups(f.include_all)}` : "");
 const mtTag = (mt?: number) => (mt ? <span className="tag">{({ 2: "MT ipv6", 3: "MT mcast4", 4: "MT mcast6" } as Record<number, string>)[mt] ?? `MT ${mt}`}</span> : null);
 // LSDB rows in the status are summaries; the "lsp" action has the rest.
 type LSPRow = {
@@ -29,6 +57,8 @@ type LSPDetail = {
   addresses?: string[];
   neighbors?: Nbr[];
   prefixes?: Pfx[];
+  srv6_locators?: Locator[];
+  sid_bindings?: Binding[];
 };
 
 function LSPDetailRow({ agentId, name, row, nameOf }: { agentId?: string; name?: string; row: LSPRow; nameOf: (id: string) => string }) {
@@ -58,6 +88,22 @@ function LSPDetailRow({ agentId, name, row, nameOf }: { agentId?: string; name?:
                 {a.neighbor ? ` → ${nameOf(a.neighbor + ".00").replace(/\.00$/, "")}` : ""}
               </span>
             ))}
+            {n.link_attributes && (
+              <span className="tag" title="Application-specific link attributes (flex-algo)">
+                {[
+                  n.link_attributes.te_metric !== undefined && `te ${n.link_attributes.te_metric}`,
+                  n.link_attributes.delay_us !== undefined && `${n.link_attributes.delay_us} µs`,
+                  n.link_attributes.admin_groups && `groups ${groups(n.link_attributes.admin_groups)}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "ASLA"}
+              </span>
+            )}
+            {n.end_x_sids?.map((x) => (
+              <span key={x.sid + (x.neighbor ?? "")} className="tag" title={`SRv6 ${x.behavior}${x.neighbor ? ` toward ${nameOf(x.neighbor + ".00")}` : ""}`}>
+                {x.sid}
+              </span>
+            ))}
           </div>
         ))}
         {!l.neighbors?.length && <div className="muted">none</div>}
@@ -65,10 +111,25 @@ function LSPDetailRow({ agentId, name, row, nameOf }: { agentId?: string; name?:
         {l.topologies && <div className="mono muted">topologies: {l.topologies.join(", ")}</div>}
         {l.sr && (
           <div className="mono muted">
-            SR: SRGB {l.sr.srgb?.map((g) => `${g.base}–${g.base + g.size - 1}`).join(", ")} · MPLS {[l.sr.mpls_ipv4 && "v4", l.sr.mpls_ipv6 && "v6"].filter(Boolean).join("/")}
-            {" "}· router ID {l.sr.router_id}
+            SR:{l.sr.srgb?.length ? ` SRGB ${ranges(l.sr.srgb)} · MPLS ${[l.sr.mpls_ipv4 && "v4", l.sr.mpls_ipv6 && "v6"].filter(Boolean).join("/")} ·` : ""}
+            {l.sr.srlb?.length ? ` SRLB ${ranges(l.sr.srlb)} ·` : ""}
+            {l.sr.srv6 ? " SRv6 ·" : ""} algorithms {(l.sr.algorithms ?? [0]).join(", ")} · router ID {l.sr.router_id}
+            {l.sr.flex_algo_definitions?.map((f) => <div key={f.algorithm}>FAD {fadText(f)}</div>)}
           </div>
         )}
+        {l.srv6_locators?.map((x) => (
+          <div key={`${x.locator}/${x.algorithm ?? 0}`} className="mono muted">
+            locator {x.locator}
+            {x.algorithm ? ` (algo ${x.algorithm})` : ""}
+            {x.end_sids?.map((e) => ` · ${e.sid} ${e.behavior}`).join("")}
+          </div>
+        ))}
+        {l.sid_bindings?.map((b) => (
+          <div key={b.prefix} className="mono muted">
+            mapping {b.prefix} ×{b.range} → SID {b.index}
+            {b.algorithm ? ` (algo ${b.algorithm})` : ""}
+          </div>
+        ))}
         {l.addresses && <div className="mono muted">{l.addresses.join(", ")}</div>}
       </div>
       <div>
@@ -85,6 +146,11 @@ function LSPDetailRow({ agentId, name, row, nameOf }: { agentId?: string; name?:
                   {p.sid.flags ? ` ${p.sid.flags}` : ""}
                 </span>
               )}
+              {p.flex_sids?.map((f) => (
+                <span key={f.algorithm} className="tag" title={`Prefix-SID for flex-algo ${f.algorithm}`}>
+                  algo {f.algorithm} SID {f.index ?? `label ${f.label}`}
+                </span>
+              ))}
             </div>
           ))}
           {(l.prefixes?.length ?? 0) > 500 && <div className="muted">… {l.prefixes!.length - 500} more</div>}
@@ -125,9 +191,15 @@ type ISISStatus = {
   segment_routing?: {
     srgb_base: number;
     srgb_size: number;
-    node_sids: { prefix: string; index: number; label: number; flags?: string }[];
+    mpls?: boolean;
+    srlb?: Range;
+    node_sids: { prefix: string; index: number; label: number; algorithm?: number; flags?: string }[];
     adj_sids: { neighbor: string; label: number; ipv6?: boolean; mt?: number; lan?: boolean }[];
+    mappings?: Binding[];
+    flex_algos?: FAD[];
+    srv6_sids?: (SRv6SID & { locator?: string; lan?: boolean })[];
   };
+  loopbacks?: string[];
   interfaces?: IfRow[];
   adjacency: {
     interface?: string;
@@ -344,16 +416,39 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
           <div className="kv-row kv-wide">
             <dt>segment routing</dt>
             <dd className="mono">
-              SRGB {s.segment_routing.srgb_base}–{s.segment_routing.srgb_base + s.segment_routing.srgb_size - 1}
-              {s.segment_routing.node_sids.map((n) => (
-                <div key={n.prefix}>
-                  {n.prefix} → index {n.index} (label {n.label}){n.flags ? ` ${n.flags}` : ""}
+              {s.segment_routing.mpls !== false && (
+                <>
+                  SRGB {s.segment_routing.srgb_base}–{s.segment_routing.srgb_base + s.segment_routing.srgb_size - 1}
+                  {s.segment_routing.srlb && ` · SRLB ${ranges([s.segment_routing.srlb])}`}
+                  {(s.segment_routing.node_sids ?? []).map((n) => (
+                    <div key={`${n.prefix}/${n.algorithm ?? 0}`}>
+                      {n.prefix} → index {n.index} (label {n.label}){n.algorithm ? ` algo ${n.algorithm}` : ""}
+                      {n.flags ? ` ${n.flags}` : ""}
+                    </div>
+                  ))}
+                  <div className="muted">
+                    adj SIDs:{" "}
+                    {(s.segment_routing.adj_sids ?? []).map((a) => `${a.label}${a.ipv6 ? " v6" : ""} → ${hostOf(s, a.neighbor.slice(0, 14))}`).join(", ") || "none"}
+                  </div>
+                  {s.segment_routing.mappings?.map((b) => (
+                    <div key={b.prefix} className="muted">
+                      mapping {b.prefix} ×{b.range} → index {b.index}
+                    </div>
+                  ))}
+                </>
+              )}
+              {s.segment_routing.flex_algos?.map((f) => (
+                <div key={f.algorithm} className="muted">
+                  flex-{fadText(f)}
+                  {f.participate_only ? " (participating; defined elsewhere)" : ""}
                 </div>
               ))}
-              <div className="muted">
-                adj SIDs:{" "}
-                {s.segment_routing.adj_sids.map((a) => `${a.label}${a.ipv6 ? " v6" : ""} → ${hostOf(s, a.neighbor.slice(0, 14))}`).join(", ") || "none"}
-              </div>
+              {s.segment_routing.srv6_sids?.map((x) => (
+                <div key={x.sid} className="muted">
+                  SRv6 {x.sid} {x.behavior}
+                  {x.locator ? ` (locator ${x.locator}${x.algorithm ? `, algo ${x.algorithm}` : ""})` : ` → ${hostOf(s, (x.neighbor ?? "").slice(0, 14))}`}
+                </div>
+              ))}
             </dd>
           </div>
         )}
@@ -366,7 +461,9 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
         </div>
         <div className="kv-row">
           <dt>advertised prefixes</dt>
-          <dd className="mono">{s.advertised_prefixes} injected (+ connected)</dd>
+          <dd className="mono">
+            {s.advertised_prefixes} injected (+ connected{s.loopbacks?.length ? `, loopbacks ${s.loopbacks.join(", ")}` : ""})
+          </dd>
         </div>
       </dl>
 

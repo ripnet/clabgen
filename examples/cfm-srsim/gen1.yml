@@ -9,7 +9,7 @@ devices:
   # Second host behind another SR interface (eth2 VLAN 401): flows between
   # v400 and v401 are routed by the SR.
   # IS-IS peer of the SR (eth3 VLAN 500, point-to-point).
-  - {name: i500, port: eth3, vlans: [{vid: 500}], addresses: [10.0.50.2/30, 2001:db8:50::2/64, 192.0.2.50/32]}
+  - {name: i500, port: eth3, vlans: [{vid: 500}], addresses: [10.0.50.2/30, 2001:db8:50::2/64]}
   # Its second interface toward the SR (eth3 VLAN 502, point-to-point).
   - {name: i502, port: eth3, vlans: [{vid: 502}], addresses: [10.0.52.2/30, 2001:db8:52::2/64]}
   # Two IS-IS routers on the SR's broadcast interface (eth3 VLAN 501).
@@ -69,10 +69,10 @@ protocols:
     config: {destination: 10.0.4.1, dst_port: 9, rate: 1}
   # IS-IS with the SR on eth3 VLANs 500 and 502 (two parallel point-to-point
   # interfaces; level 2, area 49.0001). It advertises both interfaces'
-  # addresses (incl. the 192.0.2.50/32 loopback on i500), injects 10
+  # addresses and its loopbacks (answered on either interface), injects 10
   # prefixes and emulates a 3×3 grid of routers behind it; ping-isis is
-  # routed by the SR over the VLAN 500 adjacency (i502 costs more, as the
-  # loopback lives on i500).
+  # routed by the SR over the VLAN 500 adjacency (i502 costs more for SPF,
+  # less for the delay flex-algo).
   - name: isis
     type: isis
     device: i500
@@ -81,7 +81,9 @@ protocols:
              # hellos on isis-p2p, keychain isis-l2 entry 1 for level 2.
              hello_auth: {type: hmac-sha1, key: clabgen-sha1, key_id: 2},
              # The second interface, with the same hello key; a higher metric.
-             interfaces: [{device: i502, metric: 50}],
+             interfaces: [{device: i502, metric: 50, delay_us: 300}],
+             delay_us: 1000,
+             loopbacks: [192.0.2.50/32, "2001:db8:ffff::50/128"],
              lsp_auth: {type: hmac-sha256, key: clabgen-sha256, key_id: 1},
              prefixes: [{prefix: 198.18.0.0/24, count: 10, metric: 20}],
              # Multi-topology: IPv6 unicast (MT 2) as on the SR.
@@ -89,12 +91,24 @@ protocols:
              # Segment routing: our SRGB, a node SID on the 192.0.2.50 loopback,
              # adjacency labels from 24000; the grid gets node SIDs 100+ / 200+.
              segment_routing: {enabled: true, srgb_base: 16000, srgb_size: 8000, adj_sid_base: 24000,
-                               node_sids: [{prefix: 192.0.2.50/32, index: 50}]},
+                               srlb_base: 24000, srlb_size: 1000,
+                               node_sids: [{prefix: 192.0.2.50/32, index: 50},
+                                           {prefix: 192.0.2.50/32, index: 150, algorithm: 128},
+                                           {prefix: 192.0.2.50/32, index: 151, algorithm: 129}],
+                               # Mapping server: SIDs for the grid's (SID-less) prefixes.
+                               mappings: [{prefix: 10.200.0.0/24, range: 4, index: 800}]},
+             # Flex-algo 128 (defined here: delay) and 129 (defined by the SR).
+             flex_algos: [{algorithm: 128, metric_type: delay, priority: 200}, {algorithm: 129, participate_only: true}],
+             # SRv6 (uSID): locators for algorithms 0 and 128, End.X on adjacencies,
+             # and a locator per simulated router.
+             srv6: {enabled: true, behavior: un, end_x: true, topology_locator_base: "fc00:0:100::/48",
+                    locators: [{prefix: "fc00:0:50::/48"}, {prefix: "fc00:80:50::/48", algorithm: 128}]},
              # A 3×3 grid of simulated routers behind us, attached at r1-1.
              topology: {kind: grid, rows: 3, cols: 3, loopback_base: 10.255.0.1/32,
                         loopback6_base: "2001:db8:ff::1/128",
                         prefix_base: 10.200.0.0/24, prefix6_base: "2001:db8:200::/64", prefixes_per_node: 2,
-                        node_sid_base: 100, node_sid6_base: 200}}
+                        node_sid_base: 100, node_sid6_base: 200, link_delay_us: 1000,
+                        flex_algo_sids: [{algorithm: 128, node_sid_base: 300}, {algorithm: 129, node_sid_base: 400}]}}
   - name: ping-isis
     type: icmp
     device: v400

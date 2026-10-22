@@ -665,9 +665,13 @@ func TestISISMultipleInterfaces(t *testing.T) {
 		h.mu.Unlock()
 		return e
 	}
-	dev := func(e *core.Engine, name, mac string, vid uint16, addr string) {
+	dev := func(e *core.Engine, name, mac string, vid uint16, addr string, gw ...string) {
 		t.Helper()
-		if _, err := e.CreateDevice(core.DeviceSpec{Name: name, Port: "eth1", MAC: mac, VLANs: []pkt.VLANTag{{VID: vid}}, Addresses: []string{addr}}); err != nil {
+		spec := core.DeviceSpec{Name: name, Port: "eth1", MAC: mac, VLANs: []pkt.VLANTag{{VID: vid}}, Addresses: []string{addr}}
+		if len(gw) > 0 {
+			spec.Gateway4 = gw[0]
+		}
+		if _, err := e.CreateDevice(spec); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -678,12 +682,12 @@ func TestISISMultipleInterfaces(t *testing.T) {
 		}
 	}
 	a, b, c := eng(), eng(), eng()
-	dev(a, "d", "02:00:00:00:0a:01", 10, "10.0.0.1/24")
+	dev(a, "d", "02:00:00:00:0a:01", 10, "10.0.0.1/24", "10.0.0.2")
 	dev(b, "d", "02:00:00:00:0b:01", 10, "10.0.0.2/24")
 	dev(b, "d2", "02:00:00:00:0b:02", 20, "10.2.0.2/24")
-	dev(c, "d", "02:00:00:00:0c:01", 20, "10.2.0.3/24")
+	dev(c, "d", "02:00:00:00:0c:01", 20, "10.2.0.3/24", "10.2.0.2")
 	proto(a, `{"system_id":"0000.0000.000a","hostname":"ra","hello_interval":1,"csnp_interval":1}`)
-	proto(b, `{"system_id":"0000.0000.000b","hostname":"rb","hello_interval":1,"csnp_interval":1,
+	proto(b, `{"system_id":"0000.0000.000b","hostname":"rb","hello_interval":1,"csnp_interval":1,"loopbacks":["192.0.2.11"],
 		"interfaces":[{"device":"d2","circuit":"broadcast","metric":30,"priority":100}]}`)
 	proto(c, `{"system_id":"0000.0000.000c","hostname":"rc","circuit":"broadcast","hello_interval":1,"csnp_interval":1,
 		"prefixes":[{"prefix":"198.51.100.0/24"}]}`)
@@ -705,8 +709,27 @@ func TestISISMultipleInterfaces(t *testing.T) {
 	eventually(t, "b's LSP lists both circuits", func() bool {
 		l := lspOf(isisStatus(t, a), "0000.0000.000b")
 		p := prefixes(l)
-		return l != nil && fmt.Sprint(lspNeighbors(l)) == "[0000.0000.000a.00 0000.0000.000b.02]" && p["10.0.0.0/24"] && p["10.2.0.0/24"]
+		return l != nil && fmt.Sprint(lspNeighbors(l)) == "[0000.0000.000a.00 0000.0000.000b.02]" && p["10.0.0.0/24"] && p["10.2.0.0/24"] && p["192.0.2.11/32"]
 	})
+	// The loopback: router ID, metric 0, answered on both interfaces.
+	if l := lspOf(isisStatus(t, a), "0000.0000.000b"); l["router_id"] != "192.0.2.11" {
+		t.Fatalf("router ID %v", l["router_id"])
+	} else {
+		for _, x := range l["prefixes"].([]any) {
+			if m := x.(map[string]any); m["prefix"] == "192.0.2.11/32" && num(m, "metric") != 0 {
+				t.Fatalf("loopback metric %v", m["metric"])
+			}
+		}
+	}
+	for _, e := range []*core.Engine{a, c} {
+		if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "ping", Type: "icmp", Device: "d", Config: json.RawMessage(`{"destination":"192.0.2.11","rate":50,"auto_start":true}`)}); err != nil {
+			t.Fatal(err)
+		}
+		eventually(t, "loopback answers", func() bool { return num(flowStatus(t, e, "ping"), "rx") >= 5 })
+		if err := e.DeleteProtocol("ping"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	pn := func(e *core.Engine) []string {
 		for _, l := range lsdb(isisStatus(t, e)) {
 			if l["lsp_id"] == "0000.0000.000b.02-00" {
@@ -759,4 +782,112 @@ func TestISISMultipleInterfaces(t *testing.T) {
 	dev(b, "d2", "02:00:00:00:0b:02", 20, "10.2.0.2/24")
 	eventually(t, "re-attached", func() bool { return upCount(isisStatus(t, b)) == 2 })
 	eventually(t, "c's LSP still at a", func() bool { return lspOf(isisStatus(t, a), "0000.0000.000c") != nil })
+}
+
+// SR extensions: SRLB, mapping server, flex-algo (definition, link
+// attributes, per-algorithm SIDs) and SRv6 (locators, End/End.X SIDs), for
+// us and simulated routers, as the peer decodes them.
+func TestISISSRExtensions(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	mk := func(e *core.Engine, cfg string) {
+		t.Helper()
+		if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "isis", Type: "isis", Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(a, `{"system_id":"0000.0000.000a","hello_interval":1,"csnp_interval":1,"topologies":["ipv6-unicast"],"delay_us":700,"admin_groups":[3],
+		"segment_routing":{"enabled":true,"srgb_base":16000,"srgb_size":8000,"adj_sid_base":24000,"srlb_base":15000,"srlb_size":1000,
+			"node_sids":[{"prefix":"192.0.2.10/32","index":5},{"prefix":"192.0.2.10/32","index":205,"algorithm":128}],
+			"mappings":[{"prefix":"10.254.0.1/32","range":4,"index":900}]},
+		"flex_algos":[{"algorithm":128,"metric_type":"delay","exclude_any":[5]},{"algorithm":129,"participate_only":true}],
+		"srv6":{"enabled":true,"end_x":true,"behavior":"un","topology_locator_base":"fc00:0:100::/48",
+			"locators":[{"prefix":"fc00:0:a::/48"},{"prefix":"fc00:80:a::/48","algorithm":128}]},
+		"topology":{"kind":"line","nodes":2,"loopback_base":"10.255.0.1/32","node_sid_base":100,"link_delay_us":1000,
+			"flex_algo_sids":[{"algorithm":128,"node_sid_base":300}]}}`)
+	mk(b, `{"system_id":"0000.0000.000b","hello_interval":1,"csnp_interval":1,"topologies":["ipv6-unicast"]}`)
+	eventually(t, "LSPs at b", func() bool {
+		l := lspOf(isisStatus(t, b), "0000.0000.000a")
+		return l != nil && l["sr"] != nil && num(isisStatus(t, b), "lsdb_total") == 4
+	})
+	st := isisStatus(t, b)
+	la := lspOf(st, "0000.0000.000a")
+	sr := la["sr"].(map[string]any)
+	if fmt.Sprint(sr["algorithms"]) != "[0 128 129]" || sr["srv6"] != true || fmt.Sprint(sr["srlb"]) != "[map[base:15000 size:1000]]" {
+		t.Fatalf("a's router capability %v", sr)
+	}
+	if f := sr["flex_algo_definitions"].([]any); len(f) != 1 || fmt.Sprint(f[0]) != "map[algorithm:128 exclude_any:32 metric_type:delay priority:128]" {
+		t.Fatalf("FADs %v", f)
+	}
+	if fmt.Sprint(la["sid_bindings"]) != "[map[index:900 prefix:10.254.0.1/32 range:4]]" {
+		t.Fatalf("bindings %v", la["sid_bindings"])
+	}
+	locs := fmt.Sprint(la["srv6_locators"])
+	if !strings.Contains(locs, "locator:fc00:0:a::/48") || !strings.Contains(locs, "end_sids:[map[behavior:un sid:fc00:0:a::]]") || !strings.Contains(locs, "algorithm:128") {
+		t.Fatalf("locators %s", locs)
+	}
+	if p := prefixes(la); !p["fc00:0:a::/48"] || p["fc00:80:a::/48"] {
+		t.Fatalf("algorithm-0 locator is a prefix too, the flex-algo one isn't: %v", p)
+	}
+	var toB map[string]any
+	for _, x := range la["neighbors"].([]any) {
+		if m := x.(map[string]any); m["id"] == "0000.0000.000b.00" {
+			if num(m, "mt") == 2 {
+				if x := fmt.Sprint(m["end_x_sids"]); !strings.HasPrefix(x, "[map[behavior:ua sid:fc00:0:a:e00") {
+					t.Fatalf("End.X toward b %v", m["end_x_sids"])
+				}
+			} else {
+				toB = m
+			}
+		}
+	}
+	if toB == nil || fmt.Sprint(toB["link_attributes"]) != "map[admin_groups:8 delay_us:700 flex_algo:true]" {
+		t.Fatalf("a → b link attributes %v", toB)
+	}
+	for _, x := range la["prefixes"].([]any) {
+		if m := x.(map[string]any); m["prefix"] == "192.0.2.10/32" && (fmt.Sprint(m["flex_sids"]) != "[map[algorithm:128 flags:N index:205]]" || num(m["sid"].(map[string]any), "index") != 5) {
+			t.Fatalf("per-algorithm SIDs %v", m)
+		}
+	}
+	// Simulated routers: flex-algo SIDs, link delay, their own locators.
+	r2 := lspOf(st, "0000.1000.0002")
+	if fmt.Sprint(r2["sr"].(map[string]any)["algorithms"]) != "[0 128 129]" || r2["sr"].(map[string]any)["flex_algo_definitions"] != nil {
+		t.Fatalf("r2 capability %v", r2["sr"])
+	}
+	if !strings.Contains(fmt.Sprint(r2["srv6_locators"]), "locator:fc00:0:101::/48") {
+		t.Fatalf("r2 locator %v", r2["srv6_locators"])
+	}
+	ok := false
+	for _, x := range r2["prefixes"].([]any) {
+		if m := x.(map[string]any); m["prefix"] == "10.255.0.2/32" {
+			ok = fmt.Sprint(m["flex_sids"]) == "[map[algorithm:128 flags:N index:301]]"
+		}
+	}
+	if !ok {
+		t.Fatalf("r2 flex-algo SID %v", r2["prefixes"])
+	}
+	if !strings.Contains(fmt.Sprint(r2["neighbors"]), "delay_us:1000") {
+		t.Fatalf("simulated link delay %v", r2["neighbors"])
+	}
+	// The delay changes at runtime.
+	act(t, a, "topology-link", `{"a":"r1","b":"r2","up":true,"delay_us":4000}`)
+	eventually(t, "new delay", func() bool {
+		return strings.Contains(fmt.Sprint(lspOf(isisStatus(t, b), "0000.1000.0002")["neighbors"]), "delay_us:4000")
+	})
+	ss := isisStatus(t, a)["segment_routing"].(map[string]any)
+	if len(ss["srv6_sids"].([]any)) < 3 || len(ss["flex_algos"].([]any)) != 2 || ss["srlb"] == nil || len(ss["mappings"].([]any)) != 1 {
+		t.Fatalf("status %v", ss)
+	}
+	for _, bad := range []string{
+		`{"segment_routing":{"enabled":true,"srgb_base":16000,"srgb_size":8000,"node_sids":[{"prefix":"192.0.2.1/32","index":1,"algorithm":130}]}}`,
+		`{"flex_algos":[{"algorithm":12}]}`,
+		`{"segment_routing":{"enabled":true,"srgb_base":16000,"srgb_size":8000,"srlb_base":17000,"srlb_size":100}}`,
+		`{"segment_routing":{"enabled":true,"srgb_base":16000,"srgb_size":8000,"node_sids":[{"prefix":"192.0.2.1/32","index":3}],"mappings":[{"prefix":"10.0.0.1/32","range":5,"index":1}]}}`,
+		`{"srv6":{"enabled":true,"locators":[{"prefix":"10.0.0.0/8"}]}}`,
+		`{"srv6":{"enabled":true,"locators":[{"prefix":"fc00::/48","end_sid":"fc01::1"}]}}`,
+	} {
+		if _, err := a.CreateProtocol(core.ProtocolSpec{Name: "x", Type: "isis", Device: "d", Config: json.RawMessage(bad)}); err == nil {
+			a.DeleteProtocol("x")
+			t.Errorf("accepted %s", bad)
+		}
+	}
 }

@@ -77,3 +77,19 @@
 /configure router "Base" isis 0 segment-routing prefix-sid-range global
 /configure router "Base" isis 0 interface "system" ipv4-node-sid index 1
 /configure router "Base" isis 0 interface "system" ipv6-node-sid index 2
+/configure router "Base" mpls-labels reserved-label-block "srlb" start-label 30000 end-label 30999
+/configure router "Base" isis 0 segment-routing srlb "srlb"
+/configure routing-options flexible-algorithm-definitions flex-algo "fa129" admin-state enable metric-type igp priority 100
+/configure router "Base" isis 0 flexible-algorithms admin-state enable
+/configure router "Base" isis 0 flexible-algorithms flex-algo 128 participate true
+/configure router "Base" isis 0 flexible-algorithms flex-algo 129 participate true advertise "fa129"
+/configure router "Base" isis 0 interface "system" flex-algo 128 ipv4-node-sid index 11
+/configure router "Base" isis 0 interface "system" flex-algo 129 ipv4-node-sid index 12
+/configure router "Base" isis 0 traffic-engineering true
+/configure router "Base" isis 0 traffic-engineering-options advertise-delay true
+/configure router "Base" interface "isis-p2p" if-attribute delay static 1000
+/configure router "Base" interface "isis-p2p-2" if-attribute delay static 300
+/configure router "Base" segment-routing segment-routing-v6 source-address 2001:db8:ffff::100
+/configure router "Base" segment-routing segment-routing-v6 locator "loc1" admin-state enable block-length 32 prefix ip-prefix fc00:0:64::/48
+/configure router "Base" isis 0 segment-routing-v6 admin-state enable
+/configure router "Base" isis 0 segment-routing-v6 locator "loc1"

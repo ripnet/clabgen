@@ -51,6 +51,10 @@ type IP interface {
 	// (echoed) packets aren't listed as received here: the flow itself
 	// accounts for them. Call release when the flow goes away.
 	ClaimFlow(id uint32) (release func())
+	// AddLocal makes the device answer for addr (ICMP echo, flows) without
+	// owning it on the link (no ARP/ND, not in Addresses): a router's
+	// loopback reachable over any of its interfaces. Call release to stop.
+	AddLocal(addr netip.Addr) (release func())
 }
 
 // Env is what the agent provides to a running session.

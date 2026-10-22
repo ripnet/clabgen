@@ -40,6 +40,28 @@ type topology struct {
 	// Links are keyed by their two names in sorted order.
 	linkDown   map[[2]string]bool
 	linkMetric map[[2]string]uint32
+	linkAttr   map[[2]string]simLinkAttr // TE attributes (flex-algo)
+	delayUS    uint32                    // default link delay
+	locators   map[string]netip.Prefix   // SRv6 locator per node
+}
+
+// simLinkAttr are a simulated link's TE attributes; zero fields default
+// (TE metric: the link metric; delay: the topology's).
+type simLinkAttr struct {
+	te, delay, groups uint32
+}
+
+// attrs is the a–b link's TE attributes.
+func (t *topology) attrs(a, b string, def uint32) *LinkAttrs {
+	x := t.linkAttr[linkKey(a, b)]
+	la := &LinkAttrs{TEMetric: x.te, DelayUS: x.delay, AdminGroups: x.groups}
+	if la.TEMetric == 0 {
+		la.TEMetric = t.metric(a, b, def)
+	}
+	if la.DelayUS == 0 {
+		la.DelayUS = t.delayUS
+	}
+	return la
 }
 
 func linkKey(a, b string) [2]string {
@@ -61,7 +83,7 @@ func addSys(s SysID, n uint64) SysID {
 // IDs must differ from it.
 func buildTopology(c Topology, us *SysID) (*topology, error) {
 	t := &topology{kind: c.Kind, byName: map[string]*simNode{}, bySys: map[SysID]*simNode{},
-		linkDown: map[[2]string]bool{}, linkMetric: map[[2]string]uint32{}}
+		linkDown: map[[2]string]bool{}, linkMetric: map[[2]string]uint32{}, linkAttr: map[[2]string]simLinkAttr{}, delayUS: c.LinkDelayUS}
 	metric := c.Metric
 	if metric == 0 {
 		metric = 10
@@ -182,6 +204,9 @@ func buildTopology(c Topology, us *SysID) (*topology, error) {
 				if err := link(cn.Name, l.To, l.Metric); err != nil {
 					return nil, fmt.Errorf("node %s: %w", cn.Name, err)
 				}
+				if l.TEMetric != 0 || l.DelayUS != 0 || len(l.AdminGroups) > 0 {
+					t.linkAttr[linkKey(cn.Name, l.To)] = simLinkAttr{te: l.TEMetric, delay: l.DelayUS, groups: groupMask(l.AdminGroups)}
+				}
 			}
 			for _, p := range cn.Prefixes {
 				ps, err := p.expand()
@@ -279,7 +304,7 @@ func (t *topology) metric(a, b string, def uint32) uint32 {
 }
 
 // attachedLocked is our IS reachability toward the simulated routers.
-func (t *topology) attachedLocked(level int) []ISReach {
+func (t *topology) attachedLocked(s *session) []ISReach {
 	var out []ISReach
 	for _, n := range t.nodes {
 		m, ok := n.links[usName]
@@ -288,7 +313,7 @@ func (t *topology) attachedLocked(level int) []ISReach {
 		}
 		var id NodeID
 		copy(id[:], n.sys[:])
-		out = append(out, ISReach{Neighbor: id, Metric: t.metric(usName, n.name, m)})
+		out = append(out, ISReach{Neighbor: id, Metric: t.metric(usName, n.name, m), Attrs: s.simAttrs(usName, n.name, m)})
 	}
 	return out
 }
@@ -344,23 +369,33 @@ func (t *topology) originateLocked(s *session, l *level, isType byte, now time.T
 			} else {
 				copy(id[:], t.byName[x].sys[:])
 			}
-			body.Neighbors = append(body.Neighbors, ISReach{Neighbor: id, Metric: t.metric(n.name, x, n.links[x])})
+			body.Neighbors = append(body.Neighbors, ISReach{Neighbor: id, Metric: t.metric(n.name, x, n.links[x]), Attrs: s.simAttrs(n.name, x, n.links[x])})
 		}
-		var sids map[netip.Prefix]PrefixSID
+		var sids map[netip.Prefix][]PrefixSID
 		if s.cfg.SegmentRouting.Enabled {
-			sids = map[netip.Prefix]PrefixSID{}
-			for _, x := range []struct {
-				lb   netip.Prefix
-				base *uint32
-			}{{n.loopback, s.cfg.Topology.NodeSIDBase}, {n.loopback6, s.cfg.Topology.NodeSID6Base}} {
-				if x.lb.IsValid() && x.base != nil {
-					sids[x.lb.Masked()] = PrefixSID{Index: *x.base + uint32(n.index), Flags: PSIDNode}
+			sids = map[netip.Prefix][]PrefixSID{}
+			bases := []AlgoSIDBase{{NodeSIDBase: s.cfg.Topology.NodeSIDBase, NodeSID6Base: s.cfg.Topology.NodeSID6Base}}
+			bases = append(bases, s.cfg.Topology.FlexAlgoSIDs...)
+			for _, b := range bases {
+				for _, x := range []struct {
+					lb   netip.Prefix
+					base *uint32
+				}{{n.loopback, b.NodeSIDBase}, {n.loopback6, b.NodeSID6Base}} {
+					if x.lb.IsValid() && x.base != nil {
+						sids[x.lb.Masked()] = append(sids[x.lb.Masked()], PrefixSID{Index: *x.base + uint32(n.index), Flags: PSIDNode, Algo: b.Algorithm})
+					}
 				}
 			}
-			body.SR = s.srCap(body.RouterID, n.loopback6.IsValid())
+		}
+		body.SR = s.srCap(body.RouterID, n.loopback6.IsValid(), false)
+		if loc, ok := t.locators[n.name]; ok && s.cfg.SRv6.Enabled {
+			body.Locators = []Locator{{Prefix: loc, MT: s.locatorMT(),
+				EndSIDs: []EndSID{{SID: s.endSID(loc, ""), Behavior: s.srv6Behavior(), Struct: s.sidStructure(loc)}}}}
+			pfx = locatorPrefixes(body.Locators, pfx, nil)
 		}
 		pfx = s.mtify(&body, pfx)
 		pfx = s.srDecorate(n.name, &body, pfx, sids, nil, nil)
+		s.endXDecorate(n.name, &body, nil, nil)
 		s.originateSys(l, n.sys, body, pfx, isType, now)
 	}
 }
@@ -376,10 +411,12 @@ func (s *session) simHost(n *simNode) string {
 // ---- actions ----
 
 type TopoLinkArgs struct {
-	A      string `json:"a" jsonschema:"description=Node name (us for this router)"`
-	B      string `json:"b" jsonschema:"description=Node name (us for this router)"`
-	Up     bool   `json:"up"`
-	Metric uint32 `json:"metric,omitempty" jsonschema:"description=Set a new metric (0: keep)"`
+	A        string `json:"a" jsonschema:"description=Node name (us for this router)"`
+	B        string `json:"b" jsonschema:"description=Node name (us for this router)"`
+	Up       bool   `json:"up"`
+	Metric   uint32 `json:"metric,omitempty" jsonschema:"description=Set a new metric (0: keep)"`
+	TEMetric uint32 `json:"te_metric,omitempty" jsonschema:"description=Set a new TE metric (0: keep)"`
+	DelayUS  uint32 `json:"delay_us,omitempty" jsonschema:"description=Set a new delay in µs (0: keep)"`
 }
 
 type TopoNodeArgs struct {
@@ -413,10 +450,22 @@ func (s *session) topoLinkLocked(a *TopoLinkArgs) (any, error) {
 	if a.Metric > 0 {
 		t.linkMetric[k] = a.Metric
 	}
+	if a.TEMetric > 0xffffff || a.DelayUS > 0xffffff {
+		return nil, errors.New("te_metric and delay_us are 24-bit")
+	}
+	x := t.linkAttr[k]
+	if a.TEMetric > 0 {
+		x.te = a.TEMetric
+	}
+	if a.DelayUS > 0 {
+		x.delay = a.DelayUS
+	}
+	t.linkAttr[k] = x
 	for _, l := range s.lv {
 		l.dirty = true
 	}
-	return map[string]any{"link": a.A + "-" + a.B, "up": a.Up, "metric": t.metric(a.A, a.B, def)}, nil
+	la := t.attrs(a.A, a.B, def)
+	return map[string]any{"link": a.A + "-" + a.B, "up": a.Up, "metric": t.metric(a.A, a.B, def), "te_metric": la.TEMetric, "delay_us": la.DelayUS}, nil
 }
 
 func (s *session) topoNodeLocked(a *TopoNodeArgs) (any, error) {

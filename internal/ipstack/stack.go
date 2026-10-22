@@ -150,15 +150,16 @@ type Stack struct {
 	cfg       Config
 	addrs     []netip.Prefix // cfg.Addresses plus the automatic link-local
 	neighbors map[netip.Addr]*neighbor
-	flows     *flowrx.Table  // signed flow packets received
-	ownFlows  map[uint32]int // flow IDs sent from this device (not recorded)
+	flows     *flowrx.Table      // signed flow packets received
+	ownFlows  map[uint32]int     // flow IDs sent from this device (not recorded)
+	locals    map[netip.Addr]int // AddLocal addresses (reference counts)
 
 	ipID     atomic.Uint32
 	counters counters
 }
 
 func New(mac pkt.MAC, cfg Config, send SendFunc, emit EmitFunc) *Stack {
-	s := &Stack{mac: mac, send: send, emit: emit, now: time.Now, neighbors: map[netip.Addr]*neighbor{}, flows: flowrx.New(), ownFlows: map[uint32]int{}}
+	s := &Stack{mac: mac, send: send, emit: emit, now: time.Now, neighbors: map[netip.Addr]*neighbor{}, flows: flowrx.New(), ownFlows: map[uint32]int{}, locals: map[netip.Addr]int{}}
 	s.SetConfig(cfg)
 	return s
 }
@@ -246,6 +247,31 @@ func (s *Stack) own(a netip.Addr) (netip.Prefix, bool) {
 		}
 	}
 	return netip.Prefix{}, false
+}
+
+// forUs reports whether IP packets to a are ours: an address of the device
+// or a local (loopback) one. Caller holds mu.
+func (s *Stack) forUs(a netip.Addr) bool {
+	_, ok := s.own(a)
+	return ok || s.locals[a] > 0
+}
+
+// AddLocal implements protocol.IP.
+func (s *Stack) AddLocal(a netip.Addr) func() {
+	a = a.Unmap()
+	s.mu.Lock()
+	s.locals[a]++
+	s.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.mu.Lock()
+			if s.locals[a]--; s.locals[a] <= 0 {
+				delete(s.locals, a)
+			}
+			s.mu.Unlock()
+		})
+	}
 }
 
 // sourceFor picks our address to use toward an on-link neighbor.
@@ -386,7 +412,7 @@ func (s *Stack) rxIPv4(f *pkt.Frame) bool {
 		return false
 	}
 	s.mu.Lock()
-	_, forUs := s.own(h.Dst)
+	forUs := s.forUs(h.Dst)
 	s.mu.Unlock()
 	if !forUs {
 		return false
@@ -437,7 +463,7 @@ func (s *Stack) rxIPv6(f *pkt.Frame) bool {
 		return false
 	}
 	s.mu.Lock()
-	_, forUs := s.own(h.Dst)
+	forUs := s.forUs(h.Dst)
 	if !forUs && len(s.addrs) > 0 && h.Dst.IsMulticast() {
 		forUs = h.Dst == allNodes
 		for _, p := range s.addrs {
@@ -757,7 +783,8 @@ type Neighbor struct {
 }
 
 type Status struct {
-	Addresses []string          `json:"addresses"` // effective, incl. automatic link-local
+	Addresses []string          `json:"addresses"`       // effective, incl. automatic link-local
+	Local     []string          `json:"local,omitempty"` // also answered for (router loopbacks)
 	Gateway4  string            `json:"gateway4,omitempty"`
 	Gateway6  string            `json:"gateway6,omitempty"`
 	Neighbors []Neighbor        `json:"neighbors"`
@@ -770,6 +797,10 @@ func (s *Stack) Status() Status {
 	for _, p := range s.addrs {
 		st.Addresses = append(st.Addresses, p.String())
 	}
+	for a := range s.locals {
+		st.Local = append(st.Local, a.String())
+	}
+	sort.Strings(st.Local)
 	_, st.Gateway4, st.Gateway6 = s.cfg.Strings()
 	now := s.now()
 	for ip, n := range s.neighbors {
