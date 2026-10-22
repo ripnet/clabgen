@@ -5,7 +5,7 @@ name: b2b
 topology:
   defaults:
     kind: linux
-    image: ghcr.io/ripnet/clabgen:dev
+    image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
   nodes:
     gen1:
       binds: [gen1.yml:/etc/clabgen/scenario.yml:ro]

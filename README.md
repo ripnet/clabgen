@@ -38,8 +38,7 @@ Interop is verified against Nokia SR-SIM.
 ## Quick start
 
 ```sh
-make image                                    # builds ghcr.io/ripnet/clabgen:dev
-cd examples/b2b && containerlab deploy -t b2b.clab.yml
+cd examples/b2b && containerlab deploy -t b2b.clab.yml   # ghcr.io/ripnet/clabgen:latest
 
 docker exec clab-b2b-gen1 clabgenctl protocols
 NAME          TYPE     DEVICE    STATE    SUMMARY
@@ -47,6 +46,18 @@ mep-qinq      cfm-mep  qinq      running  lvl=2 mep=201 integer(200) rmeps=[202:
 mep-untagged  cfm-mep  untagged  running  lvl=3 mep=1 icc(CLABGEN00001) rmeps=[2:ok] defect=none
 mep-v100      cfm-mep  v100      running  lvl=5 mep=101 string(lab)/string(v100) rmeps=[102:ok] defect=none
 ```
+
+Images: `ghcr.io/ripnet/clabgen:latest` is the latest release (`:X.Y.Z`
+for a given one); `:dev` follows the development branch. To run a local
+build instead:
+
+```sh
+make image                                    # builds ghcr.io/ripnet/clabgen:dev
+CLABGEN_IMAGE=ghcr.io/ripnet/clabgen:dev containerlab deploy -t b2b.clab.yml
+```
+
+`clabgenctl` binaries for Linux and macOS come with each
+[release](https://github.com/ripnet/clabgen/releases).
 
 Two example labs:
 

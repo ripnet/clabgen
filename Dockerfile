@@ -1,18 +1,22 @@
-FROM node:20-alpine AS web
+# The UI and the Go binaries are built on the build platform and
+# cross-compiled, so multi-arch images need no emulated compilers.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-fund --no-audit
 COPY web/ ./
 RUN mkdir -p ../internal/webui/dist && npm run build
 
-FROM golang:1.23-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web /src/internal/webui/dist/ ./internal/webui/dist/
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -trimpath \
+ARG TARGETOS=linux
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
       -ldflags "-s -w -X github.com/ripnet/clabgen/internal/version.Version=${VERSION}" \
       -o /out/ ./cmd/clabgen-agent ./cmd/clabgenctl ./cmd/clabgen-ui
 

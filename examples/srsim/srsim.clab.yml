@@ -31,7 +31,7 @@ topology:
       startup-config: sr1.partial.txt
     gen1:
       kind: linux
-      image: ghcr.io/ripnet/clabgen:dev
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
       binds: [gen1.yml:/etc/clabgen/scenario.yml:ro]
       env: {CLABGEN_SCENARIO: /etc/clabgen/scenario.yml}
   links:
