@@ -24,15 +24,18 @@ var nbrStateNames = []string{"down", "init", "2-way", "exstart", "exchange", "lo
 type nbr struct {
 	ifc        *iface
 	rid, addr  netip.Addr
+	id         netip.Addr // in DR/BDR fields: addr (v2) or rid (v3)
+	ifID       uint32     // OSPFv3: its interface ID
 	mac        pkt.MAC
 	prio       uint8
 	dr, bdr    netip.Addr // as declared in its hellos
-	options    uint8
+	options    uint32
 	state      int
 	since      time.Time
 	lastHello  time.Time
 	dead       time.Duration
-	cryptoSeq  uint32
+	cryptoSeq  uint64           // OSPFv2: last sequence number (must not decrease)
+	seq3       map[uint8]uint64 // OSPFv3: last sequence number per packet type (must increase)
 	lastReason string
 	mtu        uint16
 
@@ -42,6 +45,7 @@ type nbr struct {
 	summary    []LSAHeader // still to describe
 	lastSent   []byte      // last DBD body (retransmitted by the master, repeated by the slave)
 	sentMore   bool        // the last DBD sent had the M bit
+	sentFlags  uint8       // flags of the last DBD sent
 	ddAt       time.Time   // when the master retransmits
 	lastRxFlag uint8
 	lastRxSeq  uint32
@@ -55,6 +59,31 @@ type nbr struct {
 }
 
 func (n *nbr) stateName() string { return nbrStateNames[n.state] }
+
+// seqOKLocked applies the replay rules to an authenticated packet: OSPFv2
+// sequence numbers may not go down (RFC 2328 D.5.2), OSPFv3 ones must go
+// up per packet type (RFC 7166 4.6).
+func (s *session) seqOKLocked(n *nbr, typ uint8, seq uint64) bool {
+	if s.cd.v3 {
+		if n.seq3 == nil {
+			n.seq3 = map[uint8]uint64{}
+		}
+		if last, ok := n.seq3[typ]; ok && seq <= last {
+			s.count("rx_auth_failures")
+			n.ifc.authErr = fmt.Sprintf("%s sequence number %d not above %d", typeNames[typ], seq, last)
+			return false
+		}
+		n.seq3[typ] = seq
+		return true
+	}
+	if seq < n.cryptoSeq {
+		s.count("rx_auth_failures")
+		n.ifc.authErr = "sequence number went down"
+		return false
+	}
+	n.cryptoSeq = seq
+	return true
+}
 
 func (s *session) setNbrLocked(n *nbr, st int, now time.Time, why string) {
 	if n.state == st {
@@ -97,9 +126,16 @@ func (s *session) exStartLocked(n *nbr, now time.Time) {
 }
 
 func (s *session) sendDBDLocked(n *nbr, flags uint8, hs []LSAHeader, now time.Time) {
-	d := DBD{MTU: uint16(s.cfg.MTU), Options: OptE, Flags: flags, Seq: n.ddSeq, Headers: hs}
-	n.lastSent = d.Encode()
-	n.sentMore = flags&DDMore != 0
+	opts := uint32(OptE)
+	if s.cd.v3 {
+		opts = options3
+		if authType(n.ifc.auth) == AuthCrypto {
+			opts |= OptAT
+		}
+	}
+	d := DBD{MTU: uint16(s.cfg.MTU), Options: opts, Flags: flags, Seq: n.ddSeq, Headers: hs}
+	n.lastSent = s.cd.encodeDBD(d)
+	n.sentMore, n.sentFlags = flags&DDMore != 0, flags
 	n.ddAt = now.Add(s.rxmt)
 	s.queue(n.ifc, n.addr, n.mac, TypeDBD, n.lastSent)
 }
@@ -118,8 +154,10 @@ func (s *session) nextChunk(n *nbr) []LSAHeader {
 // negotiationDoneLocked fills the summary list (RFC 2328 10.3).
 func (s *session) negotiationDoneLocked(n *nbr, now time.Time) {
 	n.summary = n.summary[:0]
-	for _, l := range s.db {
-		n.summary = append(n.summary, l.headerAt(now))
+	for k, l := range s.db {
+		if k.Link == 0 || k.Link == n.ifc.idx+1 {
+			n.summary = append(n.summary, l.headerAt(now))
+		}
 	}
 	s.setNbrLocked(n, nExchange, now, "negotiation done")
 }
@@ -211,18 +249,26 @@ func (s *session) rxDBDLocked(n *nbr, d *DBD, now time.Time) {
 // request list. It reports false on an unknown LSA type.
 func (s *session) headersLocked(n *nbr, hs []LSAHeader, now time.Time) bool {
 	for _, h := range hs {
-		if !knownType(h.Type) {
+		if !s.cd.known(h.Type) {
 			return false
 		}
-		l := s.db[h.Key()]
+		k := s.keyFor(n.ifc, h)
+		l := s.db[k]
 		if l == nil || Compare(h, l.headerAt(now)) > 0 {
-			n.req[h.Key()] = h
+			n.req[k] = h
 		}
 	}
 	return true
 }
 
-func knownType(t uint8) bool { return t >= LSARouter && t <= LSAExternal || t >= 9 && t <= 11 }
+// keyFor is an LSA's LSDB key as heard on f (link-scoped LSAs are per link).
+func (s *session) keyFor(f *iface, h LSAHeader) LSAKey {
+	k := h.Key()
+	if s.cd.linkScope(h.Type) {
+		k.Link = f.idx + 1
+	}
+	return k
+}
 
 // masterAckLocked handles the slave's answer to our current DBD.
 func (s *session) masterAckLocked(n *nbr, d *DBD, now time.Time) {
@@ -245,7 +291,7 @@ func (s *session) masterAckLocked(n *nbr, d *DBD, now time.Time) {
 
 // exchangedOnce: the master has sent at least one DBD after negotiation
 // (the first ack is of the initial empty packet).
-func (n *nbr) exchangedOnce() bool { return n.lastSent != nil && n.lastSent[3]&DDInit == 0 }
+func (n *nbr) exchangedOnce() bool { return n.lastSent != nil && n.sentFlags&DDInit == 0 }
 
 // slaveReplyLocked answers the master's DBD with ours (same sequence).
 func (s *session) slaveReplyLocked(n *nbr, d *DBD, now time.Time) {
@@ -296,6 +342,9 @@ func (s *session) rxLSRLocked(n *nbr, keys []LSAKey, now time.Time) {
 	}
 	var lsas [][]byte
 	for _, k := range keys {
+		if s.cd.linkScope(k.Type) {
+			k.Link = n.ifc.idx + 1
+		}
 		l := s.db[k]
 		if l == nil {
 			s.count("bad_ls_requests")
@@ -333,7 +382,7 @@ func (s *session) rxAckLocked(n *nbr, hs []LSAHeader) {
 	}
 	now := time.Now()
 	for _, h := range hs {
-		k := h.Key()
+		k := s.keyFor(n.ifc, h)
 		if !n.rxmt[k] {
 			continue
 		}
@@ -353,18 +402,18 @@ func (s *session) delayAckLocked(f *iface, h LSAHeader, now time.Time) {
 
 // ackDst is where an interface's multicast acks and floods go: everyone
 // from the DR/BDR and on point-to-point, the DR/BDR otherwise.
-func (f *iface) floodDst() netip.Addr {
+func (s *session) floodDst(f *iface) netip.Addr {
 	if f.p2p || f.state == ifDR || f.state == ifBackup {
-		return AllSPFRouters
+		return s.allSPF()
 	}
-	return AllDRouters
+	return s.allDR()
 }
 
 func (s *session) sendAcksLocked(f *iface) {
 	room := s.maxBody(f) / lsaHeaderLen
 	for len(f.acks) > 0 {
 		n := min(room, len(f.acks))
-		s.queue(f, f.floodDst(), pkt.MAC{}, TypeAck, EncodeAck(f.acks[:n]))
+		s.queue(f, s.floodDst(f), pkt.MAC{}, TypeAck, s.cd.encodeAck(f.acks[:n]))
 		f.acks = f.acks[n:]
 	}
 	f.acks = nil
@@ -384,6 +433,7 @@ func (s *session) nbrTimersLocked(n *nbr, now time.Time) {
 	if (n.state == nExchange || n.state == nLoading) && len(n.req) > 0 && !now.Before(n.reqAt) {
 		s.sendLSRLocked(n, now)
 	}
+	s.loadingDoneLocked(n, now)
 	if n.state >= nExchange && len(n.rxmt) > 0 && !now.Before(n.rxmtAt) {
 		n.rxmtAt = now.Add(s.rxmt)
 		var lsas [][]byte
@@ -431,7 +481,7 @@ func (n *nbr) status(now time.Time) NbrStatus {
 		if n.bdr != zero4 {
 			st.BDR = n.bdr.String()
 		}
-		switch n.addr {
+		switch n.id {
 		case n.ifc.dr:
 			st.Role = "dr"
 		case n.ifc.bdr:

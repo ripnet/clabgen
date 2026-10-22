@@ -149,3 +149,12 @@
 /configure router "Base" ospf 0 area 0.0.0.0 interface "ospf-p2p" authentication-type message-digest
 /configure router "Base" ospf 0 area 0.0.0.0 interface "ospf-p2p" message-digest-key 1 md5 "clabgen"
 /configure router "Base" ospf 0 area 0.0.0.0 interface "ospf-lan" interface-type broadcast
+/configure router "Base" interface "ospf-p2p" ipv6 address 2001:db8:70::1 prefix-length 64
+/configure router "Base" interface "ospf-lan" ipv6 address 2001:db8:71::1 prefix-length 64
+/configure router "Base" ospf3 0 admin-state enable
+/configure router "Base" ospf3 0 area 0.0.0.0 interface "system" passive true
+/configure router "Base" ospf3 0 area 0.0.0.0 interface "ospf-p2p" interface-type point-to-point
+/configure router "Base" ospf3 0 area 0.0.0.0 interface "ospf-lan" interface-type broadcast
+/configure system security keychains keychain "ospf-sha" admin-state enable
+/configure system security keychains keychain "ospf-sha" bidirectional entry 5 algorithm hmac-sha-256 authentication-key "clabgen-ospf" begin-time 2026-01-01T00:00:00Z
+/configure router "Base" ospf 0 area 0.0.0.0 interface "ospf-lan" authentication-keychain "ospf-sha"

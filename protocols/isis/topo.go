@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"net/netip"
 	"sort"
-	"strings"
 	"time"
+
+	"github.com/ripnet/clabgen/internal/topogen"
 )
 
 // Emulated topologies: routers that exist only as LSPs we originate. Each
@@ -15,10 +16,8 @@ import (
 // to us) and prefixes, so the real routers' SPF sees a whole network
 // behind this one. Links and nodes can be taken down at runtime.
 
-const maxSimNodes = 10000
-
 // us is the name links use for this router.
-const usName = "us"
+const usName = topogen.Us
 
 type simNode struct {
 	name      string
@@ -98,135 +97,48 @@ func buildTopology(c Topology, us *SysID) (*topology, error) {
 			return nil, err
 		}
 	}
-	add := func(name string, sys SysID) (*simNode, error) {
-		if name == "" || name == usName || strings.ContainsAny(name, " /") {
-			return nil, fmt.Errorf("invalid node name %q", name)
+	spec := topogen.Spec{Kind: c.Kind, Rows: c.Rows, Cols: c.Cols, Nodes: c.Nodes, Attach: c.Attach, Metric: metric, Max: 0xfffffe}
+	for _, cn := range c.Custom {
+		n := topogen.Node{Name: cn.Name}
+		for _, l := range cn.Links {
+			n.Links = append(n.Links, topogen.Link{To: l.To, Metric: l.Metric})
 		}
-		if t.byName[name] != nil {
-			return nil, fmt.Errorf("node %s defined twice", name)
+		spec.Custom = append(spec.Custom, n)
+	}
+	g, err := topogen.Build(spec)
+	if err != nil {
+		return nil, err
+	}
+	custom := map[string]SimNode{}
+	for _, cn := range c.Custom {
+		custom[cn.Name] = cn
+	}
+	for _, v := range g.Nodes {
+		sys := addSys(base, uint64(v.Index))
+		if cn, ok := custom[v.Name]; ok && cn.SystemID != "" {
+			if sys, err = ParseSysID(cn.SystemID); err != nil {
+				return nil, fmt.Errorf("node %s: %w", v.Name, err)
+			}
 		}
 		if t.bySys[sys] != nil || (us != nil && sys == *us) {
-			return nil, fmt.Errorf("node %s: system ID %s is already used", name, sys)
+			return nil, fmt.Errorf("node %s: system ID %s is already used", v.Name, sys)
 		}
-		n := &simNode{name: name, sys: sys, links: map[string]uint32{}, index: len(t.nodes)}
+		n := &simNode{name: v.Name, sys: sys, links: v.Links, index: v.Index}
 		t.nodes = append(t.nodes, n)
-		t.byName[name], t.bySys[sys] = n, n
-		return n, nil
+		t.byName[n.name], t.bySys[sys] = n, n
 	}
-	link := func(a, b string, m uint32) error {
-		if a == b {
-			return fmt.Errorf("link %s-%s loops", a, b)
-		}
-		for _, x := range []string{a, b} {
-			if x != usName && t.byName[x] == nil {
-				return fmt.Errorf("link to unknown node %q", x)
+	for _, cn := range c.Custom {
+		for _, l := range cn.Links {
+			if l.TEMetric != 0 || l.DelayUS != 0 || len(l.AdminGroups) > 0 {
+				t.linkAttr[linkKey(cn.Name, l.To)] = simLinkAttr{te: l.TEMetric, delay: l.DelayUS, groups: groupMask(l.AdminGroups)}
 			}
 		}
-		if m == 0 {
-			m = metric
-		}
-		if n := t.byName[a]; n != nil {
-			n.links[b] = m
-		}
-		if n := t.byName[b]; n != nil {
-			n.links[a] = m
-		}
-		return nil
-	}
-	var err error
-	switch c.Kind {
-	case "grid":
-		if c.Rows < 1 || c.Cols < 1 {
-			return nil, errors.New("grid needs rows and cols")
-		}
-		if c.Rows*c.Cols > maxSimNodes {
-			return nil, fmt.Errorf("at most %d nodes", maxSimNodes)
-		}
-		name := func(r, k int) string { return fmt.Sprintf("r%d-%d", r, k) }
-		for r := 1; r <= c.Rows; r++ {
-			for k := 1; k <= c.Cols; k++ {
-				if _, err = add(name(r, k), addSys(base, uint64(len(t.nodes)))); err != nil {
-					return nil, err
-				}
+		for _, p := range cn.Prefixes {
+			ps, err := p.expand()
+			if err != nil {
+				return nil, fmt.Errorf("node %s: %w", cn.Name, err)
 			}
-		}
-		for r := 1; r <= c.Rows; r++ {
-			for k := 1; k <= c.Cols; k++ {
-				if k < c.Cols {
-					link(name(r, k), name(r, k+1), 0)
-				}
-				if r < c.Rows {
-					link(name(r, k), name(r+1, k), 0)
-				}
-			}
-		}
-	case "ring", "line", "full":
-		if c.Nodes < 1 || c.Nodes > maxSimNodes {
-			return nil, fmt.Errorf("nodes must be 1-%d", maxSimNodes)
-		}
-		if c.Kind == "full" && c.Nodes > 200 {
-			return nil, errors.New("a full mesh is limited to 200 nodes")
-		}
-		for i := 1; i <= c.Nodes; i++ {
-			if _, err = add(fmt.Sprintf("r%d", i), addSys(base, uint64(i-1))); err != nil {
-				return nil, err
-			}
-		}
-		for i := 1; i < c.Nodes; i++ {
-			if c.Kind == "full" {
-				for j := i + 1; j <= c.Nodes; j++ {
-					link(fmt.Sprintf("r%d", i), fmt.Sprintf("r%d", j), 0)
-				}
-			} else {
-				link(fmt.Sprintf("r%d", i), fmt.Sprintf("r%d", i+1), 0)
-			}
-		}
-		if c.Kind == "ring" && c.Nodes > 2 {
-			link(fmt.Sprintf("r%d", c.Nodes), "r1", 0)
-		}
-	case "custom":
-		if len(c.Custom) == 0 || len(c.Custom) > maxSimNodes {
-			return nil, fmt.Errorf("custom needs 1-%d nodes", maxSimNodes)
-		}
-		for i, cn := range c.Custom {
-			sys := addSys(base, uint64(i))
-			if cn.SystemID != "" {
-				if sys, err = ParseSysID(cn.SystemID); err != nil {
-					return nil, fmt.Errorf("node %s: %w", cn.Name, err)
-				}
-			}
-			if _, err = add(cn.Name, sys); err != nil {
-				return nil, err
-			}
-		}
-		for _, cn := range c.Custom {
-			for _, l := range cn.Links {
-				if err := link(cn.Name, l.To, l.Metric); err != nil {
-					return nil, fmt.Errorf("node %s: %w", cn.Name, err)
-				}
-				if l.TEMetric != 0 || l.DelayUS != 0 || len(l.AdminGroups) > 0 {
-					t.linkAttr[linkKey(cn.Name, l.To)] = simLinkAttr{te: l.TEMetric, delay: l.DelayUS, groups: groupMask(l.AdminGroups)}
-				}
-			}
-			for _, p := range cn.Prefixes {
-				ps, err := p.expand()
-				if err != nil {
-					return nil, fmt.Errorf("node %s: %w", cn.Name, err)
-				}
-				t.byName[cn.Name].prefixes = append(t.byName[cn.Name].prefixes, ps...)
-			}
-		}
-	default:
-		return nil, fmt.Errorf("invalid kind %q", c.Kind)
-	}
-	// Attachment to us.
-	attach := c.Attach
-	if len(attach) == 0 && c.Kind != "custom" {
-		attach = []string{t.nodes[0].name}
-	}
-	for _, a := range attach {
-		if err := link(usName, a, 0); err != nil {
-			return nil, err
+			t.byName[cn.Name].prefixes = append(t.byName[cn.Name].prefixes, ps...)
 		}
 	}
 	// Generated addressing.

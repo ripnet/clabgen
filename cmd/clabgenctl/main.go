@@ -592,7 +592,7 @@ func summary(p *v1.Protocol) string {
 		}
 		return fmt.Sprintf("AS %v id %v peers=[%s]", m["local_as"], m["router_id"], strings.Join(ps, " "))
 	}
-	if p.Type == "ospf" {
+	if p.Type == "ospf" || p.Type == "ospfv3" {
 		var ns []string
 		if l, ok := m["neighbors"].([]any); ok {
 			for _, x := range l {

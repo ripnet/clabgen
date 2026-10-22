@@ -272,6 +272,42 @@ computes no routes. The MTU in database descriptions is `mtu` (default
 1500); a neighbor with a larger one is refused (as RFC 2328 says), so match
 it on the peer (SR OS: `ip-mtu 1500`) or set `mtu_ignore`.
 
+OSPFv3 (`type: ospfv3`) is the same router over IPv6 (RFC 5340): it needs
+an IPv6 address on the device (it speaks from the link-local one) and a
+`router_id` unless the device also has an IPv4 address. It originates a
+router LSA, a link LSA per interface, a network LSA and its
+intra-area-prefix LSA where it is DR, intra-area-prefix LSAs for its own
+prefixes (interfaces that aren't transit, `loopbacks`, `internal`
+prefixes) and AS-external LSAs; `instance_id` selects the instance.
+
+Authentication: OSPFv2 takes `{type: simple | md5 | hmac-sha1 |
+hmac-sha256 | hmac-sha384 | hmac-sha512, key, key_id}` (RFC 5709 for the
+SHA types), per router or per interface; OSPFv3 takes the authentication
+trailer (RFC 7166) as `{type: hmac-sha*, key, sa_id}`. (SR OS authenticates
+OSPFv3 with IPsec instead, so the trailer was only tested between clabgen
+routers.)
+
+Both versions emulate a network behind the router with `topology`, like
+IS-IS (`grid`, `ring`, `line`, `full`, `custom`): each simulated router
+gets a router ID from `router_id_base`, a loopback from `loopback_base` and
+`prefixes_per_node` prefixes from `prefix_base`, joined by unnumbered
+point-to-point links. `topology-link` and `topology-node` fail links and
+routers (or set max-metric on one) at run time.
+
+```yaml
+             topology: {kind: grid, rows: 2, cols: 3, metric: 20, router_id_base: 10.254.60.1,
+                        loopback_base: 10.255.60.1/32, prefix_base: 100.67.0.0/24, prefixes_per_node: 2}
+```
+
+```yaml
+  - name: ospf6
+    type: ospfv3
+    device: o600
+    config: {router_id: 192.0.2.60, network: point-to-point, loopbacks: ["2001:db8:ffff::60/128"],
+             interfaces: [{device: o601a, network: broadcast, priority: 100}],
+             prefixes: [{prefix: "2001:db8:6600::/48", count: 500, tag: 600}]}
+```
+
 LLDP runs on an untagged device (LLDP frames carry no VLAN tag):
 
 ```yaml

@@ -34,7 +34,18 @@ type Nbr = {
   requests?: number;
   retransmit?: number;
 };
-type LSA = { type: string; id: string; adv_router: string; seq: string; age: number; checksum: string; length: number; own?: boolean; summary?: string };
+type LSA = {
+  type: string;
+  id: string;
+  adv_router: string;
+  seq: string;
+  age: number;
+  checksum: string;
+  length: number;
+  own?: boolean;
+  link?: string; // link-scoped (OSPFv3 link LSAs): the interface
+  summary?: string;
+};
 type OSPFStatus = {
   router_id: string;
   area: string;
@@ -48,7 +59,18 @@ type OSPFStatus = {
   lsdb: LSA[];
   lsdb_total: number;
   lsdb_types: Record<string, number>;
+  topology?: Topo;
   counters: Record<string, number>;
+};
+type Topo = {
+  kind: string;
+  nodes: number;
+  links: number;
+  prefixes: number;
+  attached: string[];
+  down_nodes?: string[];
+  down_links?: string[];
+  overloaded?: string[];
 };
 
 const as = (s: JsonObject) => s as unknown as OSPFStatus;
@@ -223,6 +245,25 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
         </div>
       )}
 
+      {s.topology && (
+        <>
+          <h4>Emulated topology</h4>
+          <div className="flow-path mono small-note">
+            {s.topology.kind} · {s.topology.nodes} routers · {s.topology.links} links · {s.topology.prefixes} prefixes · attached to us:{" "}
+            {s.topology.attached.join(", ") || "none"}
+          </div>
+          {s.topology.down_nodes?.length || s.topology.down_links?.length || s.topology.overloaded?.length ? (
+            <div className="warn-box">
+              {s.topology.down_nodes?.length ? <div>routers down: {s.topology.down_nodes.join(", ")}</div> : null}
+              {s.topology.down_links?.length ? <div>links down: {s.topology.down_links.join(", ")}</div> : null}
+              {s.topology.overloaded?.length ? <div>max-metric: {s.topology.overloaded.join(", ")}</div> : null}
+            </div>
+          ) : (
+            <div className="muted small-note">All simulated routers and links are up. Use the topology-link and topology-node actions to fail them.</div>
+          )}
+        </>
+      )}
+
       <h4>Link-state database</h4>
       <div className="muted small-note">
         {types || "empty"}
@@ -243,12 +284,19 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
           </thead>
           <tbody>
             {s.lsdb.map((l) => {
-              const key = `${l.type}/${l.id}/${l.adv_router}`;
+              const key = `${l.type}/${l.id}/${l.adv_router}/${l.link ?? ""}`;
               const flushed = l.age >= 3600;
               return (
                 <Fragment key={key}>
                   <tr onClick={() => setOpen(open === key ? undefined : key)} className={flushed ? "muted" : ""}>
-                    <td>{l.type}</td>
+                    <td>
+                      {l.type}
+                      {l.link && (
+                        <span className="tag" title="Link scope: flooded only on this interface">
+                          {l.link}
+                        </span>
+                      )}
+                    </td>
                     <td className="mono">
                       {open === key ? "▾ " : "▸ "}
                       {l.id}
@@ -290,3 +338,4 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
 }
 
 registerView("ospf", { summary, Status });
+registerView("ospfv3", { summary, Status });

@@ -16,6 +16,7 @@ import (
 // role are per interface; the LSDB is the router's (one area).
 type iface struct {
 	idx     int
+	ifID    uint32 // OSPFv3 interface ID (idx + 1)
 	device  string
 	p2p     bool
 	passive bool
@@ -31,7 +32,7 @@ type iface struct {
 	retryAt time.Time
 
 	state     string
-	dr, bdr   netip.Addr // interface addresses (zero: none)
+	dr, bdr   netip.Addr // OSPFv2: interface addresses, OSPFv3: router IDs (zero: none)
 	waitUntil time.Time
 	nextHello time.Time
 	nbrs      map[netip.Addr]*nbr // by router ID
@@ -56,7 +57,7 @@ const (
 const attachRetry = time.Second
 
 func (s *session) newIface(idx int, ic Interface) *iface {
-	f := &iface{idx: idx, device: ic.Device, p2p: ic.Network == "point-to-point", passive: ic.Passive, cost: ic.Cost,
+	f := &iface{idx: idx, ifID: uint32(idx + 1), device: ic.Device, p2p: ic.Network == "point-to-point", passive: ic.Passive, cost: ic.Cost,
 		prio: s.cfg.Priority, auth: s.cfg.Auth, state: ifDown, nbrs: map[netip.Addr]*nbr{}, dr: zero4, bdr: zero4,
 		cryptoSeq: uint32(time.Now().Unix())}
 	if ic.Network == "" {
@@ -93,6 +94,71 @@ func (s *session) ifIP(f *iface) protocol.IP {
 	return nil
 }
 
+// ifSourceLocked is the address packets leave the interface from: its
+// IPv4 address (v2) or its link-local address (v3).
+func (s *session) ifSourceLocked(f *iface) (netip.Addr, bool) {
+	if !s.cd.v3 {
+		p, ok := s.ifAddrLocked(f)
+		return p.Addr(), ok
+	}
+	ip := s.ifIP(f)
+	if ip == nil {
+		return netip.Addr{}, false
+	}
+	for _, p := range ip.Addresses() {
+		if p.Addr().IsLinkLocalUnicast() {
+			return p.Addr(), true
+		}
+	}
+	return netip.Addr{}, false
+}
+
+// ifPrefixes6 are the interface's global IPv6 prefixes (OSPFv3).
+func (s *session) ifPrefixes6(f *iface) []netip.Prefix {
+	ip := s.ifIP(f)
+	if ip == nil {
+		return nil
+	}
+	var out []netip.Prefix
+	for _, p := range ip.Addresses() {
+		if a := p.Addr(); a.Is6() && !a.IsLinkLocalUnicast() {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func (s *session) allSPF() netip.Addr {
+	if s.cd.v3 {
+		return AllSPFRouters6
+	}
+	return AllSPFRouters
+}
+
+func (s *session) allDR() netip.Addr {
+	if s.cd.v3 {
+		return AllDRouters6
+	}
+	return AllDRouters
+}
+
+// myID is how the router is named in the DR/BDR fields of an interface.
+func (s *session) myIDLocked(f *iface) netip.Addr {
+	if s.cd.v3 {
+		return s.rid
+	}
+	p, _ := s.ifAddrLocked(f)
+	return p.Addr()
+}
+
+// noAddrErr is why an interface can't run yet.
+func (s *session) noAddrErr() string {
+	if s.cd.v3 {
+		return "no IPv6 link-local address (give the device an IPv6 address)"
+	}
+	return "no IPv4 address"
+}
+
 // ifAddrLocked is the interface's (first) IPv4 address.
 func (s *session) ifAddrLocked(f *iface) (netip.Prefix, bool) {
 	ip := s.ifIP(f)
@@ -110,8 +176,8 @@ func (s *session) ifAddrLocked(f *iface) (netip.Prefix, bool) {
 // ifUpLocked starts an interface: point-to-point at once, broadcast in
 // Waiting (or straight to DR Other at priority 0).
 func (s *session) ifUpLocked(f *iface, now time.Time) {
-	if _, ok := s.ifAddrLocked(f); !ok {
-		f.state, f.err = ifDown, "no IPv4 address"
+	if _, ok := s.ifSourceLocked(f); !ok {
+		f.state, f.err = ifDown, s.noAddrErr()
 		return
 	}
 	f.err, f.nextHello = "", now
@@ -165,7 +231,7 @@ func (s *session) attachLoop(now time.Time) {
 			need = append(need, f)
 		}
 		// An interface whose device had no address yet.
-		if f.attached() && f.state == ifDown && f.err == "no IPv4 address" {
+		if f.attached() && f.state == ifDown && f.err == s.noAddrErr() {
 			s.ifUpLocked(f, now)
 		}
 	}
@@ -244,21 +310,28 @@ func (s *session) helloLocked(f *iface, now time.Time) {
 	if flap && f.flapMode == "silent" {
 		return
 	}
-	mine, ok := s.ifAddrLocked(f)
-	if !ok {
-		return
-	}
-	h := Hello{Mask: MaskOf(mine.Bits()), Interval: uint16(s.cfg.HelloInterval), Options: OptE, Priority: f.prio,
-		Dead: uint32(s.cfg.DeadInterval), DR: f.dr, BDR: f.bdr}
-	if f.p2p {
-		h.Mask = zero4
+	h := Hello{Interval: uint16(s.cfg.HelloInterval), Options: OptE, Priority: f.prio, Dead: uint32(s.cfg.DeadInterval), DR: f.dr, BDR: f.bdr}
+	if s.cd.v3 {
+		h.IfID, h.Options = f.ifID, options3
+		if authType(f.auth) == AuthCrypto {
+			h.Options |= OptAT
+		}
+	} else {
+		mine, ok := s.ifAddrLocked(f)
+		if !ok {
+			return
+		}
+		h.Mask = MaskOf(mine.Bits())
+		if f.p2p {
+			h.Mask = zero4
+		}
 	}
 	if !flap {
 		for _, n := range f.sortedNbrs() {
 			h.Neighbors = append(h.Neighbors, n.rid)
 		}
 	}
-	s.queue(f, AllSPFRouters, pkt.MAC{}, TypeHello, h.Encode())
+	s.queue(f, s.allSPF(), pkt.MAC{}, TypeHello, s.cd.encodeHello(h))
 }
 
 func (f *iface) sortedNbrs() []*nbr {
@@ -272,13 +345,13 @@ func (f *iface) sortedNbrs() []*nbr {
 
 // ---- hello processing (RFC 2328 10.5) ----
 
-func (s *session) rxHelloLocked(f *iface, h *Header, src netip.Addr, mac pkt.MAC, hl *Hello, seq uint32, crypto bool, now time.Time) {
+func (s *session) rxHelloLocked(f *iface, h *Header, src netip.Addr, mac pkt.MAC, hl *Hello, seq uint64, crypto bool, now time.Time) {
 	if f.flapping(now) {
 		return
 	}
 	mine, _ := s.ifAddrLocked(f)
 	switch {
-	case !f.p2p && hl.Mask != MaskOf(mine.Bits()):
+	case !s.cd.v3 && !f.p2p && hl.Mask != MaskOf(mine.Bits()):
 		s.count("rx_hello_mismatch")
 		f.authErr = fmt.Sprintf("hello from %s: netmask %s, ours %s", src, hl.Mask, MaskOf(mine.Bits()))
 		return
@@ -296,16 +369,16 @@ func (s *session) rxHelloLocked(f *iface, h *Header, src netip.Addr, mac pkt.MAC
 		n = &nbr{ifc: f, rid: h.RouterID, state: nDown, since: now}
 		f.nbrs[h.RouterID] = n
 	}
-	if crypto {
-		if seq < n.cryptoSeq {
-			s.count("rx_auth_failures")
-			f.authErr = "sequence number went down"
-			return
-		}
-		n.cryptoSeq = seq
+	if crypto && !s.seqOKLocked(n, TypeHello, seq) {
+		return
+	}
+	// The neighbor's name in DR/BDR fields: its address (v2) or router ID (v3).
+	id := src
+	if s.cd.v3 {
+		id = h.RouterID
 	}
 	oldPrio, oldDR, oldBDR, oldState := n.prio, n.dr, n.bdr, n.state
-	n.addr, n.mac, n.prio, n.dr, n.bdr, n.options = src, mac, hl.Priority, hl.DR, hl.BDR, hl.Options
+	n.addr, n.id, n.mac, n.prio, n.dr, n.bdr, n.options, n.ifID = src, id, mac, hl.Priority, hl.DR, hl.BDR, hl.Options, hl.IfID
 	n.lastHello, n.dead = now, time.Duration(hl.Dead)*time.Second
 	if n.state == nDown {
 		s.setNbrLocked(n, nInit, now, "hello received")
@@ -326,7 +399,7 @@ func (s *session) rxHelloLocked(f *iface, h *Header, src netip.Addr, mac pkt.MAC
 		return
 	}
 	if f.state == ifWaiting {
-		if two && (hl.BDR == src || (hl.DR == src && hl.BDR == zero4)) {
+		if two && (hl.BDR == id || (hl.DR == id && hl.BDR == zero4)) {
 			s.electLocked(f, now) // BackupSeen
 		}
 		return
@@ -334,7 +407,7 @@ func (s *session) rxHelloLocked(f *iface, h *Header, src netip.Addr, mac pkt.MAC
 	// NeighborChange (RFC 2328 9.2): two-way contact gained or lost, a
 	// changed priority, or a new or dropped claim to be DR or BDR.
 	bidir := func(st int) bool { return st >= n2Way }
-	if bidir(oldState) != bidir(n.state) || oldPrio != n.prio || (oldDR == src) != (n.dr == src) || (oldBDR == src) != (n.bdr == src) {
+	if bidir(oldState) != bidir(n.state) || oldPrio != n.prio || (oldDR == id) != (n.dr == id) || (oldBDR == id) != (n.bdr == id) {
 		s.electLocked(f, now)
 	}
 }
@@ -364,7 +437,7 @@ func (s *session) shouldAdjLocked(f *iface, n *nbr) bool {
 	if f.state == ifDR || f.state == ifBackup {
 		return true
 	}
-	return n.addr == f.dr || n.addr == f.bdr
+	return n.id == f.dr || n.id == f.bdr
 }
 
 // ---- DR election (RFC 2328 9.4) ----
@@ -386,8 +459,7 @@ func (s *session) electLocked(f *iface, now time.Time) {
 	if f.p2p || f.state == ifDown || f.passive {
 		return
 	}
-	mine, _ := s.ifAddrLocked(f)
-	me := mine.Addr()
+	me := s.myIDLocked(f)
 	oldDR, oldBDR, oldState := f.dr, f.bdr, f.state
 	var cands []candidate
 	self := func() candidate { return candidate{rid: s.rid, addr: me, prio: f.prio, dr: f.dr, bdr: f.bdr} }
@@ -396,7 +468,7 @@ func (s *session) electLocked(f *iface, now time.Time) {
 	}
 	for _, n := range f.nbrs {
 		if n.state >= n2Way && n.prio > 0 {
-			cands = append(cands, candidate{rid: n.rid, addr: n.addr, prio: n.prio, dr: n.dr, bdr: n.bdr})
+			cands = append(cands, candidate{rid: n.rid, addr: n.id, prio: n.prio, dr: n.dr, bdr: n.bdr})
 		}
 	}
 	pick := func(cands []candidate) (dr, bdr netip.Addr) {
@@ -502,7 +574,14 @@ func (s *session) ifStatusLocked(f *iface, now time.Time) IfStatus {
 	if st.Auth == "" {
 		st.Auth = "none"
 	}
-	if a, ok := s.ifAddrLocked(f); ok {
+	if s.cd.v3 {
+		if a, ok := s.ifSourceLocked(f); ok {
+			st.Address = a.String()
+		}
+		for _, p := range s.ifPrefixes6(f) {
+			st.Address += " " + p.String()
+		}
+	} else if a, ok := s.ifAddrLocked(f); ok {
 		st.Address = a.String()
 	}
 	if !f.p2p {

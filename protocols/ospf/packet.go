@@ -9,7 +9,10 @@ import (
 	"github.com/ripnet/clabgen/internal/pkt"
 )
 
-// OSPFv2 packets and LSAs (RFC 2328 appendix A).
+// OSPF packets and LSAs: OSPFv2 (RFC 2328 appendix A) and OSPFv3 (RFC
+// 5340 appendix A). Both share the packet types, the 20-byte LSA header
+// layout (v2: options + 8-bit type, v3: 16-bit type), LSUs and acks; a
+// codec picks the version's encoding of the rest.
 
 const (
 	ProtoOSPF = 89
@@ -20,21 +23,24 @@ const (
 	TypeLSU   = 4
 	TypeAck   = 5
 
-	headerLen    = 24
+	headerLen    = 24 // OSPFv2
+	header3Len   = 16 // OSPFv3
 	lsaHeaderLen = 20
 
-	// LSA types.
+	// OSPFv2 LSA types.
 	LSARouter      = 1
 	LSANetwork     = 2
 	LSASummary     = 3
 	LSAASBRSummary = 4
 	LSAExternal    = 5
 
-	// Options.
+	// Options (the low bits are the same in both versions).
+	OptV6 = 0x01 // OSPFv3: take part in IPv6 routing
 	OptE  = 0x02 // external routing capable (not a stub area)
 	OptMC = 0x04
 	OptNP = 0x08
-	OptO  = 0x40 // opaque LSAs
+	OptR  = 0x10 // OSPFv3: an active router
+	OptO  = 0x40 // OSPFv2: opaque LSAs
 
 	// DBD flags.
 	DDInit   = 0x04
@@ -51,7 +57,7 @@ const (
 	LinkStub    = 3
 	LinkVirtual = 4
 
-	// Authentication types.
+	// Authentication types (OSPFv2).
 	AuthNull   = 0
 	AuthSimple = 1
 	AuthCrypto = 2
@@ -65,14 +71,36 @@ const (
 )
 
 var (
-	AllSPFRouters = netip.MustParseAddr("224.0.0.5")
-	AllDRouters   = netip.MustParseAddr("224.0.0.6")
+	AllSPFRouters  = netip.MustParseAddr("224.0.0.5")
+	AllDRouters    = netip.MustParseAddr("224.0.0.6")
+	AllSPFRouters6 = netip.MustParseAddr("ff02::5")
+	AllDRouters6   = netip.MustParseAddr("ff02::6")
 )
 
 var typeNames = map[uint8]string{TypeHello: "hello", TypeDBD: "dbd", TypeLSR: "lsr", TypeLSU: "lsu", TypeAck: "ack"}
 
-// LSATypeName names an LSA type for status.
-func LSATypeName(t uint8) string {
+// codec encodes the version-specific parts of packets and LSA headers.
+type codec struct{ v3 bool }
+
+func (c codec) version() byte {
+	if c.v3 {
+		return 3
+	}
+	return 2
+}
+
+func (c codec) headerLen() int {
+	if c.v3 {
+		return header3Len
+	}
+	return headerLen
+}
+
+// typeName names an LSA type for status.
+func (c codec) typeName(t uint16) string {
+	if c.v3 {
+		return lsa3TypeName(t)
+	}
 	switch t {
 	case LSARouter:
 		return "router"
@@ -90,17 +118,41 @@ func LSATypeName(t uint8) string {
 	return fmt.Sprintf("type-%d", t)
 }
 
+// known reports whether an LSA type may be exchanged. OSPFv3 takes every
+// type (unknown ones are flooded by their scope bits).
+func (c codec) known(t uint16) bool {
+	if c.v3 {
+		return true
+	}
+	return t >= LSARouter && t <= LSAExternal || t >= 9 && t <= 11
+}
+
+// linkScope: LSAs flooded only on the link they came from (OSPFv2 opaque
+// type 9; OSPFv3 link scope, which includes unknown types without the U
+// bit).
+func (c codec) linkScope(t uint16) bool {
+	if !c.v3 {
+		return t == 9
+	}
+	if t&0x8000 == 0 && !known3(t) {
+		return true
+	}
+	return t&0x6000 == 0
+}
+
 // Header is the common packet header. Packet bodies follow it in the
 // packet's Body.
 type Header struct {
-	Type     uint8
-	RouterID netip.Addr
-	AreaID   netip.Addr
-	AuType   uint16
-	Auth     [8]byte // simple password; crypto: key ID, length, sequence
-	Body     []byte  // after the header, up to the packet length
-	Packet   []byte  // the whole packet (header + body), for auth checks
-	Trailer  []byte  // crypto: the digest after the packet
+	Version    byte
+	Type       uint8
+	RouterID   netip.Addr
+	AreaID     netip.Addr
+	AuType     uint16  // OSPFv2
+	Auth       [8]byte // OSPFv2 simple password; crypto: key ID, length, sequence
+	InstanceID uint8   // OSPFv3
+	Body       []byte  // after the header, up to the packet length
+	Packet     []byte  // the whole packet (header + body), for auth checks
+	Trailer    []byte  // OSPFv2 crypto: the digest after the packet
 }
 
 func addr4(b []byte) netip.Addr { return netip.AddrFrom4([4]byte(b[:4])) }
@@ -112,24 +164,41 @@ func put4(b []byte, a netip.Addr) {
 	}
 }
 
-// DecodeHeader parses and length-checks a packet (without verifying the
+// id4 is a 32-bit value (an OSPFv3 interface ID or LSID) as a dotted ID.
+func id4(v uint32) netip.Addr {
+	var b [4]byte
+	binary.BigEndian.PutUint32(b[:], v)
+	return netip.AddrFrom4(b)
+}
+
+func u32(a netip.Addr) uint32 { return binary.BigEndian.Uint32(a.AsSlice()) }
+
+// decodeHeader parses and length-checks a packet (without verifying the
 // checksum or authentication).
-func DecodeHeader(b []byte) (*Header, error) {
-	if len(b) < headerLen {
+func (c codec) decodeHeader(b []byte) (*Header, error) {
+	hl := c.headerLen()
+	if len(b) < hl {
 		return nil, errors.New("short packet")
 	}
-	if b[0] != 2 {
+	if b[0] != c.version() {
 		return nil, fmt.Errorf("version %d", b[0])
 	}
 	n := int(binary.BigEndian.Uint16(b[2:]))
-	if n < headerLen || n > len(b) {
+	if n < hl || n > len(b) {
 		return nil, fmt.Errorf("bad length %d", n)
 	}
-	h := &Header{Type: b[1], RouterID: addr4(b[4:]), AreaID: addr4(b[8:]), AuType: binary.BigEndian.Uint16(b[14:]),
-		Body: b[headerLen:n], Packet: b[:n], Trailer: b[n:]}
-	copy(h.Auth[:], b[16:24])
+	h := &Header{Version: b[0], Type: b[1], RouterID: addr4(b[4:]), AreaID: addr4(b[8:]), Body: b[hl:n], Packet: b[:n], Trailer: b[n:]}
+	if c.v3 {
+		h.InstanceID = b[14]
+	} else {
+		h.AuType = binary.BigEndian.Uint16(b[14:])
+		copy(h.Auth[:], b[16:24])
+	}
 	return h, nil
 }
+
+// DecodeHeader parses an OSPFv2 packet header.
+func DecodeHeader(b []byte) (*Header, error) { return codec{}.decodeHeader(b) }
 
 // checksumOK verifies the IP-style checksum over the packet, excluding the
 // authentication field (null and simple auth only).
@@ -142,38 +211,56 @@ func checksumOK(p []byte) bool {
 	return pkt.Checksum(c, 0) == 0
 }
 
-// encodeHeader writes a packet: header + body, checksum unless crypto
-// authenticated (the caller signs it afterwards).
-func encodeHeader(typ uint8, rid, area netip.Addr, body []byte) []byte {
-	b := make([]byte, headerLen+len(body))
-	b[0], b[1] = 2, typ
+// encodeHeader writes a packet: header + body. The OSPFv2 checksum and
+// authentication are added by sign, the OSPFv3 checksum (over the IPv6
+// pseudo-header) when the addresses are known.
+func (c codec) encodeHeader(typ uint8, rid, area netip.Addr, instance uint8, body []byte) []byte {
+	hl := c.headerLen()
+	b := make([]byte, hl+len(body))
+	b[0], b[1] = c.version(), typ
 	binary.BigEndian.PutUint16(b[2:], uint16(len(b)))
 	put4(b[4:], rid)
 	put4(b[8:], area)
-	copy(b[headerLen:], body)
+	if c.v3 {
+		b[14] = instance
+	}
+	copy(b[hl:], body)
 	return b
+}
+
+func encodeHeader(typ uint8, rid, area netip.Addr, body []byte) []byte {
+	return codec{}.encodeHeader(typ, rid, area, 0, body)
 }
 
 // ---- hello ----
 
 type Hello struct {
-	Mask      netip.Addr
+	IfID      uint32     // OSPFv3
+	Mask      netip.Addr // OSPFv2
 	Interval  uint16
-	Options   uint8
+	Options   uint32
 	Priority  uint8
 	Dead      uint32
-	DR, BDR   netip.Addr
+	DR, BDR   netip.Addr // OSPFv2: interface addresses; OSPFv3: router IDs
 	Neighbors []netip.Addr
 }
 
 var zero4 = netip.AddrFrom4([4]byte{})
 
-func (h Hello) Encode() []byte {
+func (c codec) encodeHello(h Hello) []byte {
 	b := make([]byte, 20+4*len(h.Neighbors))
-	put4(b, h.Mask)
-	binary.BigEndian.PutUint16(b[4:], h.Interval)
-	b[6], b[7] = h.Options, h.Priority
-	binary.BigEndian.PutUint32(b[8:], h.Dead)
+	if c.v3 {
+		binary.BigEndian.PutUint32(b, h.IfID)
+		binary.BigEndian.PutUint32(b[4:], h.Options&0xffffff)
+		b[4] = h.Priority
+		binary.BigEndian.PutUint16(b[8:], h.Interval)
+		binary.BigEndian.PutUint16(b[10:], uint16(h.Dead))
+	} else {
+		put4(b, h.Mask)
+		binary.BigEndian.PutUint16(b[4:], h.Interval)
+		b[6], b[7] = byte(h.Options), h.Priority
+		binary.BigEndian.PutUint32(b[8:], h.Dead)
+	}
 	put4(b[12:], h.DR)
 	put4(b[16:], h.BDR)
 	for i, n := range h.Neighbors {
@@ -182,61 +269,97 @@ func (h Hello) Encode() []byte {
 	return b
 }
 
-func DecodeHello(b []byte) (*Hello, error) {
+func (c codec) decodeHello(b []byte) (*Hello, error) {
 	if len(b) < 20 || (len(b)-20)%4 != 0 {
 		return nil, errors.New("bad hello length")
 	}
-	h := &Hello{Mask: addr4(b), Interval: binary.BigEndian.Uint16(b[4:]), Options: b[6], Priority: b[7],
-		Dead: binary.BigEndian.Uint32(b[8:]), DR: addr4(b[12:]), BDR: addr4(b[16:])}
+	var h Hello
+	if c.v3 {
+		h = Hello{IfID: binary.BigEndian.Uint32(b), Priority: b[4], Options: binary.BigEndian.Uint32(b[4:]) & 0xffffff,
+			Interval: binary.BigEndian.Uint16(b[8:]), Dead: uint32(binary.BigEndian.Uint16(b[10:]))}
+	} else {
+		h = Hello{Mask: addr4(b), Interval: binary.BigEndian.Uint16(b[4:]), Options: uint32(b[6]), Priority: b[7],
+			Dead: binary.BigEndian.Uint32(b[8:])}
+	}
+	h.DR, h.BDR = addr4(b[12:]), addr4(b[16:])
 	for i := 20; i < len(b); i += 4 {
 		h.Neighbors = append(h.Neighbors, addr4(b[i:]))
 	}
-	return h, nil
+	return &h, nil
 }
+
+func (h Hello) Encode() []byte             { return codec{}.encodeHello(h) }
+func DecodeHello(b []byte) (*Hello, error) { return codec{}.decodeHello(b) }
 
 // ---- database description ----
 
 type DBD struct {
 	MTU     uint16
-	Options uint8
+	Options uint32
 	Flags   uint8
 	Seq     uint32
 	Headers []LSAHeader
 }
 
-func (d DBD) Encode() []byte {
-	b := make([]byte, 8, 8+lsaHeaderLen*len(d.Headers))
-	binary.BigEndian.PutUint16(b, d.MTU)
-	b[2], b[3] = d.Options, d.Flags
-	binary.BigEndian.PutUint32(b[4:], d.Seq)
+func (c codec) dbdLen() int {
+	if c.v3 {
+		return 12
+	}
+	return 8
+}
+
+func (c codec) encodeDBD(d DBD) []byte {
+	n := c.dbdLen()
+	b := make([]byte, n, n+lsaHeaderLen*len(d.Headers))
+	if c.v3 {
+		binary.BigEndian.PutUint32(b, d.Options&0xffffff)
+		binary.BigEndian.PutUint16(b[4:], d.MTU)
+		b[7] = d.Flags
+		binary.BigEndian.PutUint32(b[8:], d.Seq)
+	} else {
+		binary.BigEndian.PutUint16(b, d.MTU)
+		b[2], b[3] = byte(d.Options), d.Flags
+		binary.BigEndian.PutUint32(b[4:], d.Seq)
+	}
 	for _, h := range d.Headers {
-		b = h.append(b)
+		b = c.appendLSAHeader(b, h)
 	}
 	return b
 }
 
-func DecodeDBD(b []byte) (*DBD, error) {
-	if len(b) < 8 || (len(b)-8)%lsaHeaderLen != 0 {
+func (c codec) decodeDBD(b []byte) (*DBD, error) {
+	n := c.dbdLen()
+	if len(b) < n || (len(b)-n)%lsaHeaderLen != 0 {
 		return nil, errors.New("bad DBD length")
 	}
-	d := &DBD{MTU: binary.BigEndian.Uint16(b), Options: b[2], Flags: b[3], Seq: binary.BigEndian.Uint32(b[4:])}
-	for i := 8; i < len(b); i += lsaHeaderLen {
-		d.Headers = append(d.Headers, decodeLSAHeader(b[i:]))
+	var d DBD
+	if c.v3 {
+		d = DBD{Options: binary.BigEndian.Uint32(b) & 0xffffff, MTU: binary.BigEndian.Uint16(b[4:]), Flags: b[7], Seq: binary.BigEndian.Uint32(b[8:])}
+	} else {
+		d = DBD{MTU: binary.BigEndian.Uint16(b), Options: uint32(b[2]), Flags: b[3], Seq: binary.BigEndian.Uint32(b[4:])}
 	}
-	return d, nil
+	for i := n; i < len(b); i += lsaHeaderLen {
+		d.Headers = append(d.Headers, c.lsaHeader(b[i:]))
+	}
+	return &d, nil
 }
+
+func (d DBD) Encode() []byte           { return codec{}.encodeDBD(d) }
+func DecodeDBD(b []byte) (*DBD, error) { return codec{}.decodeDBD(b) }
 
 // ---- link state request / ack ----
 
-// LSAKey identifies an LSA.
+// LSAKey identifies an LSA. Link is set for link-scoped LSAs: the
+// interface (index + 1) whose link they belong to.
 type LSAKey struct {
-	Type   uint8
+	Type   uint16
 	ID     netip.Addr
 	AdvRtr netip.Addr
+	Link   int
 }
 
-func (k LSAKey) String() string { return fmt.Sprintf("%s %s %s", LSATypeName(k.Type), k.ID, k.AdvRtr) }
-
+// EncodeLSR writes request entries; the type is a 32-bit field in v2 and
+// reserved + 16-bit type in v3, the same bytes for the values used.
 func EncodeLSR(keys []LSAKey) []byte {
 	b := make([]byte, 12*len(keys))
 	for i, k := range keys {
@@ -253,26 +376,26 @@ func DecodeLSR(b []byte) ([]LSAKey, error) {
 	}
 	var out []LSAKey
 	for i := 0; i < len(b); i += 12 {
-		out = append(out, LSAKey{Type: uint8(binary.BigEndian.Uint32(b[i:])), ID: addr4(b[i+4:]), AdvRtr: addr4(b[i+8:])})
+		out = append(out, LSAKey{Type: uint16(binary.BigEndian.Uint32(b[i:])), ID: addr4(b[i+4:]), AdvRtr: addr4(b[i+8:])})
 	}
 	return out, nil
 }
 
-func EncodeAck(hs []LSAHeader) []byte {
+func (c codec) encodeAck(hs []LSAHeader) []byte {
 	b := make([]byte, 0, lsaHeaderLen*len(hs))
 	for _, h := range hs {
-		b = h.append(b)
+		b = c.appendLSAHeader(b, h)
 	}
 	return b
 }
 
-func DecodeAck(b []byte) ([]LSAHeader, error) {
+func (c codec) decodeAck(b []byte) ([]LSAHeader, error) {
 	if len(b)%lsaHeaderLen != 0 {
 		return nil, errors.New("bad ack length")
 	}
 	var out []LSAHeader
 	for i := 0; i < len(b); i += lsaHeaderLen {
-		out = append(out, decodeLSAHeader(b[i:]))
+		out = append(out, c.lsaHeader(b[i:]))
 	}
 	return out, nil
 }
@@ -319,8 +442,8 @@ func DecodeLSU(b []byte) ([][]byte, error) {
 
 type LSAHeader struct {
 	Age      uint16
-	Options  uint8
-	Type     uint8
+	Options  uint8 // OSPFv2
+	Type     uint16
 	ID       netip.Addr
 	AdvRtr   netip.Addr
 	Seq      uint32
@@ -328,17 +451,28 @@ type LSAHeader struct {
 	Length   uint16
 }
 
-func (h LSAHeader) Key() LSAKey { return LSAKey{h.Type, h.ID, h.AdvRtr} }
+// Key is the LSA's identity; link-scoped LSAs also need their link set.
+func (h LSAHeader) Key() LSAKey { return LSAKey{Type: h.Type, ID: h.ID, AdvRtr: h.AdvRtr} }
 
-func decodeLSAHeader(b []byte) LSAHeader {
-	return LSAHeader{Age: binary.BigEndian.Uint16(b), Options: b[2], Type: b[3], ID: addr4(b[4:]), AdvRtr: addr4(b[8:]),
+func (c codec) lsaHeader(b []byte) LSAHeader {
+	h := LSAHeader{Age: binary.BigEndian.Uint16(b), ID: addr4(b[4:]), AdvRtr: addr4(b[8:]),
 		Seq: binary.BigEndian.Uint32(b[12:]), Checksum: binary.BigEndian.Uint16(b[16:]), Length: binary.BigEndian.Uint16(b[18:])}
+	if c.v3 {
+		h.Type = binary.BigEndian.Uint16(b[2:])
+	} else {
+		h.Options, h.Type = b[2], uint16(b[3])
+	}
+	return h
 }
 
-func (h LSAHeader) append(b []byte) []byte {
+func (c codec) appendLSAHeader(b []byte, h LSAHeader) []byte {
 	var x [lsaHeaderLen]byte
 	binary.BigEndian.PutUint16(x[:], h.Age)
-	x[2], x[3] = h.Options, h.Type
+	if c.v3 {
+		binary.BigEndian.PutUint16(x[2:], h.Type)
+	} else {
+		x[2], x[3] = h.Options, byte(h.Type)
+	}
 	put4(x[4:], h.ID)
 	put4(x[8:], h.AdvRtr)
 	binary.BigEndian.PutUint32(x[12:], h.Seq)
@@ -347,25 +481,28 @@ func (h LSAHeader) append(b []byte) []byte {
 	return append(b, x[:]...)
 }
 
-// LSAHeaderOf parses an encoded LSA's header.
-func LSAHeaderOf(l []byte) LSAHeader { return decodeLSAHeader(l) }
+// buildLSA assembles an LSA: header fields from h (age, options, type,
+// IDs, sequence) and the body, with the length and checksum filled in.
+func (c codec) buildLSA(h LSAHeader, body []byte) []byte {
+	h.Length = uint16(lsaHeaderLen + len(body))
+	h.Checksum = 0
+	b := c.appendLSAHeader(make([]byte, 0, int(h.Length)), h)
+	b = append(b, body...)
+	binary.BigEndian.PutUint16(b[16:], pkt.Fletcher(b[2:], 14))
+	return b
+}
+
+// OSPFv2 forms.
+func LSAHeaderOf(l []byte) LSAHeader           { return codec{}.lsaHeader(l) }
+func BuildLSA(h LSAHeader, body []byte) []byte { return codec{}.buildLSA(h, body) }
+func EncodeAck(hs []LSAHeader) []byte          { return codec{}.encodeAck(hs) }
+func DecodeAck(b []byte) ([]LSAHeader, error)  { return codec{}.decodeAck(b) }
 
 // SetAge writes an LSA's age (the checksum doesn't cover it).
 func SetAge(l []byte, age uint16) { binary.BigEndian.PutUint16(l, age) }
 
 // LSAChecksumOK verifies an LSA's Fletcher checksum (over all but the age).
 func LSAChecksumOK(l []byte) bool { return pkt.FletcherOK(l[2:]) }
-
-// BuildLSA assembles an LSA: header fields from h (age, options, type, IDs,
-// sequence) and the body, with the length and checksum filled in.
-func BuildLSA(h LSAHeader, body []byte) []byte {
-	h.Length = uint16(lsaHeaderLen + len(body))
-	h.Checksum = 0
-	b := h.append(make([]byte, 0, int(h.Length)))
-	b = append(b, body...)
-	binary.BigEndian.PutUint16(b[16:], pkt.Fletcher(b[2:], 14))
-	return b
-}
 
 // Compare tells which of two instances of an LSA is newer (RFC 2328
 // 13.1): 1 when a is, -1 when b is, 0 when they are the same instance.

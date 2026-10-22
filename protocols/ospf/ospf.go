@@ -1,4 +1,6 @@
-// Package ospf is an emulated OSPFv2 router (RFC 2328) in one area, with
+// Package ospf is an emulated OSPFv2 (RFC 2328) or OSPFv3 (RFC 5340,
+// type ospfv3; the version differences are mostly in packet3.go and
+// orig3.go) router in one area, with
 // one or more interfaces (iface.go), each point-to-point or broadcast (DR
 // and BDR election): neighbor state machine and database exchange
 // (nbr.go), flooding with retransmission, ageing and refresh (lsdb.go),
@@ -9,6 +11,7 @@ package ospf
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net/netip"
@@ -18,11 +21,18 @@ import (
 
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/protocol"
+	"github.com/ripnet/clabgen/internal/topogen"
 )
 
-const TypeName = "ospf"
+const (
+	TypeName   = "ospf"
+	TypeNameV3 = "ospfv3"
+)
 
-func init() { protocol.Register(ospfType{}) }
+func init() {
+	protocol.Register(ospfType{})
+	protocol.Register(ospf3Type{})
+}
 
 type ospfType struct{}
 
@@ -30,15 +40,29 @@ func (ospfType) Name() string { return TypeName }
 func (ospfType) Description() string {
 	return "OSPFv2 router with one or more interfaces (point-to-point or broadcast with DR/BDR): adjacencies, LSDB sync and flooding, router/network LSAs, route injection (external or stub), flap/cost/max-metric actions"
 }
-func (ospfType) NewConfig() any       { return defaultConfig() }
-func (ospfType) EtherTypes() []uint16 { return []uint16{pkt.EtherTypeIPv4} }
-func (ospfType) Actions() []protocol.Action {
+func (ospfType) NewConfig() any             { return defaultConfig() }
+func (ospfType) EtherTypes() []uint16       { return []uint16{pkt.EtherTypeIPv4} }
+func (ospfType) Actions() []protocol.Action { return actions() }
+
+type ospf3Type struct{}
+
+func (ospf3Type) Name() string { return TypeNameV3 }
+func (ospf3Type) Description() string {
+	return "OSPFv3 (IPv6) router with one or more interfaces (point-to-point or broadcast with DR/BDR): adjacencies, LSDB sync and flooding, router/network/link/intra-area-prefix LSAs, route injection (external or internal), flap/cost/max-metric actions"
+}
+func (ospf3Type) NewConfig() any             { return defaultConfigV3() }
+func (ospf3Type) EtherTypes() []uint16       { return []uint16{pkt.EtherTypeIPv6} }
+func (ospf3Type) Actions() []protocol.Action { return actions() }
+
+func actions() []protocol.Action {
 	return []protocol.Action{
 		{Name: "max-metric", Description: "Set or clear max-metric (stub router, RFC 6987): transit links at 65535", NewArgs: func() any { return &MaxMetricArgs{Set: true} }},
 		{Name: "cost", Description: "Change an interface's cost (default: every interface)", NewArgs: func() any { return &CostArgs{Cost: 10} }},
 		{Name: "advertise", Description: "Advertise more prefixes (until withdrawn or restarted)", NewArgs: func() any { return &PrefixArgs{} }},
 		{Name: "withdraw", Description: "Stop advertising prefixes (injected or from config)", NewArgs: func() any { return &PrefixArgs{} }},
 		{Name: "flap", Description: "Bring adjacencies down for a while (one interface or all), then let them come back", NewArgs: func() any { return &FlapArgs{Seconds: 10, Mode: "reset"} }},
+		{Name: "topology-link", Description: "Take a simulated link down or up, or change its cost", NewArgs: func() any { return &TopoLinkArgs{} }},
+		{Name: "topology-node", Description: "Take a simulated router down or up, or set max-metric on its links", NewArgs: func() any { return &TopoNodeArgs{} }},
 		{Name: "lsa", Description: "Show one LSA's content", NewArgs: func() any { return &LSAArgs{} }},
 		{Name: "clear", Description: "Reset counters"},
 	}
@@ -60,7 +84,7 @@ type FlapArgs struct {
 	Interface string `json:"interface,omitempty" jsonschema:"description=Device name; empty: every interface"`
 }
 type LSAArgs struct {
-	Type   string `json:"type" jsonschema:"enum=router,enum=network,enum=summary,enum=asbr-summary,enum=external,description=LSA type"`
+	Type   string `json:"type" jsonschema:"description=LSA type as the LSDB lists it: router / network / external, summary (v2), link / intra-area-prefix (v3)"`
 	ID     string `json:"id" jsonschema:"description=Link state ID"`
 	AdvRtr string `json:"adv_router,omitempty" jsonschema:"description=Advertising router. Default: the only match"`
 }
@@ -84,18 +108,23 @@ func (a *PrefixArgs) Validate() error {
 		return fmt.Errorf("at least one prefix")
 	}
 	for _, p := range a.Prefixes {
-		if _, err := p.expand(); err != nil {
-			return err
+		// Either family here; the session checks its own.
+		if _, err := p.expand(false); err != nil {
+			if _, err6 := p.expand(true); err6 != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
 type session struct {
-	env  protocol.Env
-	cfg  Config
-	rid  netip.Addr
-	area netip.Addr
+	env      protocol.Env
+	cfg      Config
+	cd       codec
+	rid      netip.Addr
+	area     netip.Addr
+	instance uint8 // OSPFv3
 
 	mu        sync.Mutex
 	sendMu    sync.Mutex // keeps packets in sequence-number order (MD5)
@@ -112,6 +141,11 @@ type session struct {
 	rxmt      time.Duration
 	refresh   time.Duration
 
+	topo    *topology               // simulated routers behind us (nil: none)
+	boot    uint64                  // OSPFv3 auth: high half of our sequence numbers
+	extIDs  map[netip.Prefix]uint32 // OSPFv3 external LSIDs, stable per prefix
+	nextExt uint32
+
 	stop chan struct{}
 	done chan struct{}
 }
@@ -126,20 +160,29 @@ type outPkt struct {
 }
 
 func (ospfType) Start(env protocol.Env, c any) (protocol.Session, error) {
-	cfg := *c.(*Config)
-	s := &session{env: env, cfg: cfg, db: map[LSAKey]*lsa{}, routes: map[netip.Prefix]route{}, maxMetric: cfg.MaxMetric,
+	return start(env, *c.(*Config), codec{}, 0)
+}
+
+func (ospf3Type) Start(env protocol.Env, c any) (protocol.Session, error) {
+	cfg := c.(*ConfigV3)
+	return start(env, cfg.common(), codec{v3: true}, cfg.InstanceID)
+}
+
+func start(env protocol.Env, cfg Config, cd codec, instance uint8) (protocol.Session, error) {
+	s := &session{env: env, cfg: cfg, cd: cd, instance: instance, extIDs: map[netip.Prefix]uint32{}, boot: uint64(time.Now().Unix()),
+		db: map[LSAKey]*lsa{}, routes: map[netip.Prefix]route{}, maxMetric: cfg.MaxMetric,
 		counters: map[string]uint64{}, dirty: true, ipID: uint16(rand.Intn(65536)),
 		rxmt: time.Duration(cfg.RetransmitInterval) * time.Second, refresh: time.Duration(cfg.LSARefresh) * time.Second,
 		stop: make(chan struct{}), done: make(chan struct{})}
 	s.area, _ = ParseArea(cfg.Area)
 	for _, l := range cfg.Loopbacks {
-		p, _ := parseLoopback(l)
+		p, _ := parseLoopback(l, cd.v3)
 		s.loopbacks = append(s.loopbacks, p)
 	}
 	switch {
 	case cfg.RouterID != "":
 		s.rid = netip.MustParseAddr(cfg.RouterID)
-	case len(s.loopbacks) > 0:
+	case len(s.loopbacks) > 0 && !cd.v3:
 		s.rid = s.loopbacks[0].Addr()
 	default:
 		if ip := env.IP(); ip != nil {
@@ -155,10 +198,17 @@ func (ospfType) Start(env protocol.Env, c any) (protocol.Session, error) {
 		return nil, fmt.Errorf("no router ID: set router_id, a loopback or an IPv4 address on the device")
 	}
 	for _, p := range cfg.Prefixes {
-		rs, _ := p.expand()
+		rs, _ := p.expand(cd.v3)
 		for _, r := range rs {
 			s.routes[r.prefix] = r
 		}
+	}
+	if k := cfg.Topology.Kind; k != "" && k != "none" {
+		t, err := buildTopology(cfg.Topology, s.rid, cd.v3)
+		if err != nil {
+			return nil, fmt.Errorf("topology: %w", err)
+		}
+		s.topo = t
 	}
 	first := Interface{Device: env.Device().Name(), Network: cfg.Network, Cost: cfg.Cost, Passive: cfg.Passive}
 	s.ifs = []*iface{s.newIface(0, first)}
@@ -265,7 +315,7 @@ func (s *session) flush(out []outPkt) {
 	for _, o := range out {
 		s.mu.Lock()
 		f := o.ifc
-		src, ok := s.ifAddrLocked(f)
+		src, ok := s.ifSourceLocked(f)
 		send := s.env.Send
 		if f.idx != 0 {
 			if f.att == nil {
@@ -276,19 +326,32 @@ func (s *session) flush(out []outPkt) {
 		}
 		f.cryptoSeq++
 		seq := f.cryptoSeq
+		seq3 := s.boot<<32 | uint64(seq)
 		s.ipID++
 		id := s.ipID
 		s.mu.Unlock()
 		if !ok {
 			continue
 		}
-		p := sign(encodeHeader(o.typ, s.rid, s.area, o.body), f.auth, seq)
-		ip := pkt.IPv4{TOS: 0xc0, ID: id, TTL: 1, Protocol: ProtoOSPF, Src: src.Addr(), Dst: o.dst, Payload: p}
 		mac := o.mac
 		if o.dst.IsMulticast() {
 			mac = pkt.MulticastMAC(o.dst)
 		}
-		err := send(mac, pkt.EtherTypeIPv4, ip.Encode(), protocol.SendOpts{SetPCP: true, PCP: 6})
+		var err error
+		if s.cd.v3 {
+			p := s.cd.encodeHeader(o.typ, s.rid, s.area, s.instance, o.body)
+			if authType(f.auth) == AuthCrypto {
+				p = append(p, trailer3(p, src, f.auth, seq3)...) // checksum stays zero
+			} else {
+				binary.BigEndian.PutUint16(p[12:], pkt.Checksum(p, pkt.PseudoSum(src, o.dst, ProtoOSPF, len(p))))
+			}
+			ip := pkt.IPv6{TrafficClass: 0xc0, NextHeader: ProtoOSPF, HopLimit: 1, Src: src, Dst: o.dst, Payload: p}
+			err = send(mac, pkt.EtherTypeIPv6, ip.Encode(), protocol.SendOpts{SetPCP: true, PCP: 6})
+		} else {
+			p := sign(encodeHeader(o.typ, s.rid, s.area, o.body), f.auth, seq)
+			ip := pkt.IPv4{TOS: 0xc0, ID: id, TTL: 1, Protocol: ProtoOSPF, Src: src, Dst: o.dst, Payload: p}
+			err = send(mac, pkt.EtherTypeIPv4, ip.Encode(), protocol.SendOpts{SetPCP: true, PCP: 6})
+		}
 		s.mu.Lock()
 		if err != nil {
 			s.count("tx_errors")
@@ -302,8 +365,14 @@ func (s *session) flush(out []outPkt) {
 // maxBody is the room for a packet body on an interface.
 func (s *session) maxBody(f *iface) int {
 	n := s.cfg.MTU - 20 - headerLen
+	if s.cd.v3 {
+		n = s.cfg.MTU - 40 - header3Len
+	}
 	if authType(f.auth) == AuthCrypto {
-		n -= 16
+		n -= digestLen(f.auth)
+		if s.cd.v3 {
+			n -= at3Header
+		}
 	}
 	return n
 }
@@ -312,18 +381,39 @@ func (s *session) maxBody(f *iface) int {
 
 func (s *session) HandleRx(fr *pkt.Frame) { s.rx(s.ifs[0], fr) }
 
-func (s *session) rx(f *iface, fr *pkt.Frame) {
+// ipPacket is the IP layer of a received packet.
+type ipPacket struct {
+	src, dst netip.Addr
+	payload  []byte
+}
+
+func (s *session) decodeIP(fr *pkt.Frame) (ipPacket, bool) {
+	if s.cd.v3 {
+		ip, err := pkt.DecodeIPv6(fr.Payload)
+		if ip == nil || err != nil || ip.NextHeader != ProtoOSPF {
+			return ipPacket{}, false
+		}
+		return ipPacket{ip.Src, ip.Dst, ip.Payload}, true
+	}
 	ip, err := pkt.DecodeIPv4(fr.Payload)
 	if ip == nil || err != nil || ip.Protocol != ProtoOSPF {
-		return
+		return ipPacket{}, false
 	}
 	if ip.Flags&pkt.IPv4MF != 0 || ip.FragOff != 0 {
 		s.mu.Lock()
 		s.count("rx_fragments")
 		s.mu.Unlock()
+		return ipPacket{}, false
+	}
+	return ipPacket{ip.Src, ip.Dst, ip.Payload}, true
+}
+
+func (s *session) rx(f *iface, fr *pkt.Frame) {
+	ip, ok := s.decodeIP(fr)
+	if !ok {
 		return
 	}
-	h, err := DecodeHeader(ip.Payload)
+	h, err := s.cd.decodeHeader(ip.payload)
 	s.mu.Lock()
 	defer func() {
 		out := s.takeOutLocked()
@@ -333,13 +423,13 @@ func (s *session) rx(f *iface, fr *pkt.Frame) {
 	if f.state == ifDown || f.passive {
 		return
 	}
-	mine, ok := s.ifAddrLocked(f)
-	if !ok || ip.Src == mine.Addr() {
+	mine, ok := s.ifSourceLocked(f)
+	if !ok || ip.src == mine {
 		return
 	}
 	switch {
-	case ip.Dst == AllSPFRouters, ip.Dst == mine.Addr():
-	case ip.Dst == AllDRouters:
+	case ip.dst == s.allSPF(), ip.dst == mine:
+	case ip.dst == s.allDR():
 		if f.state != ifDR && f.state != ifBackup {
 			return
 		}
@@ -350,6 +440,10 @@ func (s *session) rx(f *iface, fr *pkt.Frame) {
 		s.count("rx_errors")
 		return
 	}
+	if s.cd.v3 && h.InstanceID != s.instance {
+		s.count("rx_other_instance")
+		return
+	}
 	if h.AreaID != s.area {
 		s.count("rx_area_mismatch")
 		return
@@ -358,25 +452,48 @@ func (s *session) rx(f *iface, fr *pkt.Frame) {
 		s.count("rx_own_router_id")
 		return
 	}
-	if !f.p2p && !mine.Contains(ip.Src) {
-		s.count("rx_wrong_subnet")
-		return
-	}
-	seq, crypto, err := verify(h, f.auth)
-	if err != nil {
-		s.count("rx_auth_failures")
-		f.authErr = err.Error()
-		return
+	var seq uint64
+	var crypto bool
+	if s.cd.v3 {
+		if authType(f.auth) == AuthCrypto {
+			if seq, err = verify3(h, ip.src, f.auth); err != nil {
+				s.count("rx_auth_failures")
+				f.authErr = err.Error()
+				return
+			}
+			crypto = true
+		} else if pkt.Checksum(h.Packet, pkt.PseudoSum(ip.src, ip.dst, ProtoOSPF, len(h.Packet))) != 0 {
+			s.count("rx_checksum_errors")
+			return
+		}
+	} else {
+		if p, ok := s.ifAddrLocked(f); !f.p2p && ok && !p.Contains(ip.src) {
+			s.count("rx_wrong_subnet")
+			return
+		}
+		var seq2 uint32
+		seq2, crypto, err = verify(h, f.auth)
+		seq = uint64(seq2)
+		if err != nil {
+			s.count("rx_auth_failures")
+			f.authErr = err.Error()
+			return
+		}
 	}
 	now := time.Now()
 	if h.Type == TypeHello {
-		hello, err := DecodeHello(h.Body)
+		hello, err := s.cd.decodeHello(h.Body)
 		if err != nil {
 			s.count("rx_errors")
 			return
 		}
+		if crypto && s.cd.v3 && hello.Options&OptAT == 0 {
+			s.count("rx_auth_failures")
+			f.authErr = "hello without the AT bit"
+			return
+		}
 		s.count("rx_hello")
-		s.rxHelloLocked(f, h, ip.Src, fr.Src, hello, seq, crypto, now)
+		s.rxHelloLocked(f, h, ip.src, fr.Src, hello, seq, crypto, now)
 		return
 	}
 	n := f.nbrs[h.RouterID]
@@ -384,18 +501,18 @@ func (s *session) rx(f *iface, fr *pkt.Frame) {
 		s.count("rx_unknown_neighbor")
 		return
 	}
-	if crypto {
-		if seq < n.cryptoSeq {
-			s.count("rx_auth_failures")
-			f.authErr = "sequence number went down"
-			return
-		}
-		n.cryptoSeq = seq
+	if crypto && !s.seqOKLocked(n, h.Type, seq) {
+		return
 	}
 	s.count("rx_" + typeNames[h.Type])
 	switch h.Type {
 	case TypeDBD:
-		if d, err := DecodeDBD(h.Body); err == nil {
+		if d, err := s.cd.decodeDBD(h.Body); err == nil {
+			if crypto && s.cd.v3 && d.Options&OptAT == 0 {
+				s.count("rx_auth_failures")
+				f.authErr = "DBD without the AT bit"
+				return
+			}
 			s.rxDBDLocked(n, d, now)
 		}
 	case TypeLSR:
@@ -409,7 +526,7 @@ func (s *session) rx(f *iface, fr *pkt.Frame) {
 			s.count("rx_errors")
 		}
 	case TypeAck:
-		if hs, err := DecodeAck(h.Body); err == nil {
+		if hs, err := s.cd.decodeAck(h.Body); err == nil {
 			s.rxAckLocked(n, hs)
 		}
 	}
@@ -430,6 +547,7 @@ type Status struct {
 	LSDB       []LSAStatus       `json:"lsdb"`
 	LSDBTotal  int               `json:"lsdb_total"`
 	LSDBTypes  map[string]int    `json:"lsdb_types"`
+	Topology   *topogen.Status   `json:"topology,omitempty"`
 	Counters   map[string]uint64 `json:"counters"`
 }
 
@@ -442,6 +560,7 @@ type LSAStatus struct {
 	Checksum string `json:"checksum"`
 	Length   int    `json:"length"`
 	Own      bool   `json:"own,omitempty"`
+	Link     string `json:"link,omitempty"` // link-scoped: the interface it belongs to
 	Summary  string `json:"summary,omitempty"`
 }
 
@@ -462,6 +581,9 @@ func (s *session) Status() any {
 	for _, p := range s.loopbacks {
 		st.Loopbacks = append(st.Loopbacks, p.String())
 	}
+	if s.topo != nil {
+		st.Topology = s.topo.status()
+	}
 	for k, v := range s.counters {
 		st.Counters[k] = v
 	}
@@ -474,8 +596,8 @@ func (s *session) Status() any {
 	keys := make([]LSAKey, 0, len(s.db))
 	for k, l := range s.db {
 		keys = append(keys, k)
-		st.LSDBTypes[LSATypeName(k.Type)]++
-		if l.own && k.Type == LSAExternal {
+		st.LSDBTypes[s.cd.typeName(k.Type)]++
+		if l.own && (k.Type == LSAExternal && !s.cd.v3 || k.Type == LSA3External && s.cd.v3) {
 			st.ASBR = true
 		}
 	}
@@ -484,7 +606,7 @@ func (s *session) Status() any {
 		if i == maxStatusLSAs {
 			break
 		}
-		st.LSDB = append(st.LSDB, s.db[k].status(now))
+		st.LSDB = append(st.LSDB, s.lsaStatus(s.db[k], now))
 	}
 	return st
 }
@@ -576,7 +698,10 @@ func (s *session) Action(_ context.Context, name string, args any) (any, error) 
 		a := args.(*PrefixArgs)
 		n := 0
 		for _, p := range a.Prefixes {
-			rs, _ := p.expand()
+			rs, err := p.expand(s.cd.v3)
+			if err != nil {
+				return nil, err
+			}
 			for _, r := range rs {
 				_, had := s.routes[r.prefix]
 				if name == "advertise" {
@@ -616,6 +741,10 @@ func (s *session) Action(_ context.Context, name string, args any) (any, error) 
 		return map[string]any{"interfaces": len(fs), "until": now.Add(time.Duration(a.Seconds) * time.Second).Format(time.RFC3339)}, nil
 	case "lsa":
 		return s.lsaDetailLocked(args.(*LSAArgs), now)
+	case "topology-link":
+		return s.topoLinkLocked(args.(*TopoLinkArgs))
+	case "topology-node":
+		return s.topoNodeLocked(args.(*TopoNodeArgs))
 	}
 	return nil, fmt.Errorf("unknown action %q", name)
 }

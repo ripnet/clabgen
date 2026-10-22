@@ -15,6 +15,7 @@ import (
 // lsa is one LSDB entry: the LSA as received or originated, with its age
 // at rxAt.
 type lsa struct {
+	key     LSAKey
 	raw     []byte
 	hdr     LSAHeader
 	rxAt    time.Time
@@ -51,10 +52,10 @@ func (l *lsa) body() []byte { return l.raw[lsaHeaderLen:] }
 // isSelf: originated by this router (or a network LSA for one of our
 // interface addresses).
 func (s *session) isSelfLocked(h LSAHeader) bool {
-	if h.AdvRtr == s.rid {
+	if h.AdvRtr == s.rid || s.topo != nil && s.topo.byRID[h.AdvRtr] != nil {
 		return true
 	}
-	if h.Type == LSANetwork {
+	if h.Type == LSANetwork && !s.cd.v3 {
 		for _, f := range s.ifs {
 			if a, ok := s.ifAddrLocked(f); ok && a.Addr() == h.ID {
 				return true
@@ -64,11 +65,11 @@ func (s *session) isSelfLocked(h LSAHeader) bool {
 	return false
 }
 
-func (s *session) installLocked(raw []byte, now time.Time, own bool) *lsa {
-	h := LSAHeaderOf(raw)
-	l := &lsa{raw: raw, hdr: h, rxAt: now, age: h.Age, own: own, flooded: h.Age >= MaxAge}
+func (s *session) installLocked(k LSAKey, raw []byte, now time.Time, own bool) *lsa {
+	h := s.cd.lsaHeader(raw)
+	l := &lsa{key: k, raw: raw, hdr: h, rxAt: now, age: h.Age, own: own, flooded: h.Age >= MaxAge}
 	l.hdr.Age = 0
-	s.db[h.Key()] = l
+	s.db[k] = l
 	return l
 }
 
@@ -84,12 +85,12 @@ func (s *session) rxLSULocked(n *nbr, lsas [][]byte, now time.Time) {
 			s.count("rx_lsa_checksum_errors")
 			continue
 		}
-		h := LSAHeaderOf(raw)
-		if !knownType(h.Type) {
+		h := s.cd.lsaHeader(raw)
+		if !s.cd.known(h.Type) {
 			s.count("rx_lsa_unknown_type")
 			continue
 		}
-		k := h.Key()
+		k := s.keyFor(f, h)
 		db := s.db[k]
 		if h.Age >= MaxAge && db == nil && !s.exchangingLocked() {
 			s.directAckLocked(n, h)
@@ -111,7 +112,7 @@ func (s *session) rxLSULocked(n *nbr, lsas [][]byte, now time.Time) {
 			for _, x := range s.allNbrs() {
 				delete(x.rxmt, k)
 			}
-			l := s.installLocked(raw, now, false)
+			l := s.installLocked(k, raw, now, false)
 			s.count("rx_lsa_new")
 			if self {
 				s.selfOriginatedLocked(l, now)
@@ -119,7 +120,7 @@ func (s *session) rxLSULocked(n *nbr, lsas [][]byte, now time.Time) {
 				continue
 			}
 			back := s.floodLocked(l, n, now)
-			if !back && !(f.state == ifBackup && n.addr != f.dr) {
+			if !back && !(f.state == ifBackup && n.id != f.dr) {
 				s.delayAckLocked(f, h, now)
 			}
 			continue
@@ -133,7 +134,7 @@ func (s *session) rxLSULocked(n *nbr, lsas [][]byte, now time.Time) {
 			s.count("rx_lsa_duplicate")
 			if n.rxmt[k] {
 				delete(n.rxmt, k) // implied acknowledgement
-				if f.state == ifBackup && n.addr == f.dr {
+				if f.state == ifBackup && n.id == f.dr {
 					s.delayAckLocked(f, h, now)
 				}
 			} else {
@@ -148,13 +149,20 @@ func (s *session) rxLSULocked(n *nbr, lsas [][]byte, now time.Time) {
 		}
 		s.sendLSUsLocked(f, n.addr, n.mac, [][]byte{db.wire(now)})
 	}
+	// Requests can also be met by copies from other neighbors.
+	for _, x := range s.allNbrs() {
+		s.loadingDoneLocked(x, now)
+	}
+}
+
+func (s *session) loadingDoneLocked(n *nbr, now time.Time) {
 	if n.state == nLoading && len(n.req) == 0 {
 		s.setNbrLocked(n, nFull, now, "loading done")
 	}
 }
 
 func (s *session) directAckLocked(n *nbr, h LSAHeader) {
-	s.queue(n.ifc, n.addr, n.mac, TypeAck, EncodeAck([]LSAHeader{h}))
+	s.queue(n.ifc, n.addr, n.mac, TypeAck, s.cd.encodeAck([]LSAHeader{h}))
 }
 
 func (s *session) allNbrs() []*nbr {
@@ -180,10 +188,10 @@ func (s *session) exchangingLocked() bool {
 // floodLocked sends an LSA out of every interface that needs it (RFC 2328
 // 13.3) and reports whether it went back out of the one it came in on.
 func (s *session) floodLocked(l *lsa, from *nbr, now time.Time) bool {
-	k := l.hdr.Key()
+	k := l.key
 	back := false
 	for _, f := range s.ifs {
-		if f.state == ifDown || f.passive {
+		if f.state == ifDown || f.passive || (k.Link != 0 && k.Link != f.idx+1) {
 			continue
 		}
 		added := false
@@ -216,12 +224,12 @@ func (s *session) floodLocked(l *lsa, from *nbr, now time.Time) bool {
 			continue
 		}
 		if from != nil && f == from.ifc {
-			if from.addr == f.dr || from.addr == f.bdr || f.state == ifBackup {
+			if from.id == f.dr || from.id == f.bdr || f.state == ifBackup {
 				continue
 			}
 			back = true
 		}
-		s.sendLSUsLocked(f, f.floodDst(), pkt.MAC{}, [][]byte{l.wire(now)})
+		s.sendLSUsLocked(f, s.floodDst(f), pkt.MAC{}, [][]byte{l.wire(now)})
 	}
 	return back
 }
@@ -289,6 +297,9 @@ type want struct {
 
 // desiredLocked lists the LSAs we should originate now.
 func (s *session) desiredLocked() map[LSAKey]want {
+	if s.cd.v3 {
+		return s.desired3Locked()
+	}
 	out := map[LSAKey]want{}
 	var links []RouterLink
 	flags := uint8(0)
@@ -320,7 +331,7 @@ func (s *session) desiredLocked() map[LSAKey]want {
 		for _, n := range f.nbrs {
 			if n.state == nFull {
 				full++
-				if n.addr == f.dr {
+				if n.id == f.dr {
 					drFull = true
 				}
 			}
@@ -343,6 +354,10 @@ func (s *session) desiredLocked() map[LSAKey]want {
 	}
 	for _, p := range s.loopbacks {
 		links = append(links, RouterLink{ID: p.Masked().Addr(), Data: MaskOf(p.Bits()), Type: LinkStub, Metric: 0})
+	}
+	if s.topo != nil {
+		links = append(links, s.topo.ourLinks2(s)...)
+		s.topo.desiredLocked(s, out)
 	}
 	var ext []route
 	for _, r := range s.routes {
@@ -398,7 +413,7 @@ func (s *session) originateLocked(now time.Time) {
 		}
 		h := d.hdr
 		h.Seq = seq
-		l := s.installLocked(BuildLSA(h, d.body), now, true)
+		l := s.installLocked(k, s.cd.buildLSA(h, d.body), now, true)
 		for _, x := range s.allNbrs() {
 			delete(x.rxmt, k)
 		}
@@ -421,10 +436,19 @@ func (s *session) originateLocked(now time.Time) {
 
 // ---- status and detail ----
 
-func (l *lsa) status(now time.Time) LSAStatus {
+func (s *session) lsaStatus(l *lsa, now time.Time) LSAStatus {
 	h := l.hdr
-	return LSAStatus{Type: LSATypeName(h.Type), ID: h.ID.String(), AdvRtr: h.AdvRtr.String(), Seq: fmt.Sprintf("%#08x", h.Seq),
-		Age: int(l.ageAt(now)), Checksum: fmt.Sprintf("%#04x", h.Checksum), Length: int(h.Length), Own: l.own, Summary: l.summary()}
+	st := LSAStatus{Type: s.cd.typeName(h.Type), ID: h.ID.String(), AdvRtr: h.AdvRtr.String(), Seq: fmt.Sprintf("%#08x", h.Seq),
+		Age: int(l.ageAt(now)), Checksum: fmt.Sprintf("%#04x", h.Checksum), Length: int(h.Length), Own: l.own}
+	if s.cd.v3 {
+		st.Summary = summary3(h.Type, l.body())
+		if l.key.Link != 0 {
+			st.Link = s.ifs[l.key.Link-1].device
+		}
+	} else {
+		st.Summary = l.summary()
+	}
+	return st
 }
 
 func (l *lsa) summary() string {
@@ -485,12 +509,16 @@ func (l *lsa) summary() string {
 	return ""
 }
 
-var typeByName = map[string]uint8{"router": LSARouter, "network": LSANetwork, "summary": LSASummary, "asbr-summary": LSAASBRSummary, "external": LSAExternal}
-
 func (s *session) lsaDetailLocked(a *LSAArgs, now time.Time) (any, error) {
-	t, ok := typeByName[a.Type]
+	t, ok := uint16(0), false
+	for k := range s.db {
+		if s.cd.typeName(k.Type) == a.Type {
+			t, ok = k.Type, true
+			break
+		}
+	}
 	if !ok {
-		return nil, fmt.Errorf("unknown LSA type %q", a.Type)
+		return nil, fmt.Errorf("no LSAs of type %q", a.Type)
 	}
 	id, err := netip.ParseAddr(a.ID)
 	if err != nil {
@@ -513,8 +541,13 @@ func (s *session) lsaDetailLocked(a *LSAArgs, now time.Time) (any, error) {
 		return nil, fmt.Errorf("several advertising routers (%s): set adv_router", strings.Join(rs, ", "))
 	}
 	l := match[0]
-	out := map[string]any{"header": l.status(now), "options": fmt.Sprintf("%#02x", l.hdr.Options)}
+	out := map[string]any{"header": s.lsaStatus(l, now)}
 	b := l.body()
+	if s.cd.v3 {
+		detail3(t, b, out)
+		return out, nil
+	}
+	out["options"] = fmt.Sprintf("%#02x", l.hdr.Options)
 	switch t {
 	case LSARouter:
 		if r, err := DecodeRouterLSA(b); err == nil {
