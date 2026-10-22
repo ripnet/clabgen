@@ -33,12 +33,13 @@ const (
 	LSASummary     = 3
 	LSAASBRSummary = 4
 	LSAExternal    = 5
+	LSANSSA        = 7 // RFC 3101
 
 	// Options (the low bits are the same in both versions).
 	OptV6 = 0x01 // OSPFv3: take part in IPv6 routing
 	OptE  = 0x02 // external routing capable (not a stub area)
 	OptMC = 0x04
-	OptNP = 0x08
+	OptNP = 0x08 // N in hellos (NSSA), P in type-7 LSA headers (translate)
 	OptR  = 0x10 // OSPFv3: an active router
 	OptO  = 0x40 // OSPFv2: opaque LSAs
 
@@ -48,9 +49,10 @@ const (
 	DDMaster = 0x01
 
 	// Router LSA flags and link types.
-	RouterB = 0x01 // area border router
-	RouterE = 0x02 // AS boundary router
-	RouterV = 0x04
+	RouterB  = 0x01 // area border router
+	RouterE  = 0x02 // AS boundary router
+	RouterV  = 0x04
+	RouterNt = 0x10 // RFC 3101: an NSSA border router that always translates
 
 	LinkP2P     = 1
 	LinkTransit = 2
@@ -112,8 +114,14 @@ func (c codec) typeName(t uint16) string {
 		return "asbr-summary"
 	case LSAExternal:
 		return "external"
-	case 9, 10, 11:
-		return fmt.Sprintf("opaque-%d", t)
+	case LSANSSA:
+		return "nssa"
+	case LSAOpaqueLink:
+		return "opaque-link"
+	case LSAOpaqueArea:
+		return "opaque-area"
+	case LSAOpaqueAS:
+		return "opaque-as"
 	}
 	return fmt.Sprintf("type-%d", t)
 }
@@ -124,7 +132,7 @@ func (c codec) known(t uint16) bool {
 	if c.v3 {
 		return true
 	}
-	return t >= LSARouter && t <= LSAExternal || t >= 9 && t <= 11
+	return t >= LSARouter && t <= LSAExternal || t == LSANSSA || t >= 9 && t <= 11
 }
 
 // linkScope: LSAs flooded only on the link they came from (OSPFv2 opaque
@@ -356,6 +364,7 @@ type LSAKey struct {
 	ID     netip.Addr
 	AdvRtr netip.Addr
 	Link   int
+	Area   int // area-scoped (and link-scoped): the area (index + 1); 0: AS scope
 }
 
 // EncodeLSR writes request entries; the type is a 32-bit field in v2 and
@@ -451,7 +460,8 @@ type LSAHeader struct {
 	Length   uint16
 }
 
-// Key is the LSA's identity; link-scoped LSAs also need their link set.
+// Key is the LSA's identity; area- and link-scoped LSAs also need their
+// area and link set.
 func (h LSAHeader) Key() LSAKey { return LSAKey{Type: h.Type, ID: h.ID, AdvRtr: h.AdvRtr} }
 
 func (c codec) lsaHeader(b []byte) LSAHeader {
@@ -615,6 +625,13 @@ func DecodeNetworkLSA(body []byte) (*NetworkLSA, error) {
 type SummaryLSA struct {
 	Mask   netip.Addr
 	Metric uint32
+}
+
+func (x SummaryLSA) Encode() []byte {
+	b := make([]byte, 8)
+	put4(b, x.Mask)
+	binary.BigEndian.PutUint32(b[4:], x.Metric&0xffffff)
+	return b
 }
 
 func DecodeSummaryLSA(body []byte) (*SummaryLSA, error) {

@@ -22,6 +22,7 @@ type Topology struct {
 	Nodes  int      `json:"nodes,omitempty" jsonschema:"minimum=1,description=Node count for ring / line / full"`
 	Attach []string `json:"attach,omitempty" jsonschema:"description=Nodes linked to us (names like r1-1 for grids or r1). Default: the first node"`
 	Metric uint16   `json:"metric,omitempty" jsonschema:"description=Cost of every link. Default 10"`
+	Area   AreaID   `json:"area,omitempty" jsonschema:"description=Area of the simulated routers and our links to them. Default: the router's area; another one makes us an area border router"`
 
 	RouterIDBase    string `json:"router_id_base,omitempty" jsonschema:"description=Router ID of the first node; the others count up. Default 10.254.0.1"`
 	LoopbackBase    string `json:"loopback_base,omitempty" jsonschema:"description=Loopback of the first node (10.255.0.1/32, or 2001:db8:ff::1/128 for OSPFv3); the others count up"`
@@ -29,6 +30,15 @@ type Topology struct {
 	PrefixesPerNode int    `json:"prefixes_per_node,omitempty" jsonschema:"minimum=0,maximum=100"`
 
 	Custom []SimNode `json:"custom,omitempty" jsonschema:"description=Nodes for kind custom"`
+
+	NodeSIDBase  *uint32       `json:"node_sid_base,omitempty" jsonschema:"description=With segment routing (OSPFv2): node SID index of the first node's loopback; the others count up"`
+	FlexAlgoSIDs []AlgoSIDBase `json:"flex_algo_sids,omitempty" jsonschema:"description=Node SIDs per flex-algo for the simulated loopbacks"`
+	LinkDelayUS  uint32        `json:"link_delay_us,omitempty" jsonschema:"description=Delay of every simulated link in µs (flex-algo delay); custom links can override"`
+}
+
+type AlgoSIDBase struct {
+	Algorithm   byte    `json:"algorithm"`
+	NodeSIDBase *uint32 `json:"node_sid_base,omitempty"`
 }
 
 type SimNode struct {
@@ -39,8 +49,11 @@ type SimNode struct {
 }
 
 type SimLink struct {
-	To     string `json:"to"`
-	Metric uint16 `json:"metric,omitempty" jsonschema:"description=Default: the topology metric"`
+	To          string `json:"to"`
+	Metric      uint16 `json:"metric,omitempty" jsonschema:"description=Default: the topology metric"`
+	TEMetric    uint32 `json:"te_metric,omitempty" jsonschema:"description=Default: none"`
+	DelayUS     uint32 `json:"delay_us,omitempty" jsonschema:"description=Default: link_delay_us"`
+	AdminGroups []int  `json:"admin_groups,omitempty"`
 }
 
 const maxPerNode = 100 // a v2 router LSA has to fit one packet
@@ -195,8 +208,8 @@ func (t *topology) ourLinks3(s *session) []Router3Link {
 	return out
 }
 
-// desiredLocked adds the simulated routers' LSAs.
-func (t *topology) desiredLocked(s *session, out map[LSAKey]want) {
+// desiredLocked adds the simulated routers' LSAs (in area a).
+func (t *topology) desiredLocked(s *session, out map[LSAKey]want, a *area) {
 	for _, n := range t.nodes {
 		if n.v.Down {
 			continue
@@ -210,7 +223,7 @@ func (t *topology) desiredLocked(s *session, out map[LSAKey]want) {
 				}
 			}
 			h := LSAHeader{Type: LSA3Router, ID: zero4, AdvRtr: n.rid}
-			out[h.Key()] = want{h, Router3LSA{Options: options3, Links: links}.Encode()}
+			s.put(out, a, h, Router3LSA{Options: s.options(a), Links: links}.Encode())
 			var pfx []Prefix6
 			if n.loopback.IsValid() {
 				x := Prefix6{Prefix: n.loopback.Masked()}
@@ -222,9 +235,7 @@ func (t *topology) desiredLocked(s *session, out map[LSAKey]want) {
 			for _, r := range n.prefixes {
 				pfx = append(pfx, Prefix6{Prefix: r.prefix, Metric: uint16(r.metric)})
 			}
-			if len(pfx) > 0 {
-				addIntraPrefix(out, n.rid, pfx)
-			}
+			s.addIntraPrefix(out, a, n.rid, pfx)
 			continue
 		}
 		var links []RouterLink
@@ -239,14 +250,14 @@ func (t *topology) desiredLocked(s *session, out map[LSAKey]want) {
 		for _, r := range n.prefixes {
 			links = append(links, RouterLink{ID: r.prefix.Addr(), Data: MaskOf(r.prefix.Bits()), Type: LinkStub, Metric: uint16(r.metric)})
 		}
-		h := LSAHeader{Options: OptE, Type: LSARouter, ID: n.rid, AdvRtr: n.rid}
-		out[h.Key()] = want{h, RouterLSA{Links: links}.Encode()}
+		h := LSAHeader{Type: LSARouter, ID: n.rid, AdvRtr: n.rid}
+		s.put(out, a, h, RouterLSA{Links: links}.Encode())
 	}
 }
 
 // addIntraPrefix adds a router's intra-area-prefix LSAs (OSPFv3), in
 // chunks that each fit a packet.
-func addIntraPrefix(out map[LSAKey]want, rid netip.Addr, pfx []Prefix6) {
+func (s *session) addIntraPrefix(out map[LSAKey]want, a *area, rid netip.Addr, pfx []Prefix6) {
 	sort.Slice(pfx, func(i, j int) bool { return prefixLess(pfx[i].Prefix, pfx[j].Prefix) })
 	for i := 0; i < len(pfx); i += intraChunk {
 		id := uint32(0)
@@ -255,7 +266,7 @@ func addIntraPrefix(out map[LSAKey]want, rid netip.Addr, pfx []Prefix6) {
 		}
 		ip := IntraPrefixLSA{RefType: LSA3Router, RefID: zero4, RefAdvRtr: rid, Prefixes: pfx[i:min(i+intraChunk, len(pfx))]}
 		h := LSAHeader{Type: LSA3IntraPrefix, ID: id4(id), AdvRtr: rid}
-		out[h.Key()] = want{h, ip.Encode()}
+		s.put(out, a, h, ip.Encode())
 	}
 }
 

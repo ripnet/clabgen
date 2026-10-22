@@ -21,6 +21,7 @@ devices:
   - {name: o600, port: eth3, vlans: [{vid: 600}], addresses: [10.0.70.2/30, "2001:db8:70::2/64"]}
   - {name: o601a, port: eth3, vlans: [{vid: 601}], addresses: [10.0.71.2/24, "2001:db8:71::2/64"]}
   - {name: o601b, port: eth3, vlans: [{vid: 601}], addresses: [10.0.71.3/24, "2001:db8:71::3/64"]}
+  - {name: o602, port: eth3, vlans: [{vid: 602}], addresses: [10.0.72.2/24, "2001:db8:72::2/64"]}
   # Untagged devices for LLDP on the SR's ports 1/1/c1/1 and 1/1/c3/1.
   - {name: lldp1, port: eth1}
   - {name: lldp3, port: eth3}
@@ -162,35 +163,59 @@ protocols:
                       {prefix: "2001:db8:abc::/48", count: 1000, med: 50},
                       {prefix: 203.0.113.0/24, as_path: [64512, 64513], communities: [no-export], peers: [10.0.50.1]}]}
   # OSPF area 0 with the SR: one router on the point-to-point link (MD5)
-  # and the LAN (HMAC-SHA-256), where it is DR (priority 100); a second
+  # and the LAN (a keychain: HMAC-SHA-256 key 5, then key 6, rolled over
+  # with the SR's keychain), where it is DR (priority 100); a second
   # router on the LAN at priority 0. The first injects 1000 externals and a
-  # stub prefix, and emulates a 2×3 grid of routers behind it.
+  # stub prefix, and emulates a 2×3 grid of routers behind it in area 2,
+  # which makes it an area border router (the grid's prefixes summarised
+  # as one range). Segment routing: node SIDs for it and the grid routers
+  # (propagated into area 0), adjacency SIDs, flex-algo 128 (delay) with
+  # link delays, TE LSAs; BFD on the point-to-point link.
   - name: ospf
     type: ospf
     device: o600
     config: {router_id: 192.0.2.60, network: point-to-point, auth: {type: md5, key: clabgen, key_id: 1},
              loopbacks: [192.0.2.60/32],
-             interfaces: [{device: o601a, network: broadcast, priority: 100, auth: {type: hmac-sha256, key: clabgen-ospf, key_id: 5}}],
+             interfaces: [{device: o601a, network: broadcast, priority: 100, auth: {type: keychain, keys: [{id: 5, type: hmac-sha256, key: clabgen-ospf, send_until: "2026-10-22T13:50:21Z"}, {id: 6, type: hmac-sha256, key: clabgen-ospf-2, send_from: "2026-10-22T13:50:21Z"}]}, delay_us: 300, bfd: false}],
              prefixes: [{prefix: 100.66.0.0/24, count: 1000, tag: 600}, {prefix: 100.65.60.0/24, type: internal, metric: 5}],
-             topology: {kind: grid, rows: 2, cols: 3, metric: 20, router_id_base: 10.254.60.1,
-                        loopback_base: 10.255.60.1/32, prefix_base: 100.67.0.0/24, prefixes_per_node: 2}}
+             delay_us: 2000, traffic_engineering: true, bfd: {enabled: true, min_tx_ms: 100, min_rx_ms: 100},
+             segment_routing: {enabled: true, node_sids: [{prefix: 192.0.2.60/32, index: 60}, {prefix: 192.0.2.60/32, index: 560, algorithm: 128}]},
+             flex_algos: [{algorithm: 128, metric_type: delay}],
+             areas: [{id: 2, ranges: [{prefix: 100.72.0.0/20}]}],
+             topology: {kind: grid, rows: 2, cols: 3, metric: 20, area: 2, router_id_base: 10.254.60.1,
+                        loopback_base: 10.255.60.1/32, prefix_base: 100.72.0.0/24, prefixes_per_node: 2,
+                        node_sid_base: 160, flex_algo_sids: [{algorithm: 128, node_sid_base: 660}], link_delay_us: 1000}}
   - name: ospf-lan-b
     type: ospf
     device: o601b
-    config: {router_id: 192.0.2.62, priority: 0, auth: {type: hmac-sha256, key: clabgen-ospf, key_id: 5}}
-  # OSPFv3 on the same two links, the same roles.
+    config: {router_id: 192.0.2.62, priority: 0, auth: {type: keychain, keys: [{id: 5, type: hmac-sha256, key: clabgen-ospf, send_until: "2026-10-22T13:50:21Z"}, {id: 6, type: hmac-sha256, key: clabgen-ospf-2, send_from: "2026-10-22T13:50:21Z"}]}}
+  # Area 1 on VLAN 602 is an NSSA with the SR as its border router: this
+  # router's externals are type-7 LSAs the SR translates into area 0.
+  - name: ospf-nssa
+    type: ospf
+    device: o602
+    config: {router_id: 192.0.2.64, area: 1, areas: [{id: 1, type: nssa}], loopbacks: [192.0.2.64/32],
+             prefixes: [{prefix: 100.73.0.0/24, count: 10, tag: 602}]}
+  # OSPFv3 on the same two links, the same roles; segment routing in
+  # extended LSAs (node SIDs for it and the ring routers in area 2).
   - name: ospf6
     type: ospfv3
     device: o600
     config: {router_id: 192.0.2.60, network: point-to-point, loopbacks: ["2001:db8:ffff::60/128"],
              interfaces: [{device: o601a, network: broadcast, priority: 100}],
              prefixes: [{prefix: "2001:db8:6600::/48", count: 500, tag: 600}, {prefix: "2001:db8:6500::/64", type: internal, metric: 5}],
-             topology: {kind: ring, nodes: 4, router_id_base: 10.254.66.1, loopback_base: "2001:db8:ff66::1/128",
+             segment_routing: {enabled: true, node_sids: [{prefix: "2001:db8:ffff::60/128", index: 61}]},
+             topology: {kind: ring, nodes: 4, area: 2, router_id_base: 10.254.66.1, loopback_base: "2001:db8:ff66::1/128", node_sid_base: 260,
                         prefix_base: "2001:db8:6900::/64", prefixes_per_node: 1}}
   - name: ospf6-lan-b
     type: ospfv3
     device: o601b
     config: {router_id: 192.0.2.62, priority: 0}
+  - name: ospf6-nssa
+    type: ospfv3
+    device: o602
+    config: {router_id: 192.0.2.64, area: 1, areas: [{id: 1, type: nssa}], loopbacks: ["2001:db8:ffff::64/128"],
+             prefixes: [{prefix: "2001:db8:6800::/48", count: 10, tag: 602}]}
 device_groups:
   # Eight CE routers on the SR's router interfaces ce1000-ce1007 (eth3
   # VLANs 1000-1007, 10.1.0.x/30), each in its own AS and advertising ten

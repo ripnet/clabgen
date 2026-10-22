@@ -23,15 +23,43 @@ type wire struct {
 	peer  *core.Engine
 	up    bool
 	admin map[string]bool
+
+	// Frames to the peer, delivered in order by one goroutine (a real
+	// wire doesn't reorder; MD5 sequence numbers notice).
+	once  sync.Once
+	qmu   sync.Mutex
+	qcond *sync.Cond
+	q     [][]byte
 }
 
 func (w *wire) Send(port string, b []byte) error {
 	w.mu.Lock()
 	p, up := w.peer, w.up
 	w.mu.Unlock()
-	if up && p != nil {
-		go p.Receive("eth1", append([]byte(nil), b...), time.Now())
+	if !up || p == nil {
+		return nil
 	}
+	w.once.Do(func() {
+		w.qcond = sync.NewCond(&w.qmu)
+		go func() {
+			for {
+				w.qmu.Lock()
+				for len(w.q) == 0 {
+					w.qcond.Wait()
+				}
+				q := w.q
+				w.q = nil
+				w.qmu.Unlock()
+				for _, f := range q {
+					p.Receive("eth1", f, time.Now())
+				}
+			}
+		}()
+	})
+	w.qmu.Lock()
+	w.q = append(w.q, append([]byte(nil), b...))
+	w.qmu.Unlock()
+	w.qcond.Signal()
 	return nil
 }
 func (w *wire) PortUp(string) bool { w.mu.Lock(); defer w.mu.Unlock(); return w.up }

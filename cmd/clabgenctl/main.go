@@ -601,17 +601,35 @@ func summary(p *v1.Protocol) string {
 				if r, _ := n["role"].(string); r != "" {
 					who += "/" + strings.ToUpper(r)
 				}
-				ns = append(ns, fmt.Sprintf("%s:%v", who, n["state"]))
+				st := fmt.Sprint(n["state"])
+				if b, ok := n["bfd"].(map[string]any); ok {
+					st += fmt.Sprintf("/bfd-%v", b["state"])
+				}
+				ns = append(ns, fmt.Sprintf("%s:%s", who, st))
 			}
 		}
+		areas, _ := m["areas"].([]any)
 		var ifs []string
 		if l, ok := m["interfaces"].([]any); ok {
 			for _, x := range l {
 				i := x.(map[string]any)
-				ifs = append(ifs, fmt.Sprintf("%v:%v", i["name"], i["state"]))
+				s := fmt.Sprintf("%v:%v", i["name"], i["state"])
+				if len(areas) > 1 {
+					s += fmt.Sprintf("@%v", i["area"])
+				}
+				ifs = append(ifs, s)
 			}
 		}
 		out := fmt.Sprintf("%v area %v if=[%s] nbrs=[%s] lsdb=%v", m["router_id"], m["area"], strings.Join(ifs, " "), strings.Join(ns, " "), m["lsdb_total"])
+		if m["abr"] == true {
+			out += fmt.Sprintf(" abr(%d areas)", len(areas))
+		}
+		if sr, ok := m["segment_routing"].(map[string]any); ok && sr["srgb"] != nil {
+			out += fmt.Sprintf(" sr=%v", sr["srgb"])
+		}
+		if g, ok := m["graceful_restart"].(map[string]any); ok && g["restart"] != nil {
+			out += fmt.Sprintf(" gr=%v", g["restart"])
+		}
 		if m["max_metric"] == true {
 			out += " max-metric"
 		}

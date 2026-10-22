@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"hash"
 	"net/netip"
+	"strings"
+	"time"
 
 	"github.com/ripnet/clabgen/internal/pkt"
 )
@@ -194,4 +196,114 @@ func verify3(h *Header, src netip.Addr, a Auth) (uint64, error) {
 		return 0, errors.New("wrong digest")
 	}
 	return binary.BigEndian.Uint64(t[8:]), nil
+}
+
+// ---- keychains ----
+
+func (k AuthKey) single(v3 bool) Auth {
+	if v3 {
+		return Auth{Type: k.Type, Key: k.Key, SAID: k.ID}
+	}
+	return Auth{Type: k.Type, Key: k.Key, KeyID: uint8(k.ID)}
+}
+
+func parseWhen(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse(time.RFC3339, s)
+}
+
+// within reports whether now is in [from, until) (empty bounds are open).
+func within(now time.Time, from, until string) bool {
+	f, _ := parseWhen(from)
+	u, _ := parseWhen(until)
+	return (f.IsZero() || !now.Before(f)) && (u.IsZero() || now.Before(u))
+}
+
+// sendKey is the keychain key to sign with now: of those whose send window
+// is open, the one that started last (then the highest ID).
+func (a Auth) sendKey(now time.Time) (AuthKey, bool) {
+	var best AuthKey
+	var bestFrom time.Time
+	found := false
+	for _, k := range a.Keys {
+		if !within(now, k.SendFrom, k.SendUntil) {
+			continue
+		}
+		f, _ := parseWhen(k.SendFrom)
+		if !found || f.After(bestFrom) || f.Equal(bestFrom) && k.ID > best.ID {
+			best, bestFrom, found = k, f, true
+		}
+	}
+	return best, found
+}
+
+// sending is the auth packets are signed with now: a keychain's send key
+// (none when no key's send window is open).
+func (a Auth) sending(now time.Time, v3 bool) Auth {
+	if a.Type != "keychain" {
+		return a
+	}
+	if k, ok := a.sendKey(now); ok {
+		return k.single(v3)
+	}
+	return Auth{Type: "none"}
+}
+
+// accepting is the auth a received packet with this key ID (v3: SA ID)
+// is checked against: a keychain's key with that ID, if its accept window
+// is open.
+func (a Auth) accepting(id uint16, now time.Time, v3 bool) (Auth, error) {
+	if a.Type != "keychain" {
+		return a, nil
+	}
+	for _, k := range a.Keys {
+		if k.ID == id {
+			if !within(now, k.AcceptFrom, k.AcceptUntil) {
+				return Auth{}, fmt.Errorf("key %d is not valid for receiving now", id)
+			}
+			return k.single(v3), nil
+		}
+	}
+	return Auth{}, fmt.Errorf("no key %d in the keychain", id)
+}
+
+// crypto: packets need a digest (v3: a trailer).
+func (a Auth) crypto() bool { return a.Type == "keychain" || authType(a) == AuthCrypto }
+
+// maxDigest is the most digest bytes a packet can carry (room to leave).
+func (a Auth) maxDigest() int {
+	if a.Type != "keychain" {
+		if authType(a) == AuthCrypto {
+			return digestLen(a)
+		}
+		return 0
+	}
+	n := 0
+	for _, k := range a.Keys {
+		n = max(n, digestLen(k.single(false)))
+	}
+	return n
+}
+
+// describe is the auth for status: the type, or a keychain's current keys.
+func (a Auth) describe(now time.Time) string {
+	switch a.Type {
+	case "", "none":
+		return "none"
+	case "keychain":
+		send := "none"
+		if k, ok := a.sendKey(now); ok {
+			send = fmt.Sprintf("%d (%s)", k.ID, k.Type)
+		}
+		var acc []string
+		for _, k := range a.Keys {
+			if within(now, k.AcceptFrom, k.AcceptUntil) {
+				acc = append(acc, fmt.Sprint(k.ID))
+			}
+		}
+		return fmt.Sprintf("keychain: sending key %s, accepting %s", send, strings.Join(acc, ", "))
+	}
+	return a.Type
 }

@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/ripnet/clabgen/internal/bfd"
 	"github.com/ripnet/clabgen/internal/pkt"
 )
 
@@ -29,7 +30,8 @@ type nbr struct {
 	mac        pkt.MAC
 	prio       uint8
 	dr, bdr    netip.Addr // as declared in its hellos
-	options    uint32
+	options    uint32     // from its DBDs (the O bit: opaque-capable, RFC 5250)
+	helloOpts  uint32
 	state      int
 	since      time.Time
 	lastHello  time.Time
@@ -38,6 +40,9 @@ type nbr struct {
 	seq3       map[uint8]uint64 // OSPFv3: last sequence number per packet type (must increase)
 	lastReason string
 	mtu        uint16
+	graceUntil time.Time // helping it through a graceful restart until then
+	bfd        *bfd.Session
+	bfdPort    uint16
 
 	// Database exchange.
 	master     bool
@@ -112,6 +117,7 @@ func (s *session) nbrResetLocked(n *nbr, st int, now time.Time, why string) {
 
 func (s *session) nbrDownLocked(n *nbr, now time.Time, why string) {
 	s.nbrResetLocked(n, nDown, now, why)
+	n.bfd = nil
 }
 
 // exStartLocked begins an adjacency: we claim master until the DBD
@@ -126,14 +132,14 @@ func (s *session) exStartLocked(n *nbr, now time.Time) {
 }
 
 func (s *session) sendDBDLocked(n *nbr, flags uint8, hs []LSAHeader, now time.Time) {
-	opts := uint32(OptE)
-	if s.cd.v3 {
-		opts = options3
-		if authType(n.ifc.auth) == AuthCrypto {
-			opts |= OptAT
-		}
+	opts := s.options(n.ifc.area)
+	if s.cd.v3 && n.ifc.auth.crypto() {
+		opts |= OptAT
 	}
 	d := DBD{MTU: uint16(s.cfg.MTU), Options: opts, Flags: flags, Seq: n.ddSeq, Headers: hs}
+	if n.ifc.vl != nil {
+		d.MTU = 0 // RFC 2328 10.8
+	}
 	n.lastSent = s.cd.encodeDBD(d)
 	n.sentMore, n.sentFlags = flags&DDMore != 0, flags
 	n.ddAt = now.Add(s.rxmt)
@@ -155,7 +161,7 @@ func (s *session) nextChunk(n *nbr) []LSAHeader {
 func (s *session) negotiationDoneLocked(n *nbr, now time.Time) {
 	n.summary = n.summary[:0]
 	for k, l := range s.db {
-		if k.Link == 0 || k.Link == n.ifc.idx+1 {
+		if s.sendsTo(k, n) {
 			n.summary = append(n.summary, l.headerAt(now))
 		}
 	}
@@ -249,7 +255,7 @@ func (s *session) rxDBDLocked(n *nbr, d *DBD, now time.Time) {
 // request list. It reports false on an unknown LSA type.
 func (s *session) headersLocked(n *nbr, hs []LSAHeader, now time.Time) bool {
 	for _, h := range hs {
-		if !s.cd.known(h.Type) {
+		if !s.cd.known(h.Type) || s.cd.asScope(h.Type) && !n.ifc.area.externals() {
 			return false
 		}
 		k := s.keyFor(n.ifc, h)
@@ -261,13 +267,26 @@ func (s *session) headersLocked(n *nbr, hs []LSAHeader, now time.Time) bool {
 	return true
 }
 
-// keyFor is an LSA's LSDB key as heard on f (link-scoped LSAs are per link).
+// keyFor is an LSA's LSDB key as heard on f: area-scoped LSAs are per
+// area, link-scoped ones per link too.
 func (s *session) keyFor(f *iface, h LSAHeader) LSAKey {
 	k := h.Key()
+	if !s.cd.asScope(h.Type) {
+		k.Area = f.area.key()
+	}
 	if s.cd.linkScope(h.Type) {
 		k.Link = f.idx + 1
 	}
 	return k
+}
+
+// sendsTo: an LSA goes to (is described to, flooded to) neighbor n: in
+// scope on its interface, and opaque ones only to opaque-capable neighbors.
+func (s *session) sendsTo(k LSAKey, n *nbr) bool {
+	if !s.inScope(k, n.ifc) {
+		return false
+	}
+	return s.cd.v3 || k.Type < 9 || k.Type > 11 || n.options&OptO != 0
 }
 
 // masterAckLocked handles the slave's answer to our current DBD.
@@ -342,9 +361,7 @@ func (s *session) rxLSRLocked(n *nbr, keys []LSAKey, now time.Time) {
 	}
 	var lsas [][]byte
 	for _, k := range keys {
-		if s.cd.linkScope(k.Type) {
-			k.Link = n.ifc.idx + 1
-		}
+		k = s.keyFor(n.ifc, LSAHeader{Type: k.Type, ID: k.ID, AdvRtr: k.AdvRtr})
 		l := s.db[k]
 		if l == nil {
 			s.count("bad_ls_requests")
@@ -403,7 +420,7 @@ func (s *session) delayAckLocked(f *iface, h LSAHeader, now time.Time) {
 // ackDst is where an interface's multicast acks and floods go: everyone
 // from the DR/BDR and on point-to-point, the DR/BDR otherwise.
 func (s *session) floodDst(f *iface) netip.Addr {
-	if f.p2p || f.state == ifDR || f.state == ifBackup {
+	if f.noDR() || f.state == ifDR || f.state == ifBackup {
 		return s.allSPF()
 	}
 	return s.allDR()
@@ -413,10 +430,37 @@ func (s *session) sendAcksLocked(f *iface) {
 	room := s.maxBody(f) / lsaHeaderLen
 	for len(f.acks) > 0 {
 		n := min(room, len(f.acks))
-		s.queue(f, s.floodDst(f), pkt.MAC{}, TypeAck, s.cd.encodeAck(f.acks[:n]))
+		b := s.cd.encodeAck(f.acks[:n])
+		for _, d := range s.floodTargets(f) {
+			s.queue(f, d.addr, d.mac, TypeAck, b)
+		}
 		f.acks = f.acks[n:]
 	}
 	f.acks = nil
+}
+
+type target struct {
+	addr netip.Addr
+	mac  pkt.MAC
+}
+
+// floodTargets are where an interface's floods and delayed acks go: its
+// multicast address, or on non-broadcast networks each neighbor that
+// would have heard it (from a DR Other: the DR and BDR).
+func (s *session) floodTargets(f *iface) []target {
+	if !f.unicast {
+		return []target{{addr: s.floodDst(f)}}
+	}
+	var out []target
+	for _, n := range f.sortedNbrs() {
+		if n.state < nExchange {
+			continue
+		}
+		if f.noDR() || f.state == ifDR || f.state == ifBackup || n.id == f.dr || n.id == f.bdr {
+			out = append(out, target{n.addr, n.mac})
+		}
+	}
+	return out
 }
 
 // ---- timers ----
@@ -454,27 +498,32 @@ func (s *session) nbrTimersLocked(n *nbr, now time.Time) {
 // ---- status ----
 
 type NbrStatus struct {
-	Interface  string  `json:"interface"`
-	RouterID   string  `json:"router_id"`
-	Address    string  `json:"address"`
-	State      string  `json:"state"`
-	Priority   uint8   `json:"priority"`
-	DR         string  `json:"dr,omitempty"`
-	BDR        string  `json:"bdr,omitempty"`
-	Role       string  `json:"role,omitempty"` // dr / bdr on broadcast
-	DeadIn     float64 `json:"dead_in_s"`
-	Since      string  `json:"since"`
-	Reason     string  `json:"reason,omitempty"`
-	Requests   int     `json:"requests,omitempty"`
-	Retransmit int     `json:"retransmit,omitempty"`
-	MTU        uint16  `json:"mtu,omitempty"`
+	Interface  string      `json:"interface"`
+	RouterID   string      `json:"router_id"`
+	Address    string      `json:"address"`
+	State      string      `json:"state"`
+	Priority   uint8       `json:"priority"`
+	DR         string      `json:"dr,omitempty"`
+	BDR        string      `json:"bdr,omitempty"`
+	Role       string      `json:"role,omitempty"` // dr / bdr on broadcast
+	DeadIn     float64     `json:"dead_in_s"`
+	Since      string      `json:"since"`
+	Reason     string      `json:"reason,omitempty"`
+	Requests   int         `json:"requests,omitempty"`
+	Retransmit int         `json:"retransmit,omitempty"`
+	MTU        uint16      `json:"mtu,omitempty"`
+	BFD        *bfd.Status `json:"bfd,omitempty"`
 }
 
 func (n *nbr) status(now time.Time) NbrStatus {
 	st := NbrStatus{Interface: n.ifc.device, RouterID: n.rid.String(), Address: n.addr.String(), State: n.stateName(), Priority: n.prio,
 		DeadIn: max(0, (n.dead - now.Sub(n.lastHello)).Seconds()), Since: n.since.Format(time.RFC3339), Reason: n.lastReason,
 		Requests: len(n.req), Retransmit: len(n.rxmt), MTU: n.mtu}
-	if !n.ifc.p2p {
+	if n.bfd != nil {
+		b := n.bfd.Status()
+		st.BFD = &b
+	}
+	if !n.ifc.noDR() {
 		if n.dr != zero4 {
 			st.DR = n.dr.String()
 		}

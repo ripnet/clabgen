@@ -2,14 +2,10 @@ package ospf
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"net/netip"
-	"sort"
 	"strings"
 	"time"
-
-	"github.com/ripnet/clabgen/internal/pkt"
 )
 
 // lsa is one LSDB entry: the LSA as received or originated, with its age
@@ -90,6 +86,10 @@ func (s *session) rxLSULocked(n *nbr, lsas [][]byte, now time.Time) {
 			s.count("rx_lsa_unknown_type")
 			continue
 		}
+		if s.cd.asScope(h.Type) && !f.area.externals() || h.Type == s.cd.nssaType() && f.area.kind != areaNSSA {
+			s.count("rx_lsa_wrong_area")
+			continue
+		}
 		k := s.keyFor(f, h)
 		db := s.db[k]
 		if h.Age >= MaxAge && db == nil && !s.exchangingLocked() {
@@ -114,10 +114,24 @@ func (s *session) rxLSULocked(n *nbr, lsas [][]byte, now time.Time) {
 			}
 			l := s.installLocked(k, raw, now, false)
 			s.count("rx_lsa_new")
+			if s.spfInput(h.Type) && s.needsSPFLocked() {
+				s.dirty = true // our summaries may change
+			}
 			if self {
 				s.selfOriginatedLocked(l, now)
 				s.directAckLocked(n, h)
+				// It isn't flooded on, but it meets other neighbors'
+				// requests for it (13.3 1b), as after a restart, when our
+				// LSAs come back from every neighbor.
+				for _, x := range s.allNbrs() {
+					if r, ok := x.req[k]; ok && Compare(r, l.headerAt(now)) <= 0 {
+						delete(x.req, k)
+					}
+				}
 				continue
+			}
+			if s.isGrace(h.Type, h.ID) {
+				s.rxGraceLocked(f, l, now)
 			}
 			back := s.floodLocked(l, n, now)
 			if !back && !(f.state == ifBackup && n.id != f.dr) {
@@ -191,12 +205,12 @@ func (s *session) floodLocked(l *lsa, from *nbr, now time.Time) bool {
 	k := l.key
 	back := false
 	for _, f := range s.ifs {
-		if f.state == ifDown || f.passive || (k.Link != 0 && k.Link != f.idx+1) {
+		if f.state == ifDown || f.passive || !s.inScope(k, f) {
 			continue
 		}
 		added := false
 		for _, n := range f.nbrs {
-			if n.state < nExchange {
+			if n.state < nExchange || !s.sendsTo(k, n) {
 				continue
 			}
 			if n.state < nFull {
@@ -229,7 +243,9 @@ func (s *session) floodLocked(l *lsa, from *nbr, now time.Time) bool {
 			}
 			back = true
 		}
-		s.sendLSUsLocked(f, s.floodDst(f), pkt.MAC{}, [][]byte{l.wire(now)})
+		for _, d := range s.floodTargets(f) {
+			s.sendLSUsLocked(f, d.addr, d.mac, [][]byte{l.wire(now)})
+		}
 	}
 	return back
 }
@@ -276,6 +292,9 @@ func (s *session) ageLocked(now time.Time) {
 		}
 		if !onList {
 			delete(s.db, k)
+			if s.spfInput(k.Type) && s.needsSPFLocked() {
+				s.dirty = true
+			}
 		}
 	}
 }
@@ -295,20 +314,39 @@ type want struct {
 	body []byte
 }
 
-// desiredLocked lists the LSAs we should originate now.
-func (s *session) desiredLocked() map[LSAKey]want {
-	if s.cd.v3 {
-		return s.desired3Locked()
-	}
+// desiredIntraLocked lists our LSAs inside each area: router and network
+// LSAs (OSPFv3 also link and intra-area-prefix LSAs) and the emulated
+// topology's.
+func (s *session) desiredIntraLocked(areas []*area, abr bool, rs routeSet) map[LSAKey]want {
 	out := map[LSAKey]want{}
+	for _, a := range areas {
+		if s.cd.v3 {
+			s.area3Locked(out, a, abr, rs)
+		} else {
+			s.area2Locked(out, a, abr, rs)
+			s.opaqueLocked(out, a, rs.sids)
+		}
+	}
+	return out
+}
+
+func (s *session) area2Locked(out map[LSAKey]want, a *area, abr bool, rs routeSet) {
+	now := time.Now()
 	var links []RouterLink
-	flags := uint8(0)
 	for _, f := range s.ifs {
-		if f.state == ifDown {
+		if f.state == ifDown || f.area != a {
 			continue
 		}
 		mine, ok := s.ifAddrLocked(f)
 		if !ok {
+			continue
+		}
+		if f.vl != nil {
+			for _, n := range f.nbrs {
+				if n.adjacent(now) {
+					links = append(links, RouterLink{ID: n.rid, Data: mine.Addr(), Type: LinkVirtual, Metric: uint16(min(f.vl.cost, MaxLinkMetric))})
+				}
+			}
 			continue
 		}
 		cost := f.cost
@@ -317,9 +355,12 @@ func (s *session) desiredLocked() map[LSAKey]want {
 			transit = MaxLinkMetric
 		}
 		subnet := RouterLink{ID: mine.Masked().Addr(), Data: MaskOf(mine.Bits()), Type: LinkStub, Metric: cost}
-		if f.p2p {
+		if f.p2mp {
+			subnet = RouterLink{ID: mine.Addr(), Data: MaskOf(32), Type: LinkStub} // RFC 2328 12.4.1.4
+		}
+		if f.noDR() {
 			for _, n := range f.sortedNbrs() {
-				if n.state == nFull {
+				if n.adjacent(now) {
 					links = append(links, RouterLink{ID: n.rid, Data: mine.Addr(), Type: LinkP2P, Metric: transit})
 				}
 			}
@@ -329,7 +370,7 @@ func (s *session) desiredLocked() map[LSAKey]want {
 		full := 0
 		drFull := false
 		for _, n := range f.nbrs {
-			if n.state == nFull {
+			if n.adjacent(now) {
 				full++
 				if n.id == f.dr {
 					drFull = true
@@ -344,67 +385,73 @@ func (s *session) desiredLocked() map[LSAKey]want {
 		if f.state == ifDR && full > 0 {
 			rs := []netip.Addr{s.rid}
 			for _, n := range f.sortedNbrs() {
-				if n.state == nFull {
+				if n.adjacent(now) {
 					rs = append(rs, n.rid)
 				}
 			}
-			h := LSAHeader{Options: OptE, Type: LSANetwork, ID: mine.Addr(), AdvRtr: s.rid}
-			out[h.Key()] = want{h, NetworkLSA{Mask: MaskOf(mine.Bits()), Routers: rs}.Encode()}
+			h := LSAHeader{Type: LSANetwork, ID: mine.Addr(), AdvRtr: s.rid}
+			s.put(out, a, h, NetworkLSA{Mask: MaskOf(mine.Bits()), Routers: rs}.Encode())
 		}
 	}
-	for _, p := range s.loopbacks {
-		links = append(links, RouterLink{ID: p.Masked().Addr(), Data: MaskOf(p.Bits()), Type: LinkStub, Metric: 0})
+	if a == s.home {
+		for _, p := range s.loopbacks {
+			links = append(links, RouterLink{ID: p.Masked().Addr(), Data: MaskOf(p.Bits()), Type: LinkStub, Metric: 0})
+		}
+		for _, r := range s.routes {
+			if r.kind == "internal" {
+				links = append(links, RouterLink{ID: r.prefix.Addr(), Data: MaskOf(r.prefix.Bits()), Type: LinkStub, Metric: uint16(r.metric)})
+			}
+		}
 	}
-	if s.topo != nil {
+	if s.topo != nil && a == s.topoArea {
 		links = append(links, s.topo.ourLinks2(s)...)
-		s.topo.desiredLocked(s, out)
+		s.topo.desiredLocked(s, out, a)
 	}
-	var ext []route
-	for _, r := range s.routes {
-		if r.kind == "internal" {
-			links = append(links, RouterLink{ID: r.prefix.Addr(), Data: MaskOf(r.prefix.Bits()), Type: LinkStub, Metric: uint16(r.metric)})
-		} else {
-			ext = append(ext, r)
-		}
-	}
-	if len(ext) > 0 {
-		flags |= RouterE
-	}
-	sort.Slice(ext, func(i, j int) bool {
-		if ext[i].prefix.Addr() != ext[j].prefix.Addr() {
-			return ext[i].prefix.Addr().Less(ext[j].prefix.Addr())
-		}
-		return ext[i].prefix.Bits() < ext[j].prefix.Bits()
-	})
-	for _, r := range ext {
-		id := r.prefix.Addr()
-		h := LSAHeader{Options: OptE, Type: LSAExternal, ID: id, AdvRtr: s.rid}
-		if _, taken := out[h.Key()]; taken {
-			// Same network, longer mask: the host bits tell them apart
-			// (RFC 2328 appendix E).
-			v := binary.BigEndian.Uint32(id.AsSlice()) | ^binary.BigEndian.Uint32(MaskOf(r.prefix.Bits()).AsSlice())
-			var b [4]byte
-			binary.BigEndian.PutUint32(b[:], v)
-			h.ID = netip.AddrFrom4(b)
-		}
-		out[h.Key()] = want{h, ExternalLSA{Mask: MaskOf(r.prefix.Bits()), E2: r.kind == "external-2", Metric: r.metric, Forward: r.forward, Tag: r.tag}.Encode()}
-	}
-	h := LSAHeader{Options: OptE, Type: LSARouter, ID: s.rid, AdvRtr: s.rid}
-	out[h.Key()] = want{h, RouterLSA{Flags: flags, Links: links}.Encode()}
-	return out
+	h := LSAHeader{Type: LSARouter, ID: s.rid, AdvRtr: s.rid}
+	s.put(out, a, h, RouterLSA{Flags: s.routerFlagsLocked(a, abr, rs), Links: links}.Encode())
 }
 
 // originateLocked brings our LSAs in line with what we should advertise:
 // new or changed ones get the next sequence number, ones we no longer
-// want are flushed.
+// want are flushed. The areas' own LSAs go first, so that a border
+// router's routes (spf.go) include them.
 func (s *session) originateLocked(now time.Time) {
 	s.dirty = false
 	s.genAt = now.Add(time.Second) // MinLSInterval (shortened from 5 s for labs)
-	w := s.desiredLocked()
+	areas := s.activeAreasLocked()
+	abr := len(areas) > 1
+	rs := s.routeSetLocked()
+	w := s.desiredIntraLocked(areas, abr, rs)
+	n := s.applyLocked(w, now)
+	w2 := s.desiredInterLocked(areas, abr, rs, now)
+	n += s.applyLocked(w2, now)
+	for k, d := range w2 {
+		w[k] = d
+	}
+	for k, l := range s.db {
+		if _, ok := w[k]; ok {
+			continue
+		}
+		if s.gr != nil && s.isGrace(k.Type, k.ID) {
+			continue // flushed when the restart is done
+		}
+		if l.own || (s.isSelfLocked(l.hdr) && l.ageAt(now) < MaxAge) {
+			s.flushLocked(l, now)
+			n++
+		}
+	}
+	if n > 0 {
+		s.counters["lsa_originated"] += uint64(n)
+	}
+}
+
+// applyLocked installs and floods the wanted LSAs that are new or changed
+// and reports how many.
+func (s *session) applyLocked(w map[LSAKey]want, now time.Time) int {
 	n := 0
 	for k, d := range w {
 		cur := s.db[k]
-		if cur != nil && cur.own && !cur.stale && cur.ageAt(now) < MaxAge && bytes.Equal(cur.body(), d.body) {
+		if cur != nil && cur.own && !cur.stale && cur.ageAt(now) < MaxAge && cur.hdr.Options == d.hdr.Options && bytes.Equal(cur.body(), d.body) {
 			continue
 		}
 		seq := uint32(InitialSeq)
@@ -420,18 +467,20 @@ func (s *session) originateLocked(now time.Time) {
 		s.floodLocked(l, nil, now)
 		n++
 	}
-	for k, l := range s.db {
-		if _, ok := w[k]; ok {
-			continue
+	return n
+}
+
+// spfInput: a change to an LSA of this type can change a border router's
+// computed routes (and so its summaries).
+func (s *session) spfInput(t uint16) bool {
+	if s.cd.v3 {
+		switch t {
+		case LSA3Router, LSA3Network, LSA3IntraPrefix, LSA3InterPrefix, LSA3InterRouter, LSA3NSSA:
+			return true
 		}
-		if l.own || (s.isSelfLocked(l.hdr) && l.ageAt(now) < MaxAge) {
-			s.flushLocked(l, now)
-			n++
-		}
+		return false
 	}
-	if n > 0 {
-		s.counters["lsa_originated"] += uint64(n)
-	}
+	return t >= LSARouter && t <= LSAASBRSummary || t == LSANSSA
 }
 
 // ---- status and detail ----
@@ -440,6 +489,9 @@ func (s *session) lsaStatus(l *lsa, now time.Time) LSAStatus {
 	h := l.hdr
 	st := LSAStatus{Type: s.cd.typeName(h.Type), ID: h.ID.String(), AdvRtr: h.AdvRtr.String(), Seq: fmt.Sprintf("%#08x", h.Seq),
 		Age: int(l.ageAt(now)), Checksum: fmt.Sprintf("%#04x", h.Checksum), Length: int(h.Length), Own: l.own}
+	if a := s.areaOf(l.key); a != nil {
+		st.Area = a.id.String()
+	}
 	if s.cd.v3 {
 		st.Summary = summary3(h.Type, l.body())
 		if l.key.Link != 0 {
@@ -487,8 +539,14 @@ func (l *lsa) summary() string {
 		if err != nil {
 			return err.Error()
 		}
+		if l.hdr.Type == LSAASBRSummary {
+			return fmt.Sprintf("ASBR metric %d", x.Metric)
+		}
 		return fmt.Sprintf("/%d metric %d", BitsOf(x.Mask), x.Metric)
-	case LSAExternal:
+	case LSAOpaqueLink, LSAOpaqueArea, LSAOpaqueAS:
+		sum, _ := opaqueDetail(l.hdr.ID, b)
+		return sum
+	case LSAExternal, LSANSSA:
 		e, err := DecodeExternalLSA(b)
 		if err != nil {
 			return err.Error()
@@ -504,9 +562,24 @@ func (l *lsa) summary() string {
 		if e.Forward != zero4 {
 			out += " fwd " + e.Forward.String()
 		}
+		if l.hdr.Type == LSANSSA && l.hdr.Options&OptNP != 0 {
+			out += " P"
+		}
 		return out
 	}
 	return ""
+}
+
+// areaMatches: key k is in the named area ("as": AS scope; empty: any).
+func (s *session) areaMatches(k LSAKey, name string) bool {
+	switch name {
+	case "":
+		return true
+	case "as":
+		return k.Area == 0
+	}
+	id, err := ParseArea(name)
+	return err == nil && k.Area != 0 && s.areaOf(k).id == id
 }
 
 func (s *session) lsaDetailLocked(a *LSAArgs, now time.Time) (any, error) {
@@ -526,7 +599,7 @@ func (s *session) lsaDetailLocked(a *LSAArgs, now time.Time) (any, error) {
 	}
 	var match []*lsa
 	for k, l := range s.db {
-		if k.Type == t && k.ID == id && (a.AdvRtr == "" || k.AdvRtr.String() == a.AdvRtr) {
+		if k.Type == t && k.ID == id && (a.AdvRtr == "" || k.AdvRtr.String() == a.AdvRtr) && s.areaMatches(k, a.Area) {
 			match = append(match, l)
 		}
 	}
@@ -538,7 +611,7 @@ func (s *session) lsaDetailLocked(a *LSAArgs, now time.Time) (any, error) {
 		for _, l := range match {
 			rs = append(rs, l.hdr.AdvRtr.String())
 		}
-		return nil, fmt.Errorf("several advertising routers (%s): set adv_router", strings.Join(rs, ", "))
+		return nil, fmt.Errorf("several matches (advertising routers %s): set adv_router or area", strings.Join(rs, ", "))
 	}
 	l := match[0]
 	out := map[string]any{"header": s.lsaStatus(l, now)}
@@ -570,7 +643,12 @@ func (s *session) lsaDetailLocked(a *LSAArgs, now time.Time) (any, error) {
 		if x, err := DecodeSummaryLSA(b); err == nil {
 			out["mask"], out["metric"] = x.Mask.String(), x.Metric
 		}
-	case LSAExternal:
+	case LSAOpaqueLink, LSAOpaqueArea, LSAOpaqueAS:
+		_, d := opaqueDetail(l.hdr.ID, b)
+		for k, v := range d {
+			out[k] = v
+		}
+	case LSAExternal, LSANSSA:
 		if e, err := DecodeExternalLSA(b); err == nil {
 			out["mask"], out["metric"], out["e2"], out["forwarding_address"], out["tag"] = e.Mask.String(), e.Metric, e.E2, e.Forward.String(), e.Tag
 		}

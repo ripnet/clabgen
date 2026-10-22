@@ -246,8 +246,8 @@ peer from loopbacks too):
 message="maintenance"`, `… route-refresh` and `… rib peer=10.0.50.1 prefix=…`.
 There is no TCP MD5 authentication (the netstack has none).
 
-An OSPFv2 router (one area) on a device, here point-to-point with MD5 and
-a second interface on a LAN where it wants to be DR:
+An OSPFv2 router on a device, here point-to-point with MD5 and a second
+interface on a LAN where it wants to be DR:
 
 ```yaml
   - name: ospf
@@ -264,13 +264,54 @@ It forms adjacencies (full DR/BDR election on broadcast interfaces),
 exchanges and floods LSAs, and originates its router LSA, a network LSA
 where it is DR, and the `prefixes`: AS-external LSAs (`external-2` by
 default, or `external-1`, with tag and forwarding address) or, with `type:
-internal`, stub links in the router LSA. Our router LSA has to fit in one
-packet (no IP fragmentation), so large route sets belong in externals.
+internal`, stub links in the router LSA, or with `type: inter-area`,
+summary LSAs. Packets larger than the `mtu` (a router LSA with hundreds of
+links) go out in IP fragments, and received fragments are reassembled.
 Actions: `flap` (reset or silent, per interface), `cost`, `max-metric`
-(RFC 6987), `advertise` / `withdraw` and `lsa` (one LSA decoded). It
-computes no routes. The MTU in database descriptions is `mtu` (default
-1500); a neighbor with a larger one is refused (as RFC 2328 says), so match
-it on the peer (SR OS: `ip-mtu 1500`) or set `mtu_ignore`.
+(RFC 6987), `advertise` / `withdraw`, `graceful-restart`, `bfd-fail` and
+`lsa` (one LSA decoded). It installs no routes. The MTU in database
+descriptions is `mtu` (default 1500); a neighbor with a larger one is
+refused (as RFC 2328 says), so match it on the peer (SR OS: `ip-mtu 1500`)
+or set `mtu_ignore`.
+
+Interfaces are `broadcast`, `point-to-point`, `non-broadcast` (NBMA: hellos
+to the `neighbors` listed, DR election) or `point-to-multipoint` (every
+neighbor adjacent; with `neighbors`, non-broadcast). Each has an `area`
+(default: the router's); in more than one area the router is an area
+border router. It runs SPF over each area only to summarise it into the
+others: `areas` sets an area's `type` (`stub`, `nssa`), `no_summary`,
+`default_cost`, `ranges` (aggregation, `no_advertise`) and NSSA
+translation (`nssa_translate`; externals become type-7 LSAs in an NSSA, and
+a border router translates others' into AS-externals). `topology.area` puts
+an emulated network in its own area behind us, and `virtual_links` reach
+the backbone across a transit area (`hello_interval` / `dead_interval` per
+interface or virtual link: SR OS virtual links default to 10/60).
+
+```yaml
+             areas: [{id: 2, ranges: [{prefix: 100.72.0.0/20}]}],
+             topology: {kind: grid, rows: 2, cols: 3, metric: 20, area: 2,
+                        loopback_base: 10.255.60.1/32, prefix_base: 100.72.0.0/24, prefixes_per_node: 2}
+```
+
+Segment routing (`segment_routing: {enabled, srgb_base, srgb_size,
+node_sids, adj_sid_base, srlb_base}`, both versions) is advertised in
+opaque LSAs for OSPFv2 (RFC 8665: Router Information, Extended Prefix and
+Extended Link LSAs) and in extended LSAs for OSPFv3 (RFC 8666 with RFC 8362
+sparse mode): node SIDs for our prefixes and the simulated routers'
+loopbacks (`topology.node_sid_base`), Adj-SIDs and LAN Adj-SIDs, and
+Prefix-SIDs carried into other areas by a border router. OSPFv2 also does
+flex-algo (`flex_algos`: definitions, per-algorithm node SIDs, link
+`delay_us` / `te_metric` / `admin_groups` as application-specific link
+attributes, flex-algo prefix metrics between areas) and TE LSAs
+(`traffic_engineering`, RFC 3630).
+
+`graceful_restart: {helper, grace_period}` (RFC 3623 / 5187): as a helper
+we keep a restarting neighbor adjacent; the `graceful-restart` action
+restarts us gracefully (grace LSAs, then neighbors and LSDB dropped and
+relearned without re-originating, BFD kept running). `bfd: {enabled,
+min_tx_ms, min_rx_ms, multiplier}` runs BFD (RFC 5880/5881) with every
+neighbor and drops a neighbor whose session fails; `bfd-fail` silences ours
+for a while.
 
 OSPFv3 (`type: ospfv3`) is the same router over IPv6 (RFC 5340): it needs
 an IPv6 address on the device (it speaks from the link-local one) and a
@@ -285,7 +326,10 @@ hmac-sha256 | hmac-sha384 | hmac-sha512, key, key_id}` (RFC 5709 for the
 SHA types), per router or per interface; OSPFv3 takes the authentication
 trailer (RFC 7166) as `{type: hmac-sha*, key, sa_id}`. (SR OS authenticates
 OSPFv3 with IPsec instead, so the trailer was only tested between clabgen
-routers.)
+routers.) Both take `{type: keychain, keys: [{id, type, key, send_from,
+send_until, accept_from, accept_until}]}` for hitless rollover: we send
+with the key whose send window started last and accept any key in its
+accept window.
 
 Both versions emulate a network behind the router with `topology`, like
 IS-IS (`grid`, `ring`, `line`, `full`, `custom`): each simulated router
@@ -296,7 +340,7 @@ routers (or set max-metric on one) at run time.
 
 ```yaml
              topology: {kind: grid, rows: 2, cols: 3, metric: 20, router_id_base: 10.254.60.1,
-                        loopback_base: 10.255.60.1/32, prefix_base: 100.67.0.0/24, prefixes_per_node: 2}
+                        loopback_base: 10.255.60.1/32, prefix_base: 100.72.0.0/24, prefixes_per_node: 2}
 ```
 
 ```yaml

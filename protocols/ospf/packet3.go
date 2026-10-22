@@ -35,10 +35,13 @@ const (
 )
 
 var lsa3Names = map[uint16]string{LSA3Router: "router", LSA3Network: "network", LSA3InterPrefix: "inter-area-prefix",
-	LSA3InterRouter: "inter-area-router", LSA3External: "external", LSA3NSSA: "nssa", LSA3Link: "link", LSA3IntraPrefix: "intra-area-prefix"}
+	LSA3InterRouter: "inter-area-router", LSA3External: "external", LSA3NSSA: "nssa", LSA3Link: "link", LSA3IntraPrefix: "intra-area-prefix", LSA3Grace: "grace"}
 
 func lsa3TypeName(t uint16) string {
 	if n, ok := lsa3Names[t]; ok {
+		return n
+	}
+	if n, ok := lsa3ExtNames[t]; ok {
 		return n
 	}
 	return fmt.Sprintf("type-%#04x", t)
@@ -289,10 +292,37 @@ func DecodeExternal3LSA(body []byte) (*External3LSA, error) {
 	return e, nil
 }
 
-// InterPrefixLSA is decoded for status (we don't originate them).
+// InterPrefixLSA is a border router's summary of a prefix in another area.
 type InterPrefixLSA struct {
 	Metric uint32
 	Prefix Prefix6
+}
+
+func (x InterPrefixLSA) Encode() []byte {
+	b := binary.BigEndian.AppendUint32(make([]byte, 0, 24), x.Metric&0xffffff)
+	return appendPrefix6(b, x.Prefix, false)
+}
+
+// InterRouterLSA is a border router's summary of an ASBR in another area.
+type InterRouterLSA struct {
+	Options uint32
+	Metric  uint32
+	Router  netip.Addr
+}
+
+func (x InterRouterLSA) Encode() []byte {
+	b := make([]byte, 12)
+	binary.BigEndian.PutUint32(b, x.Options&0xffffff)
+	binary.BigEndian.PutUint32(b[4:], x.Metric&0xffffff)
+	put4(b[8:], x.Router)
+	return b
+}
+
+func DecodeInterRouterLSA(body []byte) (*InterRouterLSA, error) {
+	if len(body) < 12 {
+		return nil, errors.New("short inter-area-router LSA")
+	}
+	return &InterRouterLSA{Options: binary.BigEndian.Uint32(body) & 0xffffff, Metric: binary.BigEndian.Uint32(body[4:]) & 0xffffff, Router: addr4(body[8:])}, nil
 }
 
 func DecodeInterPrefixLSA(body []byte) (*InterPrefixLSA, error) {

@@ -13,17 +13,29 @@ import (
 // An iface is one interface of the router: the instance's own device
 // (iface 0, the top-level settings) or one of cfg.Interfaces, which the
 // session attaches to (protocol.Env.Attach). Neighbors, hellos and the DR
-// role are per interface; the LSDB is the router's (one area).
+// role are per interface, as is the area.
 type iface struct {
-	idx     int
-	ifID    uint32 // OSPFv3 interface ID (idx + 1)
-	device  string
-	p2p     bool
-	passive bool
-	cost    uint16
-	prio    uint8
-	auth    Auth
-	mac     pkt.MAC
+	idx           int
+	ifID          uint32 // OSPFv3 interface ID (idx + 1)
+	device        string
+	kind          string       // network type: broadcast, point-to-point, non-broadcast, point-to-multipoint
+	p2p           bool         // point-to-point
+	p2mp          bool         // point-to-multipoint
+	unicast       bool         // non-broadcast (NBMA, or P2MP with configured neighbors): packets go to each neighbor
+	statics       []netip.Addr // configured neighbors (hellos to them)
+	vl            *vlink       // a virtual link (vlink.go)
+	helloIv       int          // seconds
+	deadIv        int
+	bfd           bool // BFD with the neighbors
+	bfdSilentTill time.Time
+	keptBFD       map[netip.Addr]*nbr // BFD sessions carried through our graceful restart, by address
+	grQuiet       time.Time           // restarting: no hellos until the neighbors are heard (or then)
+	passive       bool
+	cost          uint16
+	prio          uint8
+	auth          Auth
+	area          *area
+	mac           pkt.MAC
 
 	att     protocol.Attachment
 	locals  []func()
@@ -39,6 +51,7 @@ type iface struct {
 	acks      []LSAHeader         // delayed acknowledgements
 	ackAt     time.Time
 	cryptoSeq uint32
+	sendKey   int // keychain: the key ID we send with (-1: none; -2: not yet known)
 	flapTill  time.Time
 	flapMode  string
 	ups       int // neighbors reaching Full
@@ -57,11 +70,27 @@ const (
 const attachRetry = time.Second
 
 func (s *session) newIface(idx int, ic Interface) *iface {
-	f := &iface{idx: idx, ifID: uint32(idx + 1), device: ic.Device, p2p: ic.Network == "point-to-point", passive: ic.Passive, cost: ic.Cost,
+	f := &iface{idx: idx, ifID: uint32(idx + 1), device: ic.Device, kind: ic.Network, passive: ic.Passive, cost: ic.Cost,
 		prio: s.cfg.Priority, auth: s.cfg.Auth, state: ifDown, nbrs: map[netip.Addr]*nbr{}, dr: zero4, bdr: zero4,
-		cryptoSeq: uint32(time.Now().Unix())}
-	if ic.Network == "" {
-		f.p2p = s.cfg.Network == "point-to-point"
+		cryptoSeq: uint32(time.Now().Unix()), area: s.ifArea[idx], sendKey: -2}
+	if f.kind == "" {
+		f.kind = s.cfg.Network
+	}
+	f.p2p, f.p2mp = f.kind == "point-to-point", f.kind == "point-to-multipoint"
+	for _, a := range ic.Neighbors {
+		f.statics = append(f.statics, netip.MustParseAddr(a))
+	}
+	f.unicast = f.kind == "non-broadcast" || f.p2mp && len(f.statics) > 0
+	f.helloIv, f.deadIv = s.cfg.HelloInterval, s.cfg.DeadInterval
+	if ic.HelloInterval > 0 {
+		f.helloIv = ic.HelloInterval
+	}
+	if ic.DeadInterval > 0 {
+		f.deadIv = ic.DeadInterval
+	}
+	f.bfd = s.cfg.BFD.Enabled
+	if ic.BFD != nil {
+		f.bfd = *ic.BFD
 	}
 	if f.cost == 0 {
 		f.cost = s.cfg.Cost
@@ -75,16 +104,21 @@ func (s *session) newIface(idx int, ic Interface) *iface {
 	return f
 }
 
-func (f *iface) attached() bool { return f.idx == 0 || f.att != nil }
+func (f *iface) attached() bool { return f.idx == 0 || f.att != nil || f.vl != nil }
 
-func (f *iface) network() string {
-	if f.p2p {
-		return "point-to-point"
-	}
-	return "broadcast"
-}
+func (f *iface) network() string { return f.kind }
+
+// noDR: no DR election (point-to-point and point-to-multipoint); every
+// neighbor becomes adjacent.
+func (f *iface) noDR() bool { return f.p2p || f.p2mp }
 
 func (s *session) ifIP(f *iface) protocol.IP {
+	if f.vl != nil {
+		if f.vl.via == nil {
+			return nil
+		}
+		return s.ifIP(f.vl.via)
+	}
 	if f.idx == 0 {
 		return s.env.IP()
 	}
@@ -97,6 +131,9 @@ func (s *session) ifIP(f *iface) protocol.IP {
 // ifSourceLocked is the address packets leave the interface from: its
 // IPv4 address (v2) or its link-local address (v3).
 func (s *session) ifSourceLocked(f *iface) (netip.Addr, bool) {
+	if f.vl != nil {
+		return f.vl.src, f.vl.src.IsValid()
+	}
 	if !s.cd.v3 {
 		p, ok := s.ifAddrLocked(f)
 		return p.Addr(), ok
@@ -161,6 +198,9 @@ func (s *session) noAddrErr() string {
 
 // ifAddrLocked is the interface's (first) IPv4 address.
 func (s *session) ifAddrLocked(f *iface) (netip.Prefix, bool) {
+	if f.vl != nil {
+		return netip.PrefixFrom(f.vl.src, 32), f.vl.src.IsValid()
+	}
 	ip := s.ifIP(f)
 	if ip == nil {
 		return netip.Prefix{}, false
@@ -185,16 +225,16 @@ func (s *session) ifUpLocked(f *iface, now time.Time) {
 	switch {
 	case f.passive:
 		f.state = ifP2P
-		if !f.p2p {
+		if !f.noDR() {
 			f.state = ifDROther
 		}
-	case f.p2p:
+	case f.noDR():
 		f.state = ifP2P
 	case f.prio == 0:
 		f.state = ifDROther
 	default:
 		f.state = ifWaiting
-		f.waitUntil = now.Add(time.Duration(s.cfg.DeadInterval) * time.Second)
+		f.waitUntil = now.Add(time.Duration(f.deadIv) * time.Second)
 	}
 	s.dirty = true
 }
@@ -215,6 +255,9 @@ func (s *session) attachLoop(now time.Time) {
 	var need []*iface
 	s.mu.Lock()
 	for _, f := range s.ifs {
+		if f.vl != nil {
+			continue
+		}
 		if f.idx > 0 && f.att != nil {
 			select {
 			case <-f.att.Closed():
@@ -256,6 +299,9 @@ func (s *session) attachLoop(now time.Time) {
 }
 
 func (s *session) addLocalsLocked(f *iface) {
+	if f.vl != nil {
+		return
+	}
 	ip := s.ifIP(f)
 	if ip == nil {
 		return
@@ -278,6 +324,17 @@ func (s *session) ifTimersLocked(f *iface, now time.Time) {
 	if f.passive {
 		return
 	}
+	if f.auth.Type == "keychain" {
+		id := -1
+		if k, ok := f.auth.sendKey(now); ok {
+			id = int(k.ID)
+		}
+		if f.sendKey != id && f.sendKey != -2 {
+			s.count("key_rollovers")
+			go s.event("key-rollover", fmt.Sprintf("%s: authentication now sends with key %d", f.device, id))
+		}
+		f.sendKey = id
+	}
 	if f.state == ifWaiting && !now.Before(f.waitUntil) {
 		s.electLocked(f, now)
 	}
@@ -285,15 +342,21 @@ func (s *session) ifTimersLocked(f *iface, now time.Time) {
 		s.helloLocked(f, now)
 	}
 	for _, n := range f.sortedNbrs() {
-		if now.Sub(n.lastHello) > n.dead {
+		if now.Sub(n.lastHello) > n.dead && !now.Before(n.graceUntil) {
 			s.nbrDownLocked(n, now, "dead timer expired")
 			delete(f.nbrs, n.rid)
-			if !f.p2p {
+			if !f.noDR() {
 				s.electLocked(f, now)
 			}
 			continue
 		}
 		s.nbrTimersLocked(n, now)
+		s.bfdTimersLocked(n, now)
+	}
+	for _, k := range f.keptBFD { // taken over by the neighbor at 2-Way
+		if out, _ := k.bfd.Tick(now); out != nil {
+			s.out = append(s.out, outPkt{ifc: f, dst: k.addr, mac: k.mac, bfd: out, sport: k.bfdPort})
+		}
 	}
 	if len(f.acks) > 0 && !now.Before(f.ackAt) {
 		s.sendAcksLocked(f)
@@ -305,15 +368,19 @@ func (f *iface) flapping(now time.Time) bool { return now.Before(f.flapTill) }
 // helloLocked sends a hello. While flapping in reset mode it lists no
 // neighbors (they fall back to Init); in silent mode nothing is sent.
 func (s *session) helloLocked(f *iface, now time.Time) {
-	f.nextHello = now.Add(time.Duration(s.cfg.HelloInterval) * time.Second)
+	if now.Before(f.grQuiet) && !s.heardAllLocked(f) {
+		return // checked again on the next tick
+	}
+	f.grQuiet = time.Time{}
+	f.nextHello = now.Add(time.Duration(f.helloIv) * time.Second)
 	flap := f.flapping(now)
 	if flap && f.flapMode == "silent" {
 		return
 	}
-	h := Hello{Interval: uint16(s.cfg.HelloInterval), Options: OptE, Priority: f.prio, Dead: uint32(s.cfg.DeadInterval), DR: f.dr, BDR: f.bdr}
+	h := Hello{Interval: uint16(f.helloIv), Options: s.options(f.area), Priority: f.prio, Dead: uint32(f.deadIv), DR: f.dr, BDR: f.bdr}
 	if s.cd.v3 {
-		h.IfID, h.Options = f.ifID, options3
-		if authType(f.auth) == AuthCrypto {
+		h.IfID = f.ifID
+		if f.auth.crypto() {
 			h.Options |= OptAT
 		}
 	} else {
@@ -331,7 +398,29 @@ func (s *session) helloLocked(f *iface, now time.Time) {
 			h.Neighbors = append(h.Neighbors, n.rid)
 		}
 	}
-	s.queue(f, s.allSPF(), pkt.MAC{}, TypeHello, s.cd.encodeHello(h))
+	b := s.cd.encodeHello(h)
+	if !f.unicast {
+		s.queue(f, s.allSPF(), pkt.MAC{}, TypeHello, b)
+		return
+	}
+	// Non-broadcast: to each configured neighbor and each one heard.
+	sent := map[netip.Addr]bool{}
+	for _, n := range f.sortedNbrs() {
+		sent[n.addr] = true
+		s.queue(f, n.addr, n.mac, TypeHello, b)
+	}
+	for _, a := range f.statics {
+		if !sent[a] {
+			s.queue(f, a, pkt.MAC{}, TypeHello, b)
+		}
+	}
+}
+
+func onOff(b bool) string {
+	if b {
+		return "set"
+	}
+	return "clear"
 }
 
 func (f *iface) sortedNbrs() []*nbr {
@@ -355,13 +444,17 @@ func (s *session) rxHelloLocked(f *iface, h *Header, src netip.Addr, mac pkt.MAC
 		s.count("rx_hello_mismatch")
 		f.authErr = fmt.Sprintf("hello from %s: netmask %s, ours %s", src, hl.Mask, MaskOf(mine.Bits()))
 		return
-	case int(hl.Interval) != s.cfg.HelloInterval || int(hl.Dead) != s.cfg.DeadInterval:
+	case int(hl.Interval) != f.helloIv || int(hl.Dead) != f.deadIv:
 		s.count("rx_hello_mismatch")
-		f.authErr = fmt.Sprintf("hello from %s: intervals %d/%d, ours %d/%d", src, hl.Interval, hl.Dead, s.cfg.HelloInterval, s.cfg.DeadInterval)
+		f.authErr = fmt.Sprintf("hello from %s: intervals %d/%d, ours %d/%d", src, hl.Interval, hl.Dead, f.helloIv, f.deadIv)
 		return
-	case hl.Options&OptE == 0:
+	case hl.Options&OptE != s.options(f.area)&OptE:
 		s.count("rx_hello_mismatch")
-		f.authErr = fmt.Sprintf("hello from %s: E bit clear (stub area)", src)
+		f.authErr = fmt.Sprintf("hello from %s: E bit %s, but area %s is %s", src, onOff(hl.Options&OptE != 0), f.area.id, f.area.kind)
+		return
+	case hl.Options&OptNP != s.options(f.area)&OptNP:
+		s.count("rx_hello_mismatch")
+		f.authErr = fmt.Sprintf("hello from %s: N bit %s, but area %s is %s", src, onOff(hl.Options&OptNP != 0), f.area.id, f.area.kind)
 		return
 	}
 	n := f.nbrs[h.RouterID]
@@ -378,7 +471,7 @@ func (s *session) rxHelloLocked(f *iface, h *Header, src netip.Addr, mac pkt.MAC
 		id = h.RouterID
 	}
 	oldPrio, oldDR, oldBDR, oldState := n.prio, n.dr, n.bdr, n.state
-	n.addr, n.id, n.mac, n.prio, n.dr, n.bdr, n.options, n.ifID = src, id, mac, hl.Priority, hl.DR, hl.BDR, hl.Options, hl.IfID
+	n.addr, n.id, n.mac, n.prio, n.dr, n.bdr, n.helloOpts, n.ifID = src, id, mac, hl.Priority, hl.DR, hl.BDR, hl.Options, hl.IfID
 	n.lastHello, n.dead = now, time.Duration(hl.Dead)*time.Second
 	if n.state == nDown {
 		s.setNbrLocked(n, nInit, now, "hello received")
@@ -395,7 +488,7 @@ func (s *session) rxHelloLocked(f *iface, h *Header, src netip.Addr, mac pkt.MAC
 	case two && n.state == nInit:
 		s.twoWayLocked(n, now, false)
 	}
-	if f.p2p {
+	if f.noDR() {
 		return
 	}
 	if f.state == ifWaiting {
@@ -423,7 +516,7 @@ func (s *session) twoWayLocked(n *nbr, now time.Time, elect bool) {
 	} else {
 		s.setNbrLocked(n, n2Way, now, "2-way")
 	}
-	if elect && !f.p2p && f.state != ifWaiting {
+	if elect && !f.noDR() && f.state != ifWaiting {
 		s.electLocked(f, now) // NeighborChange: two-way contact
 	}
 }
@@ -431,7 +524,7 @@ func (s *session) twoWayLocked(n *nbr, now time.Time, elect bool) {
 // shouldAdjLocked: point-to-point always; broadcast with the DR and BDR
 // (or when we are one of them).
 func (s *session) shouldAdjLocked(f *iface, n *nbr) bool {
-	if f.p2p {
+	if f.noDR() {
 		return true
 	}
 	if f.state == ifDR || f.state == ifBackup {
@@ -456,7 +549,7 @@ func better(a, b candidate) bool {
 }
 
 func (s *session) electLocked(f *iface, now time.Time) {
-	if f.p2p || f.state == ifDown || f.passive {
+	if f.noDR() || f.state == ifDown || f.passive {
 		return
 	}
 	me := s.myIDLocked(f)
@@ -553,6 +646,7 @@ func (s *session) electLocked(f *iface, now time.Time) {
 type IfStatus struct {
 	Name      string `json:"name"`
 	Network   string `json:"network"`
+	Area      string `json:"area"`
 	State     string `json:"state"`
 	Address   string `json:"address,omitempty"`
 	Cost      uint16 `json:"cost"`
@@ -569,8 +663,8 @@ type IfStatus struct {
 }
 
 func (s *session) ifStatusLocked(f *iface, now time.Time) IfStatus {
-	st := IfStatus{Name: f.device, Network: f.network(), State: f.state, Cost: f.cost, Passive: f.passive,
-		Neighbors: len(f.nbrs), Auth: f.auth.Type, Error: f.err, AuthError: f.authErr, Flapping: f.flapping(now)}
+	st := IfStatus{Name: f.device, Network: f.network(), Area: f.area.id.String(), State: f.state, Cost: f.cost, Passive: f.passive,
+		Neighbors: len(f.nbrs), Auth: f.auth.describe(now), Error: f.err, AuthError: f.authErr, Flapping: f.flapping(now)}
 	if st.Auth == "" {
 		st.Auth = "none"
 	}
@@ -584,7 +678,7 @@ func (s *session) ifStatusLocked(f *iface, now time.Time) IfStatus {
 	} else if a, ok := s.ifAddrLocked(f); ok {
 		st.Address = a.String()
 	}
-	if !f.p2p {
+	if !f.noDR() {
 		st.Priority = f.prio
 		if f.dr != zero4 {
 			st.DR = f.dr.String()

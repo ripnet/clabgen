@@ -63,6 +63,8 @@ func actions() []protocol.Action {
 		{Name: "flap", Description: "Bring adjacencies down for a while (one interface or all), then let them come back", NewArgs: func() any { return &FlapArgs{Seconds: 10, Mode: "reset"} }},
 		{Name: "topology-link", Description: "Take a simulated link down or up, or change its cost", NewArgs: func() any { return &TopoLinkArgs{} }},
 		{Name: "topology-node", Description: "Take a simulated router down or up, or set max-metric on its links", NewArgs: func() any { return &TopoNodeArgs{} }},
+		{Name: "bfd-fail", Description: "Stop sending BFD for a while (one interface or all): neighbors with BFD drop us before our dead interval", NewArgs: func() any { return &BFDArgs{Seconds: 10} }},
+		{Name: "graceful-restart", Description: "Restart gracefully: announce a grace period, drop all neighbors and the LSDB, resynchronise, then originate again", NewArgs: func() any { return &GRArgs{} }},
 		{Name: "lsa", Description: "Show one LSA's content", NewArgs: func() any { return &LSAArgs{} }},
 		{Name: "clear", Description: "Reset counters"},
 	}
@@ -84,9 +86,10 @@ type FlapArgs struct {
 	Interface string `json:"interface,omitempty" jsonschema:"description=Device name; empty: every interface"`
 }
 type LSAArgs struct {
-	Type   string `json:"type" jsonschema:"description=LSA type as the LSDB lists it: router / network / external, summary (v2), link / intra-area-prefix (v3)"`
+	Type   string `json:"type" jsonschema:"description=LSA type as the LSDB lists it: router / network / external / nssa, summary / asbr-summary (v2), link / intra-area-prefix / inter-area-prefix (v3)"`
 	ID     string `json:"id" jsonschema:"description=Link state ID"`
 	AdvRtr string `json:"adv_router,omitempty" jsonschema:"description=Advertising router. Default: the only match"`
+	Area   string `json:"area,omitempty" jsonschema:"description=Area ID, or as for AS-scoped LSAs. Default: the only match"`
 }
 
 func (a *CostArgs) Validate() error {
@@ -123,8 +126,13 @@ type session struct {
 	cfg      Config
 	cd       codec
 	rid      netip.Addr
-	area     netip.Addr
 	instance uint8 // OSPFv3
+
+	areas    []*area
+	areaByID func(AreaID) *area
+	home     *area   // the router's area (first interface, loopbacks, internal prefixes)
+	ifArea   []*area // by interface index (from the config)
+	topoArea *area
 
 	mu        sync.Mutex
 	sendMu    sync.Mutex // keeps packets in sequence-number order (MD5)
@@ -143,8 +151,16 @@ type session struct {
 
 	topo    *topology               // simulated routers behind us (nil: none)
 	boot    uint64                  // OSPFv3 auth: high half of our sequence numbers
-	extIDs  map[netip.Prefix]uint32 // OSPFv3 external LSIDs, stable per prefix
+	extIDs  map[netip.Prefix]uint32 // OSPFv3 external, NSSA and inter-area-prefix LSIDs, stable per prefix
 	nextExt uint32
+
+	translating map[*area]bool        // NSSAs whose type-7 LSAs we translate
+	reasm       map[reasmKey]*partial // IP fragments being reassembled
+	gr          *gr                   // our graceful restart in progress
+
+	opqIDs    map[string]uint32 // stable opaque IDs (sr.go)
+	opqNext   map[string]uint32
+	adjLabels map[string]uint32 // adjacency SID labels by interface and neighbor
 
 	stop chan struct{}
 	done chan struct{}
@@ -152,11 +168,13 @@ type session struct {
 
 // outPkt is a packet to send once mu is released.
 type outPkt struct {
-	ifc  *iface
-	dst  netip.Addr
-	mac  pkt.MAC
-	typ  uint8
-	body []byte
+	ifc   *iface
+	dst   netip.Addr
+	mac   pkt.MAC
+	typ   uint8
+	body  []byte
+	bfd   []byte // a BFD control packet instead (bfd.go)
+	sport uint16
 }
 
 func (ospfType) Start(env protocol.Env, c any) (protocol.Session, error) {
@@ -170,11 +188,14 @@ func (ospf3Type) Start(env protocol.Env, c any) (protocol.Session, error) {
 
 func start(env protocol.Env, cfg Config, cd codec, instance uint8) (protocol.Session, error) {
 	s := &session{env: env, cfg: cfg, cd: cd, instance: instance, extIDs: map[netip.Prefix]uint32{}, boot: uint64(time.Now().Unix()),
+		translating: map[*area]bool{}, opqIDs: map[string]uint32{}, opqNext: map[string]uint32{}, adjLabels: map[string]uint32{},
 		db: map[LSAKey]*lsa{}, routes: map[netip.Prefix]route{}, maxMetric: cfg.MaxMetric,
 		counters: map[string]uint64{}, dirty: true, ipID: uint16(rand.Intn(65536)),
 		rxmt: time.Duration(cfg.RetransmitInterval) * time.Second, refresh: time.Duration(cfg.LSARefresh) * time.Second,
 		stop: make(chan struct{}), done: make(chan struct{})}
-	s.area, _ = ParseArea(cfg.Area)
+	if err := s.buildAreas(); err != nil {
+		return nil, err
+	}
 	for _, l := range cfg.Loopbacks {
 		p, _ := parseLoopback(l, cd.v3)
 		s.loopbacks = append(s.loopbacks, p)
@@ -210,11 +231,14 @@ func start(env protocol.Env, cfg Config, cd codec, instance uint8) (protocol.Ses
 		}
 		s.topo = t
 	}
-	first := Interface{Device: env.Device().Name(), Network: cfg.Network, Cost: cfg.Cost, Passive: cfg.Passive}
+	first := Interface{Device: env.Device().Name(), Network: cfg.Network, Cost: cfg.Cost, Passive: cfg.Passive, Neighbors: cfg.Neighbors}
 	s.ifs = []*iface{s.newIface(0, first)}
 	s.ifs[0].mac = env.Device().MAC()
 	for i, ic := range cfg.Interfaces {
 		s.ifs = append(s.ifs, s.newIface(i+1, ic))
+	}
+	if err := s.addVirtualLinks(s.areaByID); err != nil {
+		return nil, err
 	}
 	s.mu.Lock()
 	s.addLocalsLocked(s.ifs[0])
@@ -288,7 +312,8 @@ func (s *session) timersLocked(now time.Time) {
 		s.ifTimersLocked(f, now)
 	}
 	s.ageLocked(now)
-	if s.dirty && !now.Before(s.genAt) {
+	s.grTimersLocked(now)
+	if s.dirty && !now.Before(s.genAt) && (s.gr == nil || s.gr.phase != "restarting") {
 		s.originateLocked(now)
 	}
 }
@@ -317,15 +342,51 @@ func (s *session) flush(out []outPkt) {
 		f := o.ifc
 		src, ok := s.ifSourceLocked(f)
 		send := s.env.Send
-		if f.idx != 0 {
-			if f.att == nil {
+		ttl := uint8(1)
+		mac := o.mac
+		via := f
+		if f.vl != nil {
+			// A virtual link: through our first hop, routed.
+			via, mac, ttl = f.vl.via, f.vl.nhMAC, 64
+			if via == nil {
+				ok = false
+			}
+		}
+		if ok && via.idx != 0 {
+			if via.att == nil {
 				ok = false
 			} else {
-				send = f.att.Send
+				send = via.att.Send
 			}
+		}
+		if o.bfd != nil {
+			src, ok := s.ifSourceLocked(f)
+			send := s.env.Send
+			if f.idx != 0 && f.att != nil {
+				send = f.att.Send
+			} else if f.idx != 0 {
+				ok = false
+			}
+			var et uint16
+			var frame []byte
+			if ok {
+				et, frame = s.bfdFrame(src, o.dst, o.sport, o.bfd)
+			}
+			if ok && o.mac != (pkt.MAC{}) {
+				s.count("tx_bfd")
+			} else {
+				s.count("tx_bfd_dropped")
+			}
+			s.mu.Unlock()
+			if ok && o.mac != (pkt.MAC{}) {
+				send(o.mac, et, frame, protocol.SendOpts{SetPCP: true, PCP: 6})
+			}
+			continue
 		}
 		f.cryptoSeq++
 		seq := f.cryptoSeq
+		auth := f.auth.sending(time.Now(), s.cd.v3)
+		ipf := s.ifIP(f)
 		seq3 := s.boot<<32 | uint64(seq)
 		s.ipID++
 		id := s.ipID
@@ -333,24 +394,53 @@ func (s *session) flush(out []outPkt) {
 		if !ok {
 			continue
 		}
-		mac := o.mac
 		if o.dst.IsMulticast() {
 			mac = pkt.MulticastMAC(o.dst)
+		} else if mac == (pkt.MAC{}) && ipf != nil {
+			// A configured neighbor not heard from yet (non-broadcast).
+			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			_, m, err := ipf.ResolveNextHop(ctx, o.dst)
+			cancel()
+			if err != nil {
+				s.mu.Lock()
+				s.count("tx_unresolved")
+				s.mu.Unlock()
+				continue
+			}
+			mac = m
 		}
 		var err error
 		if s.cd.v3 {
-			p := s.cd.encodeHeader(o.typ, s.rid, s.area, s.instance, o.body)
-			if authType(f.auth) == AuthCrypto {
-				p = append(p, trailer3(p, src, f.auth, seq3)...) // checksum stays zero
+			p := s.cd.encodeHeader(o.typ, s.rid, f.area.id, s.instance, o.body)
+			if authType(auth) == AuthCrypto {
+				p = append(p, trailer3(p, src, auth, seq3)...) // checksum stays zero
 			} else {
 				binary.BigEndian.PutUint16(p[12:], pkt.Checksum(p, pkt.PseudoSum(src, o.dst, ProtoOSPF, len(p))))
 			}
-			ip := pkt.IPv6{TrafficClass: 0xc0, NextHeader: ProtoOSPF, HopLimit: 1, Src: src, Dst: o.dst, Payload: p}
-			err = send(mac, pkt.EtherTypeIPv6, ip.Encode(), protocol.SendOpts{SetPCP: true, PCP: 6})
+			ip := pkt.IPv6{TrafficClass: 0xc0, NextHeader: ProtoOSPF, HopLimit: ttl, Src: src, Dst: o.dst, Payload: p}
+			frames := [][]byte{ip.Encode()}
+			if 40+len(p) > s.cfg.MTU {
+				frames = fragment6(ip, s.cfg.MTU, uint32(s.boot)<<16|uint32(id))
+			}
+			for _, fr := range frames {
+				if e := send(mac, pkt.EtherTypeIPv6, fr, protocol.SendOpts{SetPCP: true, PCP: 6}); e != nil {
+					err = e
+				}
+			}
+			s.countFrags(len(frames))
 		} else {
-			p := sign(encodeHeader(o.typ, s.rid, s.area, o.body), f.auth, seq)
-			ip := pkt.IPv4{TOS: 0xc0, ID: id, TTL: 1, Protocol: ProtoOSPF, Src: src, Dst: o.dst, Payload: p}
-			err = send(mac, pkt.EtherTypeIPv4, ip.Encode(), protocol.SendOpts{SetPCP: true, PCP: 6})
+			p := sign(encodeHeader(o.typ, s.rid, f.area.id, o.body), auth, seq)
+			ip := pkt.IPv4{TOS: 0xc0, ID: id, TTL: ttl, Protocol: ProtoOSPF, Src: src, Dst: o.dst, Payload: p}
+			frames := [][]byte{ip.Encode()}
+			if 20+len(p) > s.cfg.MTU {
+				frames = fragment4(ip, s.cfg.MTU)
+			}
+			for _, fr := range frames {
+				if e := send(mac, pkt.EtherTypeIPv4, fr, protocol.SendOpts{SetPCP: true, PCP: 6}); e != nil {
+					err = e
+				}
+			}
+			s.countFrags(len(frames))
 		}
 		s.mu.Lock()
 		if err != nil {
@@ -368,8 +458,8 @@ func (s *session) maxBody(f *iface) int {
 	if s.cd.v3 {
 		n = s.cfg.MTU - 40 - header3Len
 	}
-	if authType(f.auth) == AuthCrypto {
-		n -= digestLen(f.auth)
+	if f.auth.crypto() {
+		n -= f.auth.maxDigest()
 		if s.cd.v3 {
 			n -= at3Header
 		}
@@ -390,7 +480,17 @@ type ipPacket struct {
 func (s *session) decodeIP(fr *pkt.Frame) (ipPacket, bool) {
 	if s.cd.v3 {
 		ip, err := pkt.DecodeIPv6(fr.Payload)
-		if ip == nil || err != nil || ip.NextHeader != ProtoOSPF {
+		if ip == nil || err != nil {
+			return ipPacket{}, false
+		}
+		if ip.NextHeader == ipv6FragHeader && len(ip.Payload) >= 8 && ip.Payload[0] == ProtoOSPF {
+			h := ip.Payload
+			fo := binary.BigEndian.Uint16(h[2:])
+			k := reasmKey{ip.Src, ip.Dst, binary.BigEndian.Uint32(h[4:])}
+			whole, ok := s.reassemble(k, int(fo>>3)*8, fo&1 != 0, h[8:], time.Now())
+			return ipPacket{ip.Src, ip.Dst, whole}, ok
+		}
+		if ip.NextHeader != ProtoOSPF {
 			return ipPacket{}, false
 		}
 		return ipPacket{ip.Src, ip.Dst, ip.Payload}, true
@@ -400,15 +500,25 @@ func (s *session) decodeIP(fr *pkt.Frame) (ipPacket, bool) {
 		return ipPacket{}, false
 	}
 	if ip.Flags&pkt.IPv4MF != 0 || ip.FragOff != 0 {
-		s.mu.Lock()
-		s.count("rx_fragments")
-		s.mu.Unlock()
-		return ipPacket{}, false
+		k := reasmKey{ip.Src, ip.Dst, uint32(ip.ID)}
+		whole, ok := s.reassemble(k, int(ip.FragOff)*8, ip.Flags&pkt.IPv4MF != 0, ip.Payload, time.Now())
+		return ipPacket{ip.Src, ip.Dst, whole}, ok
 	}
 	return ipPacket{ip.Src, ip.Dst, ip.Payload}, true
 }
 
+func (s *session) countFrags(n int) {
+	if n > 1 {
+		s.mu.Lock()
+		s.count("tx_fragmented")
+		s.mu.Unlock()
+	}
+}
+
 func (s *session) rx(f *iface, fr *pkt.Frame) {
+	if f.bfd && s.rxBFD(f, fr) {
+		return
+	}
 	ip, ok := s.decodeIP(fr)
 	if !ok {
 		return
@@ -422,6 +532,13 @@ func (s *session) rx(f *iface, fr *pkt.Frame) {
 	}()
 	if f.state == ifDown || f.passive {
 		return
+	}
+	// A virtual link's packets come in on the transit interface, unicast
+	// to our address on it, for the backbone.
+	if err == nil && h.AreaID != f.area.id {
+		if vf := s.virtualFor(f, h.AreaID, h.RouterID); vf != nil && ip.dst == vf.vl.src {
+			f = vf
+		}
 	}
 	mine, ok := s.ifSourceLocked(f)
 	if !ok || ip.src == mine {
@@ -444,19 +561,28 @@ func (s *session) rx(f *iface, fr *pkt.Frame) {
 		s.count("rx_other_instance")
 		return
 	}
-	if h.AreaID != s.area {
+	if h.AreaID != f.area.id {
 		s.count("rx_area_mismatch")
+		f.authErr = fmt.Sprintf("packet from %s for area %s, the interface is in %s", ip.src, h.AreaID, f.area.id)
 		return
 	}
 	if h.RouterID == s.rid {
 		s.count("rx_own_router_id")
 		return
 	}
+	now := time.Now()
 	var seq uint64
 	var crypto bool
 	if s.cd.v3 {
-		if authType(f.auth) == AuthCrypto {
-			if seq, err = verify3(h, ip.src, f.auth); err != nil {
+		if f.auth.crypto() {
+			var a Auth
+			if len(h.Trailer) >= at3Header {
+				a, err = f.auth.accepting(binary.BigEndian.Uint16(h.Trailer[6:]), now, true)
+			}
+			if err == nil {
+				seq, err = verify3(h, ip.src, a)
+			}
+			if err != nil {
 				s.count("rx_auth_failures")
 				f.authErr = err.Error()
 				return
@@ -472,7 +598,10 @@ func (s *session) rx(f *iface, fr *pkt.Frame) {
 			return
 		}
 		var seq2 uint32
-		seq2, crypto, err = verify(h, f.auth)
+		a, err := f.auth.accepting(uint16(h.Auth[2]), now, false)
+		if err == nil {
+			seq2, crypto, err = verify(h, a)
+		}
 		seq = uint64(seq2)
 		if err != nil {
 			s.count("rx_auth_failures")
@@ -480,7 +609,6 @@ func (s *session) rx(f *iface, fr *pkt.Frame) {
 			return
 		}
 	}
-	now := time.Now()
 	if h.Type == TypeHello {
 		hello, err := s.cd.decodeHello(h.Body)
 		if err != nil {
@@ -536,7 +664,9 @@ func (s *session) rx(f *iface, fr *pkt.Frame) {
 
 type Status struct {
 	RouterID   string            `json:"router_id"`
-	Area       string            `json:"area"`
+	Area       string            `json:"area"` // the router's
+	Areas      []AreaStatus      `json:"areas"`
+	ABR        bool              `json:"abr,omitempty"`
 	MaxMetric  bool              `json:"max_metric,omitempty"`
 	ASBR       bool              `json:"asbr,omitempty"`
 	Auth       string            `json:"auth"` // the first interface's; type only
@@ -548,6 +678,8 @@ type Status struct {
 	LSDBTotal  int               `json:"lsdb_total"`
 	LSDBTypes  map[string]int    `json:"lsdb_types"`
 	Topology   *topogen.Status   `json:"topology,omitempty"`
+	SR         *SRStatus         `json:"segment_routing,omitempty"`
+	GR         GRStatus          `json:"graceful_restart"`
 	Counters   map[string]uint64 `json:"counters"`
 }
 
@@ -560,6 +692,7 @@ type LSAStatus struct {
 	Checksum string `json:"checksum"`
 	Length   int    `json:"length"`
 	Own      bool   `json:"own,omitempty"`
+	Area     string `json:"area,omitempty"` // area-scoped: the area
 	Link     string `json:"link,omitempty"` // link-scoped: the interface it belongs to
 	Summary  string `json:"summary,omitempty"`
 }
@@ -572,7 +705,7 @@ func (s *session) Status() any {
 	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := Status{RouterID: s.rid.String(), Area: s.area.String(), MaxMetric: s.maxMetric, Auth: s.ifs[0].auth.Type,
+	st := Status{RouterID: s.rid.String(), Area: s.home.id.String(), Areas: s.areaStatusLocked(), ABR: s.abrLocked(), MaxMetric: s.maxMetric, Auth: s.ifs[0].auth.describe(now),
 		Prefixes: len(s.routes), LSDB: []LSAStatus{}, LSDBTotal: len(s.db), LSDBTypes: map[string]int{},
 		Counters: map[string]uint64{}, Interfaces: []IfStatus{}, Neighbors: []NbrStatus{}}
 	if st.Auth == "" {
@@ -584,6 +717,8 @@ func (s *session) Status() any {
 	if s.topo != nil {
 		st.Topology = s.topo.status()
 	}
+	st.SR = s.srStatusLocked()
+	st.GR = s.grStatusLocked(now)
 	for k, v := range s.counters {
 		st.Counters[k] = v
 	}
@@ -650,6 +785,9 @@ func (s *session) Health() string {
 func sortKeys(keys []LSAKey) {
 	sort.Slice(keys, func(i, j int) bool {
 		a, b := keys[i], keys[j]
+		if a.Area != b.Area {
+			return a.Area < b.Area
+		}
 		if a.Type != b.Type {
 			return a.Type < b.Type
 		}
@@ -741,6 +879,25 @@ func (s *session) Action(_ context.Context, name string, args any) (any, error) 
 		return map[string]any{"interfaces": len(fs), "until": now.Add(time.Duration(a.Seconds) * time.Second).Format(time.RFC3339)}, nil
 	case "lsa":
 		return s.lsaDetailLocked(args.(*LSAArgs), now)
+	case "graceful-restart":
+		return s.startGRLocked(args.(*GRArgs), now)
+	case "bfd-fail":
+		a := args.(*BFDArgs)
+		fs, err := s.ifsNamed(a.Interface)
+		if err != nil {
+			return nil, err
+		}
+		n := 0
+		for _, f := range fs {
+			if f.bfd {
+				f.bfdSilentTill = now.Add(time.Duration(a.Seconds) * time.Second)
+				n++
+			}
+		}
+		if n == 0 {
+			return nil, fmt.Errorf("BFD is not enabled on these interfaces")
+		}
+		return map[string]any{"interfaces": n, "until": now.Add(time.Duration(a.Seconds) * time.Second).Format(time.RFC3339)}, nil
 	case "topology-link":
 		return s.topoLinkLocked(args.(*TopoLinkArgs))
 	case "topology-node":

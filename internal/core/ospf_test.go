@@ -3,7 +3,10 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/ripnet/clabgen/internal/core"
 	"github.com/ripnet/clabgen/internal/pkt"
@@ -331,7 +334,8 @@ func linksOf(t *testing.T, e *core.Engine, name, typ, id, adv string) []map[stri
 	var m map[string]any
 	json.Unmarshal(b, &m)
 	var out []map[string]any
-	for _, l := range m["links"].([]any) {
+	ls, _ := m["links"].([]any)
+	for _, l := range ls {
 		out = append(out, l.(map[string]any))
 	}
 	return out
@@ -443,4 +447,600 @@ func TestOSPFHMAC(t *testing.T) {
 			})
 		})
 	}
+}
+
+func lsaRows(t *testing.T, e *core.Engine, name string) []map[string]any {
+	var out []map[string]any
+	for _, x := range flowStatus(t, e, name)["lsdb"].([]any) {
+		out = append(out, x.(map[string]any))
+	}
+	return out
+}
+
+// countLSAs counts LSAs of a type (from adv, if set) in an area ("" for
+// AS scope).
+func countLSAs(t *testing.T, e *core.Engine, name, typ, adv, area string) int {
+	n := 0
+	for _, l := range lsaRows(t, e, name) {
+		a, _ := l["area"].(string)
+		if l["type"] == typ && (adv == "" || l["adv_router"] == adv) && a == area && l["age"].(float64) < 3600 {
+			n++
+		}
+	}
+	return n
+}
+
+// An area border router: area 0 toward b, an emulated topology in area 1
+// (summarised with a range), and an NSSA (area 2) toward c on a second
+// VLAN. b sees the summaries and the translated type-7 LSA of c; c sees
+// summaries but no AS-externals.
+func TestOSPFAreas(t *testing.T) {
+	for _, v3 := range []bool{false, true} {
+		t.Run(map[bool]string{false: "v2", true: "v3"}[v3], func(t *testing.T) {
+			a, b, _, _ := ipPair(t)
+			for i, e := range []*core.Engine{a, b} {
+				addr := []string{"10.0.1.1/24", "2001:db8:1::1/64"}
+				if i == 1 {
+					addr = []string{"10.0.1.2/24", "2001:db8:1::2/64"}
+				}
+				if _, err := e.CreateDevice(core.DeviceSpec{Name: "e", Port: "eth1", MAC: []string{"02:00:00:00:0a:02", "02:00:00:00:0b:02"}[i],
+					VLANs: []pkt.VLANTag{{VID: 20}}, Addresses: addr}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			typ, lb, pfx, rng, lbB, ext := "ospf", "10.255.0.1/32", "10.200.0.0/24", "10.200.0.0/22", "192.0.2.2/32", "198.51.100.0/24"
+			sum, cFwd := "summary", "10.0.1.2"
+			if v3 {
+				typ, lb, pfx, rng, lbB, ext = "ospfv3", "2001:db8:ff::1/128", "2001:db8:200::/64", "2001:db8:200::/62", "2001:db8:ffff::2/128", "2001:db8:5100::/48"
+				sum, cFwd = "inter-area-prefix", "2001:db8:1::2"
+			}
+			mk := func(e *core.Engine, name, dev, cfg string) {
+				t.Helper()
+				if _, err := e.CreateProtocol(core.ProtocolSpec{Name: name, Type: typ, Device: dev, Config: json.RawMessage(cfg)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			mk(a, "o", "d", `{"router_id": "192.0.2.1", "network": "point-to-point", `+ospfTimers+`,
+				"interfaces": [{"device": "e", "area": "2", "network": "broadcast"}],
+				"areas": [{"id": "1", "ranges": [{"prefix": "`+rng+`"}]}, {"id": "2", "type": "nssa"}],
+				"topology": {"kind": "line", "nodes": 2, "metric": 20, "area": "1", "loopback_base": "`+lb+`", "prefix_base": "`+pfx+`", "prefixes_per_node": 2}}`)
+			mk(b, "o", "d", `{"router_id": "192.0.2.2", "network": "point-to-point", "loopbacks": ["`+lbB+`"], `+ospfTimers+`}`)
+			mk(b, "c", "e", `{"router_id": "192.0.2.3", "area": "2", "areas": [{"id": "2", "type": "nssa"}], `+ospfTimers+`,
+				"prefixes": [{"prefix": "`+ext+`", "metric": 30}]}`)
+			defer func() {
+				if t.Failed() {
+					for _, x := range []struct {
+						e *core.Engine
+						n string
+					}{{a, "o"}, {b, "o"}, {b, "c"}} {
+						st := flowStatus(t, x.e, x.n)
+						t.Logf("%s areas %v", st["router_id"], st["areas"])
+						for _, l := range lsaRows(t, x.e, x.n) {
+							t.Logf("   %v %v %v %v %v", l["area"], l["type"], l["id"], l["adv_router"], l["summary"])
+						}
+						t.Logf("   %v", st["counters"])
+					}
+				}
+			}()
+			eventuallyLong(t, "full", func() bool { return ospfFull(t, a, "o", 2) && ospfFull(t, b, "o", 1) && ospfFull(t, b, "c", 1) })
+			if st := flowStatus(t, a, "o"); st["abr"] != true || len(st["areas"].([]any)) != 3 {
+				t.Fatalf("a: abr %v areas %v", st["abr"], st["areas"])
+			}
+			// b: the two simulated loopbacks, the range (not its four
+			// prefixes), c's NSSA interface subnet... and c's external,
+			// translated by a.
+			eventuallyLong(t, "b's summaries", func() bool {
+				var ids []string
+				for _, l := range lsaRows(t, b, "o") {
+					if l["type"] == sum && l["adv_router"] == "192.0.2.1" {
+						ids = append(ids, l["summary"].(string)+" "+l["id"].(string))
+					}
+				}
+				want := 2 + 1 + 1 // loopbacks, range, the NSSA link
+				return len(ids) == want && countLSAs(t, b, "o", "external", "192.0.2.1", "") == 1
+			})
+			if !v3 {
+				r2 := ospfRun(t, b, "o", "lsa", `{"type": "summary", "id": "10.255.0.2"}`)
+				if r2["metric"] != 40.0 {
+					t.Fatalf("r2's loopback summary: %v", r2)
+				}
+				x := ospfRun(t, b, "o", "lsa", `{"type": "summary", "id": "10.200.0.0"}`)
+				if x["mask"] != "255.255.252.0" || x["metric"] != 50.0 { // the largest: r2's prefixes at 20 + 20 + 10
+					t.Fatalf("range summary: %v", x)
+				}
+				e := ospfRun(t, b, "o", "lsa", `{"type": "external", "id": "198.51.100.0"}`)
+				if e["forwarding_address"] != cFwd || e["metric"] != 30.0 {
+					t.Fatalf("translated external: %v", e)
+				}
+				f := ospfRun(t, b, "o", "lsa", `{"type": "router", "id": "192.0.2.1"}`)["flags"].(map[string]any)
+				if f["abr"] != true || f["asbr"] != true {
+					t.Fatalf("a's router LSA flags in area 0: %v", f)
+				}
+			} else {
+				id := ""
+				for _, l := range lsaRows(t, b, "o") {
+					if l["type"] == "external" && l["adv_router"] == "192.0.2.1" {
+						id = l["id"].(string)
+					}
+				}
+				e := ospfRun(t, b, "o", "lsa", `{"type": "external", "id": "`+id+`", "adv_router": "192.0.2.1"}`)
+				if e["forwarding_address"] != cFwd || e["metric"] != 30.0 || e["prefix"] != ext {
+					t.Fatalf("translated external: %v", e)
+				}
+			}
+			// c: summaries of b's loopback and the topology, its own type-7,
+			// no AS-externals and no ASBR summaries.
+			eventuallyLong(t, "c's view", func() bool {
+				return countLSAs(t, b, "c", sum, "192.0.2.1", "0.0.0.2") >= 4 && countLSAs(t, b, "c", "nssa", "192.0.2.3", "0.0.0.2") == 1
+			})
+			if n := countLSAs(t, b, "c", "external", "", ""); n != 0 {
+				t.Fatalf("c has %d AS-externals", n)
+			}
+
+			// Withdraw the external at c: the translation goes.
+			ospfRun(t, b, "c", "withdraw", `{"prefixes": [{"prefix": "`+ext+`"}]}`)
+			eventuallyLong(t, "translation flushed", func() bool { return countLSAs(t, b, "o", "external", "192.0.2.1", "") == 0 })
+			// A simulated router goes: its loopback summary goes too.
+			ospfRun(t, a, "o", "topology-node", `{"node": "r2", "up": false}`)
+			eventuallyLong(t, "summary flushed", func() bool {
+				return countLSAs(t, b, "o", sum, "192.0.2.1", "0.0.0.0") == 3
+			})
+		})
+	}
+}
+
+// A totally stubby area: c gets only a default summary, and no externals.
+func TestOSPFStubArea(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	mkOSPF(t, a, "o", "d", `{"router_id": "192.0.2.1", "network": "point-to-point", "area": "0", `+ospfTimers+`,
+		"loopbacks": ["192.0.2.1/32"], "prefixes": [{"prefix": "198.18.0.0/24", "count": 3}],
+		"topology": {"kind": "line", "nodes": 1, "area": "5", "loopback_base": "10.255.0.1/32"},
+		"areas": [{"id": "5", "type": "stub", "no_summary": true, "default_cost": 7}]}`)
+	mkOSPF(t, b, "o", "d", `{"router_id": "192.0.2.2", "network": "point-to-point", "area": "0", `+ospfTimers+`}`)
+	eventuallyLong(t, "full", func() bool { return ospfFull(t, a, "o", 1) && ospfFull(t, b, "o", 1) })
+	// The stub area's routers only exist at a; check a's LSDB there.
+	eventuallyLong(t, "default only", func() bool {
+		return countLSAs(t, a, "o", "summary", "192.0.2.1", "0.0.0.5") == 1 && countLSAs(t, b, "o", "summary", "192.0.2.1", "0.0.0.0") == 1
+	})
+	d := ospfRun(t, a, "o", "lsa", `{"type": "summary", "id": "0.0.0.0", "area": "5"}`)
+	if d["metric"] != 7.0 || d["mask"] != "0.0.0.0" {
+		t.Fatalf("default summary: %v", d)
+	}
+	if lsdbTypes(t, b, "o")["external"] != 3 {
+		t.Fatalf("b: %v", lsdbTypes(t, b, "o"))
+	}
+}
+
+// Segment routing, flex-algo and TE in opaque LSAs: b decodes a's Router
+// Information (SRGB, algorithms, definition), Prefix-SIDs (a's loopback
+// and the simulated routers'), adjacency SIDs and link attributes.
+func TestOSPFSegmentRouting(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	mkOSPF(t, a, "o", "d", `{"router_id": "192.0.2.1", "network": "point-to-point", `+ospfTimers+`,
+		"loopbacks": ["192.0.2.1/32"], "delay_us": 500, "traffic_engineering": true,
+		"segment_routing": {"enabled": true, "srgb_base": 16000, "srgb_size": 8000, "adj_sid_base": 24000,
+			"node_sids": [{"prefix": "192.0.2.1/32", "index": 1}, {"prefix": "192.0.2.1/32", "index": 501, "algorithm": 128}]},
+		"flex_algos": [{"algorithm": 128, "metric_type": "delay", "exclude_any": [3]}],
+		"topology": {"kind": "line", "nodes": 2, "loopback_base": "10.255.0.1/32", "node_sid_base": 100, "link_delay_us": 1000}}`)
+	mkOSPF(t, b, "o", "d", `{"router_id": "192.0.2.2", "network": "point-to-point", `+ospfTimers+`}`)
+	eventuallyLong(t, "full", func() bool { return ospfFull(t, a, "o", 1) && ospfFull(t, b, "o", 1) })
+	find := func(adv, sub string) map[string]any {
+		for _, l := range lsaRows(t, b, "o") {
+			if l["type"] == "opaque-area" && l["adv_router"] == adv && strings.Contains(l["summary"].(string), sub) {
+				return l
+			}
+		}
+		return nil
+	}
+	defer func() {
+		if t.Failed() {
+			for _, l := range lsaRows(t, b, "o") {
+				t.Logf("%v %v %v %v", l["type"], l["id"], l["adv_router"], l["summary"])
+			}
+		}
+	}()
+	eventuallyLong(t, "opaque LSAs at b", func() bool {
+		return find("192.0.2.1", "SRGB 16000-23999") != nil && find("192.0.2.1", "192.0.2.1/32 index 1 algo 0") != nil &&
+			find("192.0.2.1", "adj label 24000") != nil && find("10.254.0.2", "10.255.0.2/32 index 101") != nil &&
+			find("10.254.0.1", "SRGB") != nil && find("192.0.2.1", "router address 192.0.2.1") != nil
+	})
+	ri := ospfRun(t, b, "o", "lsa", `{"type": "opaque-area", "id": "4.0.0.0", "adv_router": "192.0.2.1"}`)
+	fads, _ := ri["flex_algo_definitions"].([]any)
+	if len(fads) != 1 || fads[0].(map[string]any)["metric_type"] != 1.0 || fads[0].(map[string]any)["exclude_any"] != "3" {
+		t.Fatalf("RI: %v", ri)
+	}
+	if l := find("192.0.2.1", "asla X delay 500/500"); l == nil {
+		t.Fatal("no ASLA on a's link to b")
+	}
+	if l := find("10.254.0.1", "asla X delay 1000/1000"); l == nil {
+		t.Fatal("no ASLA on the simulated links")
+	}
+	st := flowStatus(t, a, "o")["segment_routing"].(map[string]any)
+	if len(st["node_sids"].([]any)) != 4 || len(st["adj_sids"].([]any)) != 1 {
+		t.Fatalf("SR status: %v", st)
+	}
+}
+
+// Keychain rollover: both routers move from key 1 to key 2 at the same
+// instant (v2: MD5 to HMAC-SHA-256); the adjacency holds and nothing fails.
+func TestOSPFKeychain(t *testing.T) {
+	for _, v3 := range []bool{false, true} {
+		t.Run(map[bool]string{false: "v2", true: "v3"}[v3], func(t *testing.T) {
+			a, b, _, _ := ipPair(t)
+			at := time.Now().Add(4 * time.Second).UTC().Format(time.RFC3339)
+			k1 := "md5"
+			typ := "ospf"
+			if v3 {
+				k1, typ = "hmac-sha1", "ospfv3"
+			}
+			chain := `"auth": {"type": "keychain", "keys": [{"id": 1, "type": "` + k1 + `", "key": "one", "send_until": "` + at + `"},
+				{"id": 2, "type": "hmac-sha256", "key": "two", "send_from": "` + at + `"}]}`
+			for i, e := range []*core.Engine{a, b} {
+				cfg := fmt.Sprintf(`{"router_id": "192.0.2.%d", "network": "point-to-point", %s, %s}`, i+1, chain, ospfTimers)
+				if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "o", Type: typ, Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			eventuallyLong(t, "full", func() bool { return ospfFull(t, a, "o", 1) && ospfFull(t, b, "o", 1) })
+			if s := flowStatus(t, a, "o")["auth"].(string); !strings.Contains(s, "sending key 1") {
+				t.Fatalf("auth before: %s", s)
+			}
+			eventuallyLong(t, "rolled over", func() bool {
+				return strings.Contains(flowStatus(t, a, "o")["auth"].(string), "sending key 2")
+			})
+			time.Sleep(3 * time.Second)
+			for _, e := range []*core.Engine{a, b} {
+				c := flowStatus(t, e, "o")["counters"].(map[string]any)
+				if c["rx_auth_failures"] != nil || !ospfFull(t, e, "o", 1) {
+					t.Fatalf("after rollover: %v %v %v", c, ospfNbrs(t, e, "o"), flowStatus(t, e, "o")["interfaces"])
+				}
+			}
+		})
+	}
+}
+
+// Graceful restart: a restarts (losing its neighbors and LSDB, keeping
+// BFD running); b helps, so b's router LSA never drops a, BFD never goes
+// down, and a's grace LSA is gone at the end.
+func TestOSPFGracefulRestart(t *testing.T) {
+	for _, v3 := range []bool{false, true} {
+		t.Run(map[bool]string{false: "v2", true: "v3"}[v3], func(t *testing.T) {
+			a, b, _, _ := ipPair(t)
+			typ, rtrID := "ospf", "192.0.2.2"
+			if v3 {
+				typ, rtrID = "ospfv3", "0.0.0.0"
+			}
+			for i, e := range []*core.Engine{a, b} {
+				cfg := fmt.Sprintf(`{"router_id": "192.0.2.%d", "network": "point-to-point", "bfd": {"enabled": true, "min_tx_ms": 100, "min_rx_ms": 100}, %s}`, i+1, ospfTimers)
+				if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "o", Type: typ, Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			eventuallyLong(t, "full", func() bool { return ospfFull(t, a, "o", 1) && ospfFull(t, b, "o", 1) })
+			time.Sleep(2 * time.Second)
+			bSeq := lsaSeqBy(t, b, "o", "router", rtrID, "192.0.2.2")
+			aSeq := lsaSeqBy(t, b, "o", "router", map[bool]string{false: "192.0.2.1", true: "0.0.0.0"}[v3], "192.0.2.1")
+			ospfRun(t, a, "o", "graceful-restart", `{"seconds": 60}`)
+			defer func() {
+				if t.Failed() {
+					t.Logf("b gr %v seq %s (was %s)", flowStatus(t, b, "o")["graceful_restart"], lsaSeqBy(t, b, "o", "router", map[bool]string{false: "192.0.2.1", true: "0.0.0.0"}[v3], "192.0.2.1"), aSeq)
+					for _, l := range lsaRows(t, b, "o") {
+						t.Logf("  %v %v %v %v age %v", l["type"], l["id"], l["adv_router"], l["seq"], l["age"])
+					}
+					t.Logf("a %v", flowStatus(t, a, "o")["counters"])
+				}
+			}()
+			eventuallyLong(t, "b helps", func() bool {
+				h, _ := flowStatus(t, b, "o")["graceful_restart"].(map[string]any)["helping"].([]any)
+				return len(h) == 1
+			})
+			eventuallyLong(t, "a restarted and done", func() bool {
+				g := flowStatus(t, a, "o")["graceful_restart"].(map[string]any)
+				return g["restart"] == nil && ospfFull(t, a, "o", 1) && ospfFull(t, b, "o", 1)
+			})
+			// a's router LSA comes back unchanged, so it isn't re-originated.
+			eventuallyLong(t, "grace LSA flushed", func() bool {
+				g := flowStatus(t, b, "o")["graceful_restart"].(map[string]any)
+				s := lsaSeqBy(t, b, "o", "router", map[bool]string{false: "192.0.2.1", true: "0.0.0.0"}[v3], "192.0.2.1")
+				return g["helping"] == nil && g["grace_lsas"] == nil && s == aSeq
+			})
+			if s := lsaSeqBy(t, b, "o", "router", rtrID, "192.0.2.2"); s != bSeq {
+				t.Fatalf("b re-originated its router LSA during the restart: %s → %s", bSeq, s)
+			}
+			if c := flowStatus(t, b, "o")["counters"].(map[string]any); c["bfd_down"] != nil || c["bfd_up"] != 1.0 {
+				t.Fatalf("BFD at b: %v", c)
+			}
+		})
+	}
+}
+
+// Non-broadcast and point-to-multipoint networks with three routers on one
+// segment. NBMA: hellos only to the configured neighbors, a DR, a network
+// LSA. P2MP: everyone adjacent, point-to-point links to each neighbor and
+// the interface address as a host route.
+func TestOSPFNBMAAndP2MP(t *testing.T) {
+	for _, tc := range []struct {
+		name, typ, network string
+	}{{"nbma-v2", "ospf", "non-broadcast"}, {"nbma-v3", "ospfv3", "non-broadcast"}, {"p2mp-v2", "ospf", "point-to-multipoint"}, {"p2mp-v3", "ospfv3", "point-to-multipoint"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, b, _, _ := ipPair(t)
+			if _, err := b.CreateDevice(core.DeviceSpec{Name: "d2", Port: "eth1", MAC: "02:00:00:00:0b:02", VLANs: []pkt.VLANTag{{VID: 10}},
+				Addresses: []string{"10.0.0.3/24", "2001:db8::3/64"}}); err != nil {
+				t.Fatal(err)
+			}
+			v3 := tc.typ == "ospfv3"
+			addr := map[string]string{"a": "10.0.0.1", "b": "10.0.0.2", "c": "10.0.0.3"}
+			if v3 { // link-local addresses from the MACs
+				addr = map[string]string{"a": "fe80::ff:fe00:a01", "b": "fe80::ff:fe00:b01", "c": "fe80::ff:fe00:b02"}
+			}
+			mk := func(e *core.Engine, name, dev, rid, prio string, others ...string) {
+				t.Helper()
+				nb := ""
+				if tc.network == "non-broadcast" {
+					nb = fmt.Sprintf(`"neighbors": ["%s", "%s"], `, addr[others[0]], addr[others[1]])
+				}
+				cfg := fmt.Sprintf(`{"router_id": "%s", "network": "%s", "priority": %s, %s%s}`, rid, tc.network, prio, nb, ospfTimers)
+				if _, err := e.CreateProtocol(core.ProtocolSpec{Name: name, Type: tc.typ, Device: dev, Config: json.RawMessage(cfg)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			mk(a, "o", "d", "192.0.2.1", "10", "b", "c")
+			mk(b, "o", "d", "192.0.2.2", "5", "a", "c")
+			mk(b, "c", "d2", "192.0.2.3", "1", "a", "b")
+			defer func() {
+				if t.Failed() {
+					for _, x := range []struct {
+						e *core.Engine
+						n string
+					}{{a, "o"}, {b, "o"}, {b, "c"}} {
+						st := flowStatus(t, x.e, x.n)
+						t.Logf("%s %v nbrs %v %v", st["router_id"], st["interfaces"], ospfNbrs(t, x.e, x.n), st["counters"])
+					}
+				}
+			}()
+			eventuallyLong(t, "all adjacent", func() bool {
+				return ospfFull(t, a, "o", 2) && ospfFull(t, b, "o", 2) && ospfFull(t, b, "c", 2)
+			})
+			rid := func(r string) string {
+				if v3 {
+					return "0.0.0.0"
+				}
+				return r
+			}
+			if tc.network == "non-broadcast" {
+				f := flowStatus(t, a, "o")["interfaces"].([]any)[0].(map[string]any)
+				if f["state"] != "dr" {
+					t.Fatalf("a: %v", f)
+				}
+				eventuallyLong(t, "network LSA", func() bool { return lsdbTypes(t, b, "c")["network"] == 1 })
+				return
+			}
+			eventuallyLong(t, "p2p links to both", func() bool {
+				p2p, stubs := 0, 0
+				for _, l := range linksOf(t, b, "c", "router", rid("192.0.2.1"), "192.0.2.1") {
+					switch l["type"] {
+					case "point-to-point":
+						p2p++
+					case "stub":
+						if l["id"] == "10.0.0.1" && l["data"] == "255.255.255.255" {
+							stubs++
+						}
+					}
+				}
+				return p2p == 2 && (v3 || stubs == 1)
+			})
+			if lsdbTypes(t, b, "c")["network"] != 0 {
+				t.Fatalf("network LSAs on a point-to-multipoint network: %v", lsdbTypes(t, b, "c"))
+			}
+			if v3 {
+				ip := ospfRun(t, b, "c", "lsa", `{"type": "intra-area-prefix", "id": "0.0.0.0", "adv_router": "192.0.2.1"}`)
+				ps := ip["prefixes"].([]any)
+				if len(ps) != 1 || ps[0].(map[string]any)["prefix"] != "2001:db8::1/128" {
+					t.Fatalf("a's prefixes: %v", ip)
+				}
+			}
+		})
+	}
+}
+
+// An LSA larger than the MTU: our router LSA with links to 150 simulated
+// routers is sent in IP fragments and reassembled at b.
+func TestOSPFFragmentation(t *testing.T) {
+	for _, v3 := range []bool{false, true} {
+		t.Run(map[bool]string{false: "v2", true: "v3"}[v3], func(t *testing.T) {
+			a, b, _, _ := ipPair(t)
+			typ, id, links := "ospf", "192.0.2.1", 152 // b, the subnet (v2), the simulated routers
+			if v3 {
+				typ, id, links = "ospfv3", "0.0.0.0", 151
+			}
+			var att []string
+			for i := 1; i <= 150; i++ {
+				att = append(att, fmt.Sprintf(`"r%d"`, i))
+			}
+			for i, e := range []*core.Engine{a, b} {
+				cfg := fmt.Sprintf(`{"router_id": "192.0.2.%d", "network": "point-to-point", %s}`, i+1, ospfTimers)
+				if i == 0 {
+					cfg = fmt.Sprintf(`{"router_id": "192.0.2.1", "network": "point-to-point", %s, "topology": {"kind": "ring", "nodes": 150, "attach": [%s]}}`,
+						ospfTimers, strings.Join(att, ","))
+				}
+				if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "o", Type: typ, Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			eventuallyLong(t, "full", func() bool { return ospfFull(t, a, "o", 1) && ospfFull(t, b, "o", 1) })
+			eventuallyLong(t, "a's big router LSA at b", func() bool { return len(linksOf(t, b, "o", "router", id, "192.0.2.1")) == links })
+			ca := flowStatus(t, a, "o")["counters"].(map[string]any)
+			cb := flowStatus(t, b, "o")["counters"].(map[string]any)
+			if ca["tx_fragmented"] == nil || cb["rx_reassembled"] == nil {
+				t.Fatalf("a %v\nb %v", ca, cb)
+			}
+		})
+	}
+}
+
+// A virtual link: a is in area 1 (to b) with area 3 behind it and no
+// backbone link; the virtual link across area 1 to b (a backbone border
+// router) carries a's summaries of area 3 into the backbone.
+func TestOSPFVirtualLink(t *testing.T) {
+	for _, v3 := range []bool{false, true} {
+		t.Run(map[bool]string{false: "v2", true: "v3"}[v3], func(t *testing.T) { testVirtualLink(t, v3) })
+	}
+}
+
+func testVirtualLink(t *testing.T, v3 bool) {
+	a, b, _, _ := ipPair(t)
+	typ, lb, lbB, sum, rid := "ospf", "10.255.0.1/32", "192.0.2.2/32", "summary", "192.0.2.1"
+	if v3 {
+		typ, lb, lbB, sum, rid = "ospfv3", "2001:db8:ff::1/128", "2001:db8:ffff::2/128", "inter-area-prefix", "0.0.0.0"
+	}
+	mk := func(e *core.Engine, cfg string) {
+		t.Helper()
+		if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "o", Type: typ, Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(a, `{"router_id": "192.0.2.1", "network": "point-to-point", "area": "1", `+ospfTimers+`,
+		"virtual_links": [{"transit_area": "1", "router_id": "192.0.2.2"}],
+		"topology": {"kind": "line", "nodes": 2, "area": "3", "loopback_base": "`+lb+`"}}`)
+	mk(b, `{"router_id": "192.0.2.2", "network": "point-to-point", "area": "1", `+ospfTimers+`,
+		"loopbacks": ["`+lbB+`"], "virtual_links": [{"transit_area": "1", "router_id": "192.0.2.1"}]}`)
+	defer func() {
+		if t.Failed() {
+			for _, e := range []*core.Engine{a, b} {
+				st := flowStatus(t, e, "o")
+				t.Logf("%s if %v nbrs %v", st["router_id"], st["interfaces"], ospfNbrs(t, e, "o"))
+				for _, l := range lsaRows(t, e, "o") {
+					t.Logf("   %v %v %v %v %v", l["area"], l["type"], l["id"], l["adv_router"], l["summary"])
+				}
+			}
+		}
+	}()
+	eventuallyLong(t, "virtual adjacency", func() bool { return ospfFull(t, a, "o", 2) && ospfFull(t, b, "o", 2) })
+	eventuallyLong(t, "a's backbone router LSA with the virtual link", func() bool {
+		for _, l := range lsaRows(t, b, "o") {
+			if l["area"] == "0.0.0.0" && l["type"] == "router" && l["adv_router"] == "192.0.2.1" {
+				return strings.Contains(l["summary"].(string), "1 virtual")
+			}
+		}
+		return false
+	})
+	eventuallyLong(t, "area 3 summarised into the backbone", func() bool {
+		return countLSAs(t, b, "o", sum, "192.0.2.1", "0.0.0.0") >= 2
+	})
+	eventuallyLong(t, "V and B bits in a's transit area router LSA", func() bool {
+		f := ospfRun(t, b, "o", "lsa", `{"type": "router", "id": "`+rid+`", "adv_router": "192.0.2.1", "area": "1"}`)["flags"].(map[string]any)
+		return f["virtual"] == true && f["abr"] == true
+	})
+}
+
+// BFD: sessions come up with the adjacency; when a stops sending BFD, b
+// drops a within the detection time (the dead interval is 40 s), and BFD
+// is up again once a sends again.
+func TestOSPFBFD(t *testing.T) {
+	for _, v3 := range []bool{false, true} {
+		t.Run(map[bool]string{false: "v2", true: "v3"}[v3], func(t *testing.T) {
+			a, b, _, _ := ipPair(t)
+			typ := "ospf"
+			if v3 {
+				typ = "ospfv3"
+			}
+			for i, e := range []*core.Engine{a, b} {
+				cfg := fmt.Sprintf(`{"router_id": "192.0.2.%d", "network": "point-to-point", "hello_interval": 1, "dead_interval": 40, "retransmit_interval": 1,
+					"bfd": {"enabled": true, "min_tx_ms": 100, "min_rx_ms": 100, "multiplier": 3}}`, i+1)
+				if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "o", Type: typ, Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			bfdState := func(e *core.Engine) string {
+				for _, n := range ospfNbrs(t, e, "o") {
+					if x, ok := n["bfd"].(map[string]any); ok {
+						return x["state"].(string)
+					}
+				}
+				return ""
+			}
+			eventuallyLong(t, "full with BFD up", func() bool {
+				return ospfFull(t, a, "o", 1) && ospfFull(t, b, "o", 1) && bfdState(a) == "up" && bfdState(b) == "up"
+			})
+			// Fast timers once both have sent with them (a poll sequence).
+			eventuallyLong(t, "fast timers", func() bool {
+				x, _ := ospfNbrs(t, b, "o")[0]["bfd"].(map[string]any)
+				return x["detect_ms"] == 300.0
+			})
+			ospfRun(t, a, "o", "bfd-fail", `{"seconds": 3}`)
+			start := time.Now()
+			// b drops a (and a's hellos bring it back at once: BFD doesn't
+			// hold the adjacency down).
+			eventuallyLong(t, "b drops a", func() bool {
+				return flowStatus(t, b, "o")["counters"].(map[string]any)["bfd_down"] != nil
+			})
+			if d := time.Since(start); d > time.Second {
+				t.Fatalf("b took %v to drop a", d)
+			}
+			eventuallyLong(t, "back", func() bool { return ospfFull(t, a, "o", 1) && ospfFull(t, b, "o", 1) && bfdState(b) == "up" })
+		})
+	}
+}
+
+// A DR restarting gracefully on a LAN stays DR, and the helpers'
+// router LSAs and the network LSA don't change.
+func TestOSPFGracefulRestartDR(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	if _, err := b.CreateDevice(core.DeviceSpec{Name: "d2", Port: "eth1", MAC: "02:00:00:00:0b:02", VLANs: []pkt.VLANTag{{VID: 10}}, Addresses: []string{"10.0.0.3/24"}}); err != nil {
+		t.Fatal(err)
+	}
+	mkOSPF(t, a, "o", "d", `{"router_id": "192.0.2.1", "priority": 100, `+ospfTimers+`}`)
+	mkOSPF(t, b, "o", "d", `{"router_id": "192.0.2.2", "priority": 10, `+ospfTimers+`}`)
+	mkOSPF(t, b, "c", "d2", `{"router_id": "192.0.2.3", "priority": 0, `+ospfTimers+`}`)
+	eventuallyLong(t, "adjacencies", func() bool { return ospfFull(t, a, "o", 2) && ospfFull(t, b, "o", 2) && ospfFull(t, b, "c", 2) })
+	eventuallyLong(t, "network LSA", func() bool { return lsaSeqBy(t, b, "c", "network", "10.0.0.1", "192.0.2.1") != "" })
+	time.Sleep(2 * time.Second)
+	seqs := func() []string {
+		return []string{lsaSeqBy(t, b, "c", "router", "192.0.2.2", "192.0.2.2"), lsaSeqBy(t, b, "c", "router", "192.0.2.3", "192.0.2.3"),
+			lsaSeqBy(t, b, "c", "network", "10.0.0.1", "192.0.2.1")}
+	}
+	before := seqs()
+	ospfRun(t, a, "o", "graceful-restart", `{"seconds": 60}`)
+	eventuallyLong(t, "restart done", func() bool {
+		return flowStatus(t, a, "o")["graceful_restart"].(map[string]any)["restart"] == nil && ospfFull(t, a, "o", 2)
+	})
+	f := flowStatus(t, a, "o")["interfaces"].([]any)[0].(map[string]any)
+	if f["state"] != "dr" {
+		t.Fatalf("a after the restart: %v", f)
+	}
+	if after := seqs(); fmt.Sprint(after) != fmt.Sprint(before) {
+		t.Fatalf("LSAs changed: %v → %v", before, after)
+	}
+}
+
+// OSPFv3 segment routing in extended LSAs: b sees a's Router Information
+// (SRGB), its E-Router-LSA with an Adj-SID and the Prefix-SIDs of a's
+// loopback and the simulated routers'.
+func TestOSPFv3SegmentRouting(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	mkOSPF3(t, a, "o", "d", `{"router_id": "192.0.2.1", "network": "point-to-point", `+ospfTimers+`, "loopbacks": ["2001:db8:ff::1/128"],
+		"segment_routing": {"enabled": true, "srgb_base": 16000, "srgb_size": 8000, "adj_sid_base": 24000,
+			"node_sids": [{"prefix": "2001:db8:ff::1/128", "index": 1}]},
+		"topology": {"kind": "line", "nodes": 2, "loopback_base": "2001:db8:ff1::1/128", "node_sid_base": 100}}`)
+	mkOSPF3(t, b, "o", "d", `{"router_id": "192.0.2.2", "network": "point-to-point", `+ospfTimers+`}`)
+	eventuallyLong(t, "full", func() bool { return ospfFull(t, a, "o", 1) && ospfFull(t, b, "o", 1) })
+	find := func(typ, adv, sub string) bool {
+		for _, l := range lsaRows(t, b, "o") {
+			if l["type"] == typ && l["adv_router"] == adv && strings.Contains(l["summary"].(string), sub) {
+				return true
+			}
+		}
+		return false
+	}
+	defer func() {
+		if t.Failed() {
+			for _, l := range lsaRows(t, b, "o") {
+				t.Logf("%v %v %v %v", l["type"], l["id"], l["adv_router"], l["summary"])
+			}
+		}
+	}()
+	eventuallyLong(t, "SR LSAs at b", func() bool {
+		return find("router-information", "192.0.2.1", "SRGB 16000-23999") && find("e-router", "192.0.2.1", "adj label 24000") &&
+			find("e-intra-area-prefix", "192.0.2.1", "2001:db8:ff::1/128 index 1") && find("e-intra-area-prefix", "10.254.0.2", "2001:db8:ff1::2/128 index 101")
+	})
 }

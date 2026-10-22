@@ -158,3 +158,33 @@
 /configure system security keychains keychain "ospf-sha" admin-state enable
 /configure system security keychains keychain "ospf-sha" bidirectional entry 5 algorithm hmac-sha-256 authentication-key "clabgen-ospf" begin-time 2026-01-01T00:00:00Z
 /configure router "Base" ospf 0 area 0.0.0.0 interface "ospf-lan" authentication-keychain "ospf-sha"
+/configure router "Base" interface "ospf-a1" port 1/1/c3/1:602
+/configure router "Base" interface "ospf-a1" ipv4 primary address 10.0.72.1 prefix-length 24
+/configure router "Base" interface "ospf-a1" ip-mtu 1500
+/configure router "Base" interface "ospf-a1" ipv6 address 2001:db8:72::1 prefix-length 64
+/configure router "Base" ospf 0 area 0.0.0.1 nssa
+/configure router "Base" ospf 0 area 0.0.0.1 interface "ospf-a1" interface-type broadcast
+/configure router "Base" ospf3 0 area 0.0.0.1 nssa
+/configure router "Base" ospf3 0 area 0.0.0.1 interface "ospf-a1" interface-type broadcast
+/configure router "Base" ospf 0 advertise-router-capability area
+/configure router "Base" ospf 0 segment-routing admin-state enable
+/configure router "Base" ospf 0 segment-routing prefix-sid-range global
+/configure router "Base" ospf 0 area 0.0.0.0 interface "system" node-sid index 3
+/configure router "Base" ospf 0 traffic-engineering true
+/configure router "Base" ospf 0 flexible-algorithms admin-state enable
+/configure router "Base" ospf 0 flexible-algorithms flex-algo 128 participate true
+/configure router "Base" ospf 0 traffic-engineering-options advertise-delay true
+/configure router "Base" interface "ospf-p2p" if-attribute delay static 2000
+/configure router "Base" interface "ospf-lan" if-attribute delay static 300
+/configure router "Base" ospf 0 graceful-restart helper-mode true
+/configure router "Base" ospf3 0 graceful-restart helper-mode true
+/configure router "Base" interface "ospf-p2p" ipv4 bfd admin-state enable
+/configure router "Base" interface "ospf-p2p" ipv4 bfd transmit-interval 100
+/configure router "Base" interface "ospf-p2p" ipv4 bfd receive 100
+/configure router "Base" interface "ospf-p2p" ipv4 bfd multiplier 3
+/configure router "Base" ospf 0 area 0.0.0.0 interface "ospf-p2p" bfd-liveness
+/configure system security keychains keychain "ospf-sha" bidirectional entry 6 algorithm hmac-sha-256 authentication-key "clabgen-ospf-2" begin-time 2026-10-22T13:50:21Z
+/configure router "Base" ospf3 0 advertise-router-capability area
+/configure router "Base" ospf3 0 segment-routing admin-state enable
+/configure router "Base" ospf3 0 segment-routing prefix-sid-range global
+/configure router "Base" ospf3 0 area 0.0.0.0 interface "system" node-sid index 4
