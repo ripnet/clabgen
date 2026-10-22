@@ -3,9 +3,9 @@ import type { JsonObject } from "@bufbuild/protobuf";
 import { client, errorText, usePoll, useStream } from "../api";
 import { href, navigate } from "../router";
 import { summarize, viewFor } from "../protocols/registry";
-import { SchemaForm, defaults, parseSchema, type Obj } from "../components/SchemaForm";
+import { SchemaForm, defaults, diff, parseSchema, type Obj } from "../components/SchemaForm";
 import { ValueView } from "../components/ValueView";
-import { Empty, ErrorBox, HealthText, Modal, useBusy } from "../ui";
+import { Empty, ErrorBox, HealthText, Modal, useBusy, useToast } from "../ui";
 import { AgentHeader } from "./AgentPage";
 import type { Event as AgentEvent } from "../gen/clabgen/v1/agent_pb";
 import { EventRow } from "./EventsTab";
@@ -21,6 +21,7 @@ export function ProtocolDetail({ agentId, name }: { agentId: string; name: strin
   const section = type?.category === "traffic" ? "traffic" : "protocols";
   const [editing, setEditing] = useState(false);
   const { busy, run } = useBusy();
+  const toast = useToast();
   const view = viewFor(proto?.type ?? "");
   const s = proto ? summarize(proto.type, proto.state, proto.error, proto.status) : undefined;
 
@@ -101,15 +102,12 @@ export function ProtocolDetail({ agentId, name }: { agentId: string; name: strin
               schemaText={type.configSchema}
               value={(proto.config ?? {}) as Obj}
               onClose={() => setEditing(false)}
-              onSave={(cfg) =>
-                run(() => c.updateProtocol({ name: proto.name, config: cfg as JsonObject }), "Configuration applied").then((r) => {
-                  if (r) {
-                    setEditing(false);
-                    p.refresh();
-                  }
-                })
-              }
-              busy={busy}
+              onSave={async (cfg) => {
+                await c.updateProtocol({ name: proto.name, config: cfg as JsonObject });
+                toast("ok", "Configuration applied");
+                setEditing(false);
+                p.refresh();
+              }}
             />
           )}
         </>
@@ -118,20 +116,79 @@ export function ProtocolDetail({ agentId, name }: { agentId: string; name: strin
   );
 }
 
-function EditConfig({ schemaText, value, onClose, onSave, busy }: { schemaText: string; value: Obj; onClose: () => void; onSave: (v: Obj) => void; busy: boolean }) {
+// EditConfig edits a running instance's config: the form, then a review of
+// the changes before applying. A rejected config comes back to the form
+// with the fields the error names marked.
+function EditConfig({ schemaText, value, onClose, onSave }: { schemaText: string; value: Obj; onClose: () => void; onSave: (v: Obj) => Promise<void> }) {
   const schema = useMemo(() => parseSchema(schemaText), [schemaText]);
+  const [original] = useState(value);
   const [cfg, setCfg] = useState<Obj>(value);
+  const [step, setStep] = useState<"edit" | "review">("edit");
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const changes = useMemo(() => diff(schema, original, cfg), [schema, original, cfg]);
+  const apply = async () => {
+    setBusy(true);
+    try {
+      await onSave(cfg);
+    } catch (e) {
+      setError(errorText(e));
+      setStep("edit");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <Modal title="Edit configuration" onClose={onClose} wide>
-      <div className="warn-box">Applying restarts the instance: counters and the remote state are reset.</div>
-      <SchemaForm schema={schema} value={cfg} onChange={setCfg} mode="config" />
+    <Modal title={step === "edit" ? "Edit configuration" : "Review changes"} onClose={onClose} wide>
+      {/* Kept mounted during review so the section, open items and filter stay. */}
+      <div hidden={step !== "edit"}>
+        {error ? <div className="error-box" role="alert">The agent rejected the configuration: {error}</div> : <div className="warn-box">Applying restarts the instance: counters and the remote state are reset.</div>}
+        <SchemaForm schema={schema} value={cfg} onChange={setCfg} mode="config" original={original} errorText={error} />
+      </div>
+      {step === "review" && (
+        <>
+          <div className="warn-box">Applying restarts the instance: counters and the remote state are reset.</div>
+          <div className="table-wrap">
+            <table className="table diff-table">
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Was</th>
+                  <th>Now</th>
+                </tr>
+              </thead>
+              <tbody>
+                {changes.map((ch) => (
+                  <tr key={ch.path}>
+                    <td className="mono">{ch.path}</td>
+                    <td className="mono diff-from">{ch.from ?? <span className="muted">{/\]$/.test(ch.path) ? "new" : "default"}</span>}</td>
+                    <td className="mono diff-to">{ch.to ?? <span className="muted">{/\]$/.test(ch.path) ? "removed" : "default"}</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
       <div className="modal-foot">
+        {step === "review" && (
+          <button className="btn" onClick={() => setStep("edit")}>
+            Back
+          </button>
+        )}
+        <span className="grow" />
         <button className="btn" onClick={onClose}>
           Cancel
         </button>
-        <button className="btn primary" disabled={busy} onClick={() => onSave(cfg)}>
-          Apply
-        </button>
+        {step === "edit" ? (
+          <button className="btn primary" disabled={changes.length === 0} title={changes.length === 0 ? "Nothing changed" : undefined} onClick={() => setStep("review")}>
+            Review {changes.length > 0 ? `${changes.length} change${changes.length > 1 ? "s" : ""}` : "changes"}
+          </button>
+        ) : (
+          <button className="btn primary" disabled={busy} onClick={apply}>
+            {busy ? "Applying…" : "Apply"}
+          </button>
+        )}
       </div>
     </Modal>
   );

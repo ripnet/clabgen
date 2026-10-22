@@ -450,3 +450,17 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 }
 .kv-row.kv-wide { grid-column: 1 / -1; justify-content: flex-start; gap: 24px; }
 .kv-row.kv-wide dd { text-align: left; }
+
+/* config editor: filter, change and error marks, review */
+.form-toolbar { gap: 12px; align-items: center; margin-bottom: 8px; }
+.input.filter { width: 220px; margin-right: auto; padding: 5px 9px; }
+.section-marks { display: flex; align-items: center; gap: 6px; }
+.section-changed { color: var(--warn); font-size: 9px; }
+.section-nav button.dim { opacity: 0.45; }
+.section-nav button.error, .section-nav button.error.active { color: var(--bad); }
+.field.error > .field-label, .field-block.error > .field-label { color: var(--bad); }
+.field.error .input { border-color: var(--bad); }
+.obj-item.error { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad-soft); }
+.diff-table td { vertical-align: top; overflow-wrap: anywhere; }
+.diff-from { color: var(--bad); }
+.diff-to { color: var(--ok); }
