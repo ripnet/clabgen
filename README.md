@@ -53,8 +53,10 @@ SR-SIM image and license).
 - **Scale**: device groups of thousands of peers with stepped VLANs and
   addresses, emulated IS-IS and OSPF networks behind a router, route
   injection by the thousand.
-- **Measure**: traffic flows with loss, outages and RTT; one-way stats on
-  every device; Y.1731 delay and loss sessions in bins.
+- **Measure and judge**: traffic flows with loss, outages and RTT, and
+  pass/fail limits on them shown across the whole lab ("every flow stayed
+  under 50 ms of outage"); one-way stats on every device; Y.1731 delay and
+  loss sessions in bins.
 - **Scriptable**: the same things through [`clabgenctl`](docs/cli.md), an
   [API](docs/api.md), and YAML scenarios.
 

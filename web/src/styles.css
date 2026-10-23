@@ -101,6 +101,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .grow { flex: 1; }
 .pad { padding: 16px; }
 .error-text, .bad-text { color: var(--bad); }
+.ok-text { color: var(--ok); }
 .warn-text { color: var(--warn); }
 
 /* ---- shell ---- */
@@ -474,3 +475,10 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .side-ver { font-size: 10.5px; font-weight: 600; padding: 0 6px; border-radius: 999px; background: var(--surface-2); color: var(--text-3); border: 1px solid var(--border); flex: none; }
 .side-ver.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .brand-version:hover { color: var(--accent-text); text-decoration: none; }
+
+/* flow checks */
+.verdict { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 8px; border-radius: 999px; }
+.verdict.pass { background: var(--ok-soft); color: var(--ok); }
+.verdict.fail { background: var(--bad-soft); color: var(--bad); }
+.verdict.pending { background: var(--surface-2); color: var(--text-3); }
+.verdict-panel h4 { display: flex; align-items: center; gap: 8px; }

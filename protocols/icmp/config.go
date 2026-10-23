@@ -24,6 +24,8 @@ type Config struct {
 	ICMPChecksum string  `json:"icmp_checksum" jsonschema:"enum=correct,enum=zero,enum=invalid"`
 
 	ipflow.Payload
+
+	Checks ipflow.Checks `json:"checks" jsonschema:"description=Pass/fail limits on what the flow measures since it started or was cleared"`
 }
 
 func defaultConfig() *Config {
@@ -32,7 +34,7 @@ func defaultConfig() *Config {
 }
 
 func (c *Config) spec() ipflow.Spec {
-	return ipflow.Spec{Target: c.Target, Run: c.Run, Addressing: c.Addressing, IPHeader: c.IPHeader, Payload: c.Payload}
+	return ipflow.Spec{Target: c.Target, Run: c.Run, Addressing: c.Addressing, IPHeader: c.IPHeader, Payload: c.Payload, Checks: c.Checks}
 }
 
 func (c *Config) Validate() error {

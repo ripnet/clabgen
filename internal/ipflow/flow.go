@@ -458,6 +458,7 @@ type Base struct {
 	Elapsed     float64 `json:"elapsed_s"`
 	TrackReply  bool    `json:"tracks_replies"`
 	flowstats.Stats
+	Verdict *Verdict `json:"verdict,omitempty"` // with checks configured
 }
 
 // BaseStatus returns the shared status; the flow type sets Kind and may
@@ -472,6 +473,7 @@ func (f *Flow) BaseStatus() Base {
 	if f.state != StateRunning {
 		s.OutageCurrentMs = 0 // a stopped flow isn't in an outage now
 	}
+	s.Verdict = f.Spec.Checks.evaluate(s.Stats, f.Echo)
 	if f.lastErr != "" && f.state == StateRunning && now.Sub(f.errAt) > errorShownFor {
 		s.Error, s.LastError, s.LastErrorS = "", f.lastErr, now.Sub(f.errAt).Round(time.Second).Seconds()
 	}

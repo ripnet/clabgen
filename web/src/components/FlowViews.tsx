@@ -4,7 +4,7 @@ import { client, usePoll } from "../api";
 import { agentLabel, useAgents } from "../agents";
 import { href } from "../router";
 import { useBusy } from "../ui";
-import { asFlow, dur, FlowLog, FlowTiles, FlowTimeline, ms, type FlowStatus } from "./Flow";
+import { asFlow, dur, FlowLog, FlowTiles, FlowTimeline, ms, VerdictPanel, type FlowStatus } from "./Flow";
 
 // One received flow at a clabgen device (internal/flowrx).
 export type RxFlow = {
@@ -290,6 +290,7 @@ export function IpFlowView({ status, agentId, name, extra }: { status: JsonObjec
         </div>
       )}
       <FlowTiles s={s} />
+      {s.verdict && <VerdictPanel v={s.verdict} />}
       {s.tracks_replies !== false && <FlowTimeline s={s} />}
       {flowId && <Receivers flowId={flowId} s={s} />}
       <h4>Packets</h4>

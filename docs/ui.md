@@ -65,8 +65,12 @@ address.
   config editor: sections per part of the config, field search, the
   changes reviewed before they are applied, and an agent's rejection shown
   on the fields it names.
-- A flow page: live loss, outage and RTT tiles, a per-second timeline and
-  a per-packet log.
+- Flows: every agent's traffic flows in one table, with their pass/fail
+  checks, counts of passing and failing flows, a "failing only" filter,
+  and start, stop and clear for all of them (or the ones the filter
+  shows).
+- A flow page: live loss, outage and RTT tiles, its checks, a per-second
+  timeline and a per-packet log.
 
 Forms come from each protocol's schema, so new protocol types appear
 without UI changes.

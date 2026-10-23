@@ -4,6 +4,7 @@ import { agentLabel, useAgents } from "./agents";
 import { href, useRoute } from "./router";
 import { Dot, ErrorBox, Modal, useBusy, useTheme, type Theme } from "./ui";
 import { Overview } from "./pages/Overview";
+import { FlowsPage } from "./pages/FlowsPage";
 import { displayVersion, skew } from "./version";
 import { AgentPage } from "./pages/AgentPage";
 import { ProtocolDetail } from "./pages/ProtocolDetail";
@@ -13,7 +14,7 @@ export function App() {
   const route = useRoute();
   const [theme, setTheme] = useTheme();
   const [navOpen, setNavOpen] = useState(false);
-  const current = route.page === "overview" ? undefined : route.agent;
+  const current = route.page === "overview" || route.page === "flows" ? undefined : route.agent;
 
   return (
     <div className={`shell ${navOpen ? "nav-open" : ""}`}>
@@ -33,10 +34,11 @@ export function App() {
         <ThemeSwitch theme={theme} setTheme={setTheme} />
       </header>
       <aside className="sidebar" onClick={(e) => (e.target as HTMLElement).closest("a") && setNavOpen(false)}>
-        <Sidebar current={current} overview={route.page === "overview"} />
+        <Sidebar current={current} page={route.page} />
       </aside>
       <main className="main">
         {route.page === "overview" && <Overview />}
+        {route.page === "flows" && <FlowsPage />}
         {route.page === "agent" && <AgentPage key={route.agent} agentId={route.agent} tab={route.tab} />}
         {route.page === "protocol" && <ProtocolDetail key={route.agent + "/" + route.protocol} agentId={route.agent} name={route.protocol} />}
         {route.page === "group" && <GroupDetail key={route.agent + "/" + route.group} agentId={route.agent} name={route.group} />}
@@ -81,7 +83,7 @@ function ThemeSwitch({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) =
   );
 }
 
-function Sidebar({ current, overview }: { current?: string; overview: boolean }) {
+function Sidebar({ current, page }: { current?: string; page: string }) {
   const { agents, info, ui, allowManual, error, refresh } = useAgents();
   const [adding, setAdding] = useState(false);
   const groups = new Map<string, AgentRef[]>();
@@ -91,8 +93,11 @@ function Sidebar({ current, overview }: { current?: string; overview: boolean })
   }
   return (
     <nav aria-label="Agents">
-      <a className={`side-link ${overview ? "active" : ""}`} href="#/">
+      <a className={`side-link ${page === "overview" ? "active" : ""}`} href="#/">
         Lab overview
+      </a>
+      <a className={`side-link ${page === "flows" ? "active" : ""}`} href="#/flows">
+        Flows
       </a>
       {error && <ErrorBox error={`Agent list: ${error}`} />}
       {[...groups.entries()].map(([g, list]) => (

@@ -36,7 +36,75 @@ export type FlowStatus = {
   outage_total_ms: number;
   recent: Line[];
   timeline: Bucket[];
+  verdict?: Verdict;
 };
+
+// Verdict is a flow's pass/fail checks (with checks configured).
+export type CheckResult = { check: string; limit: number; value: number; pass: boolean; unavailable?: boolean };
+export type Verdict = { result: "pass" | "fail" | "pending"; checks: CheckResult[]; failed?: string };
+
+const checkNames: Record<string, string> = {
+  loss_pct: "loss",
+  outage_ms: "longest outage",
+  rtt_avg_ms: "RTT average",
+  rtt_ms: "RTT maximum",
+  jitter_ms: "jitter",
+};
+const checkUnit = (c: string) => (c === "loss_pct" ? "%" : " ms");
+const fmtCheck = (c: string, v: number) => `${v < 10 ? v.toFixed(2).replace(/\.?0+$/, "") : Math.round(v)}${checkUnit(c)}`;
+
+// VerdictBadge is a flow's checks result in a word.
+export function VerdictBadge({ v }: { v?: Verdict }) {
+  if (!v) return <span className="muted">—</span>;
+  const cls = v.result === "pass" ? "verdict pass" : v.result === "fail" ? "verdict fail" : "verdict pending";
+  const title = v.failed ? `failed: ${v.failed}` : v.result === "pending" ? "nothing measured yet" : v.checks.map((c) => `${checkNames[c.check] ?? c.check} ≤ ${fmtCheck(c.check, c.limit)}`).join(", ");
+  return (
+    <span className={cls} title={title}>
+      {v.result}
+    </span>
+  );
+}
+
+// VerdictPanel lists a flow's checks with what it measured.
+export function VerdictPanel({ v }: { v: Verdict }) {
+  return (
+    <div className="verdict-panel">
+      <h4>
+        Checks <VerdictBadge v={v} />
+      </h4>
+      <div className="table-wrap">
+        <table className="table dense">
+          <thead>
+            <tr>
+              <th>Check</th>
+              <th className="num">Limit</th>
+              <th className="num">Measured</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {v.checks.map((c) => (
+              <tr key={c.check}>
+                <td>{checkNames[c.check] ?? c.check}</td>
+                <td className="num mono">≤ {fmtCheck(c.check, c.limit)}</td>
+                <td className="num mono">{c.unavailable ? "—" : fmtCheck(c.check, c.value)}</td>
+                <td>
+                  {c.unavailable ? (
+                    <span className="muted" title="One-way flows are measured at their receivers">not measured here</span>
+                  ) : c.pass ? (
+                    <span className="verdict pass">pass</span>
+                  ) : (
+                    <span className="verdict fail">fail</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 export const asFlow = (s: JsonObject) => s as unknown as FlowStatus;
 
@@ -46,6 +114,8 @@ const n = (v: number) => v.toLocaleString();
 
 export function flowSummary(st: JsonObject): Summary {
   const s = asFlow(st);
+  // A failed check outranks everything else; it stays until cleared.
+  if (s.verdict?.result === "fail") return { health: "bad", text: `checks failed: ${s.verdict.failed}` };
   if (s.state === "resolving") return { health: "warn", text: s.error ? `resolving: ${s.error}` : "resolving" };
   if (s.state !== "running") {
     const tail = s.tx ? ` · ${n(s.rx)}/${n(s.tx)} · ${s.loss_pct.toFixed(1)}% lost` : "";
@@ -54,7 +124,8 @@ export function flowSummary(st: JsonObject): Summary {
   if (s.outage_current_ms > 0) return { health: "bad", text: `outage ${dur(s.outage_current_ms)}` };
   const rtt = s.rtt ? ` · ${ms(s.rtt.avg_us)}` : "";
   if (!s.tracks_replies) return { health: "ok", text: `sending · ${n(s.tx)} tx` };
-  return { health: s.lost || s.errors ? "warn" : "ok", text: `${n(s.rx)}/${n(s.tx)} · ${s.loss_pct.toFixed(2)}% lost${rtt}` };
+  const checks = s.verdict?.result === "pass" ? " · checks pass" : "";
+  return { health: s.lost || s.errors ? "warn" : "ok", text: `${n(s.rx)}/${n(s.tx)} · ${s.loss_pct.toFixed(2)}% lost${rtt}${checks}` };
 }
 
 function Tile({ k, v, tone }: { k: string; v: string; tone?: "bad" | "warn" }) {

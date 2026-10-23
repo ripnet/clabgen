@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -170,4 +171,38 @@ func TestICMPFlowVariants(t *testing.T) {
 			t.Errorf("accepted %s", bad)
 		}
 	}
+}
+
+func TestFlowChecks(t *testing.T) {
+	a, _, wa, _ := ipPair(t)
+	mkFlow(t, a, "ping", `{"destination":"10.0.0.2","rate":100,"timeout":"200ms","auto_start":true,
+		"checks":{"max_loss_pct":10,"max_outage_ms":200,"max_rtt_ms":100}}`)
+	verdict := func() map[string]any {
+		v, _ := flowStatus(t, a, "ping")["verdict"].(map[string]any)
+		return v
+	}
+	eventually(t, "passing", func() bool { return verdict()["result"] == "pass" })
+	if cs, _ := verdict()["checks"].([]any); len(cs) != 3 {
+		t.Fatalf("checks %v", verdict())
+	}
+	// A 500 ms blackout: an outage over the 200 ms limit.
+	wa.mu.Lock()
+	wa.drop = func([]byte) bool { return true }
+	wa.mu.Unlock()
+	time.Sleep(500 * time.Millisecond)
+	wa.mu.Lock()
+	wa.drop = nil
+	wa.mu.Unlock()
+	eventually(t, "failed on the outage", func() bool {
+		v := verdict()
+		f, _ := v["failed"].(string)
+		return v["result"] == "fail" && strings.Contains(f, "outage_ms")
+	})
+	// It stays failed until cleared.
+	time.Sleep(300 * time.Millisecond)
+	if verdict()["result"] != "fail" {
+		t.Fatal("recovered without a clear")
+	}
+	run(t, a, "ping", "clear")
+	eventually(t, "passing after clear", func() bool { return verdict()["result"] == "pass" })
 }

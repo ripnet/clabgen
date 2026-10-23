@@ -59,11 +59,14 @@ protocols:
   - name: ping-sr
     type: icmp
     device: v400
-    config: {destination: 10.0.4.1, rate: 10, auto_start: true}
+    # Checks: pass while the SR answers within these limits (see the Flows page).
+    config: {destination: 10.0.4.1, rate: 10, auto_start: true,
+             checks: {max_loss_pct: 1, max_outage_ms: 500, max_rtt_ms: 100}}
   - name: ping-sr-v6
     type: icmp
     device: v400
-    config: {destination: "2001:db8:4::1", rate: 10, auto_start: true}
+    config: {destination: "2001:db8:4::1", rate: 10, auto_start: true,
+             checks: {max_loss_pct: 1, max_outage_ms: 500, max_rtt_ms: 100}}
   - name: ttl1
     type: icmp
     device: v400
@@ -79,7 +82,8 @@ protocols:
   - name: udp-echo-routed
     type: udp
     device: v400
-    config: {destination: "2001:db8:41::2", reply: echo, rate: 50, auto_start: true}
+    config: {destination: "2001:db8:41::2", reply: echo, rate: 50, auto_start: true,
+             checks: {max_loss_pct: 1, max_outage_ms: 500}}
   # To a closed port on the SR: expect ICMP port unreachable.
   - name: udp-closed
     type: udp

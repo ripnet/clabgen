@@ -712,6 +712,12 @@ func summary(p *v1.Protocol) string {
 		if r, ok := m["rtt"].(map[string]any); ok {
 			out += fmt.Sprintf(" rtt=%.2fms", r["avg_us"].(float64)/1000)
 		}
+		if v, ok := m["verdict"].(map[string]any); ok {
+			out += " checks=" + fmt.Sprint(v["result"])
+			if f, _ := v["failed"].(string); f != "" {
+				out += " (" + f + ")"
+			}
+		}
 		if e, _ := m["error"].(string); e != "" {
 			out += " (" + e + ")"
 		}

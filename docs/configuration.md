@@ -87,6 +87,26 @@ and latency per direction).
     config: {destination: 10.0.41.2, reply: echo, rate: 100, src_port_count: 16, auto_start: true}
 ```
 
+### Pass/fail checks
+
+`checks` give a flow a verdict: limits on what it measured since it
+started or was last cleared. Any limit can be left out.
+
+```yaml
+    config: {destination: 10.0.4.1, rate: 100, auto_start: true,
+             checks: {max_loss_pct: 1, max_outage_ms: 50, max_rtt_avg_ms: 5, max_rtt_ms: 20, max_jitter_ms: 2}}
+```
+
+The verdict is `pending` until something was answered or lost, then
+`pass` or `fail`. A failure stays until the flow's statistics are cleared,
+so a test is: clear (or start) the flows, do the thing under test (flap a
+peer, fail a link), and read the verdicts. The Flows page shows every
+agent's flows with their verdicts and starts, stops or clears them all;
+`clabgenctl protocols` adds `checks=pass` or `checks=fail (…)`, and the
+status has the measured value of each check. Loss, outage and RTT are
+measured by echo flows; a one-way flow's checks stay `pending` (its loss
+is counted at the receivers).
+
 ## IS-IS
 
 An IS-IS router on a device (point-to-point to the SR in

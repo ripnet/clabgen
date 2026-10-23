@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { client, usePoll } from "../api";
-import { asFlow, dur, flowSummary, ms } from "../components/Flow";
+import { asFlow, dur, flowSummary, ms, VerdictBadge } from "../components/Flow";
 import { href, navigate } from "../router";
 import { Empty, ErrorBox, HealthText, useBusy } from "../ui";
 import { CreateProtocol } from "./ProtocolsTab";
@@ -84,6 +84,7 @@ export function TrafficTab({ agentId }: { agentId: string }) {
                 <th className="num">Lost</th>
                 <th className="num">Longest outage</th>
                 <th className="num">RTT avg</th>
+                <th title="Pass/fail checks (set in the flow's config)">Checks</th>
                 <th />
               </tr>
             </thead>
@@ -111,7 +112,7 @@ export function TrafficTab({ agentId }: { agentId: string }) {
                     </td>
                     <td className="num mono">{s ? `${s.rate} pps` : "—"}</td>
                     <td>
-                      <HealthText health={sum.health}>{s && sum.health !== "bad" ? s.state : sum.text}</HealthText>
+                      <HealthText health={sum.health}>{s && (sum.health !== "bad" || s.verdict?.result === "fail") ? s.state : sum.text}</HealthText>
                     </td>
                     <td className="num mono">{s?.tx.toLocaleString() ?? "—"}</td>
                     <td className="num mono" title={ow ? "Received at clabgen receivers (one way)" : undefined}>
@@ -124,6 +125,9 @@ export function TrafficTab({ agentId }: { agentId: string }) {
                       {s?.outage_current_ms ? `now ${dur(s.outage_current_ms)}` : s?.outage_max_ms ? dur(s.outage_max_ms) : "—"}
                     </td>
                     <td className="num mono">{ms(s?.rtt?.avg_us)}</td>
+                    <td>
+                      <VerdictBadge v={s?.verdict} />
+                    </td>
                     <td className="actions">
                       <button
                         className="btn small"

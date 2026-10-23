@@ -58,6 +58,7 @@ type Spec struct {
 	Addressing
 	IPHeader
 	Payload
+	Checks Checks
 }
 
 // Defaults for the shared parts.
@@ -133,6 +134,9 @@ func (s Spec) Validate() (netip.Addr, error) {
 		return dst, errors.New("dscp must be 0-63, ecn 0-3, flow_label 0-1048575")
 	}
 	if err := CheckChecksumMode(s.IPChecksum); err != nil {
+		return dst, err
+	}
+	if err := s.Checks.validate(); err != nil {
 		return dst, err
 	}
 	if s.PayloadSize < 0 || s.PayloadSize > 9000 {

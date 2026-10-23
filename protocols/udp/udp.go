@@ -35,6 +35,8 @@ type Config struct {
 	Reply        string  `json:"reply" jsonschema:"enum=none,enum=echo,description=echo: the destination sends each datagram back (udp-echo on a clabgen device or any UDP echo service) for round-trip loss and RTT"`
 
 	ipflow.Payload
+
+	Checks ipflow.Checks `json:"checks" jsonschema:"description=Pass/fail limits on what the flow measures since it started or was cleared"`
 }
 
 func defaultConfig() *Config {
@@ -43,7 +45,7 @@ func defaultConfig() *Config {
 }
 
 func (c *Config) spec() ipflow.Spec {
-	return ipflow.Spec{Target: c.Target, Run: c.Run, Addressing: c.Addressing, IPHeader: c.IPHeader, Payload: c.Payload}
+	return ipflow.Spec{Target: c.Target, Run: c.Run, Addressing: c.Addressing, IPHeader: c.IPHeader, Payload: c.Payload, Checks: c.Checks}
 }
 
 func (c *Config) Validate() error {

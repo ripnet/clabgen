@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 
 // Routes (hash based so any static server or proxy path works):
 //   #/                         lab overview
+//   #/flows                    every agent's traffic flows
 //   #/a/<agent>/<tab>          agent tab: ports | devices | groups | protocols | traffic | events | scenario
 //   #/a/<agent>/p/<protocol>   protocol detail
 //   #/a/<agent>/g/<group>      device group detail
 export type Route =
   | { page: "overview" }
+  | { page: "flows" }
   | { page: "agent"; agent: string; tab: AgentTab }
   | { page: "protocol"; agent: string; protocol: string }
   | { page: "group"; agent: string; group: string };
@@ -22,6 +24,7 @@ export function parse(hash: string): Route {
     const tab = (agentTabs as readonly string[]).includes(parts[2]) ? (parts[2] as AgentTab) : "protocols";
     return { page: "agent", agent: parts[1], tab };
   }
+  if (parts[0] === "flows") return { page: "flows" };
   return { page: "overview" };
 }
 
@@ -30,6 +33,8 @@ export function href(r: Route): string {
   switch (r.page) {
     case "overview":
       return "#/";
+    case "flows":
+      return "#/flows";
     case "agent":
       return `#/a/${e(r.agent)}/${r.tab}`;
     case "protocol":
