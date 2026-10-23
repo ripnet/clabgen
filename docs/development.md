@@ -33,6 +33,7 @@ calls to a `clabgen-ui` on :8090.
 ```sh
 make test         # go test ./... (add -race as CI does)
 make web-test     # Playwright tests of the UI against a mocked agent
+cd python && pytest   # the Python package (pip install "./python[test]" first)
 ```
 
 The Go tests run engines back to back in memory (no root, no
@@ -40,6 +41,11 @@ containers). The UI tests use the protocol schemas the Go test
 `TestUITypesFixture` writes to `web/e2e/fixtures`; refresh them with
 `CLABGEN_WRITE_FIXTURES=1 go test ./internal/server` after changing a
 protocol's config or actions (the test fails while they are stale).
+
+The Python package's live tests (`python/tests/test_live.py`) run the
+agent binary from `bin/` (`make build`) in an alpine container whose eth1
+is a docker network of its own, so they need docker; they're skipped
+without it.
 `PLAYWRIGHT_CHROMIUM=<path>` makes Playwright use a Chromium of your own.
 
 ## Branches, images and releases

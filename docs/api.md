@@ -12,5 +12,5 @@ curl -s -H 'Content-Type: application/json' -d '{"withStatus":true}' \
 ```
 
 Generated clients exist for Go (`gen/clabgen/v1`) and TypeScript
-(`web/src/gen`); `buf generate` or `protoc` with any gRPC or Connect
+(`web/src/gen`), and [Python](python.md) has a hand-written one; `buf generate` or `protoc` with any gRPC or Connect
 plugin produces others.

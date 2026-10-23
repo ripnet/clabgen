@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clabgen"
+dynamic = ["version"]
+description = "Python client and pytest helpers for clabgen, the protocol emulator and traffic generator for containerlab"
+readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [{ name = "Tom Young", email = "ripnet@gmail.com" }]
+requires-python = ">=3.9"
+dependencies = []
+classifiers = [
+  "Framework :: Pytest",
+  "Topic :: System :: Networking",
+  "Programming Language :: Python :: 3",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/ripnet/clabgen"
+
+[project.entry-points.pytest11]
+clabgen = "clabgen.pytest_plugin"
+
+[tool.setuptools.dynamic]
+version = { attr = "clabgen.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["agent: needs docker and a clabgen-agent binary (CLABGEN_AGENT or ../bin/clabgen-agent)"]

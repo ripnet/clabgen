@@ -390,6 +390,10 @@ func eventPB(e events.Event) *v1.Event {
 func (s *Server) WatchEvents(ctx context.Context, r *connect.Request[v1.WatchEventsRequest], st *connect.ServerStream[v1.Event]) error {
 	hist, ch, cancel := s.eng.Events().Subscribe(r.Msg.Replay)
 	defer cancel()
+	// Headers now: a client knows it's subscribed before the first event.
+	if err := st.Send(nil); err != nil {
+		return err
+	}
 	for _, e := range hist {
 		if err := st.Send(eventPB(e)); err != nil {
 			return err

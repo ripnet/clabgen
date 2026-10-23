@@ -58,7 +58,8 @@ SR-SIM image and license).
   under 50 ms of outage"); one-way stats on every device; Y.1731 delay and
   loss sessions in bins.
 - **Scriptable**: the same things through [`clabgenctl`](docs/cli.md), an
-  [API](docs/api.md), and YAML scenarios.
+  [API](docs/api.md), YAML scenarios, and a [Python package](docs/python.md)
+  with pytest fixtures for turning a lab into a test suite.
 
 ## Features
 
@@ -96,6 +97,7 @@ keep it on lab networks, away from production ones.
   device groups
 - [CLI](docs/cli.md): `clabgenctl`
 - [API](docs/api.md)
+- [Python and pytest](docs/python.md): the `clabgen` package
 - [Development](docs/development.md): building, tests, images and releases
 - [Writing a protocol](docs/writing-a-protocol.md)
 

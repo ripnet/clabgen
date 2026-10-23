@@ -1,7 +1,8 @@
 # Tests: Go (vet, gofmt, unit tests and the UI schema fixture under -race;
 # the internal/core engine tests, which mostly wait on protocol timers, in
-# parallel shards) and the web UI (typecheck, build, Playwright against a
-# mocked agent). Runs on pull requests and pushes to main; images.yml runs it
+# parallel shards), the Python package (unit tests, and live tests against
+# the agent in a container) and the web UI (typecheck, build, Playwright
+# against a mocked agent). Runs on pull requests and pushes to main; images.yml runs it
 # before publishing from dev or a release tag.
 name: CI
 
@@ -45,6 +46,28 @@ jobs:
         with:
           go-version-file: go.mod
       - run: .github/scripts/test-shard.sh ${{ matrix.shard }} 4 -race
+
+  python:
+    name: python (${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: agent binary for the live tests
+        run: CGO_ENABLED=0 go build -o bin/ ./cmd/clabgen-agent
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install "./python[test]"
+      - name: pytest (the live tests run the agent in a container)
+        run: pytest python -ra
 
   web:
     runs-on: ubuntu-24.04 # Playwright 1.57 has no Chromium for newer Ubuntu

@@ -7,3 +7,8 @@ internal/webui/dist/*
 !internal/webui/dist/.gitkeep
 web/test-results/
 web/playwright-report/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+python/build/
+python/dist/

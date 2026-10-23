@@ -2,7 +2,8 @@
 
 - [`b2b`](b2b): two clabgen agents back to back. CFM MEPs untagged, dot1q
   and QinQ (levels 3, 5 and 2), IP hosts on both sides, and flows between
-  them. Needs only the clabgen image.
+  them. Needs only the clabgen image. [`test_b2b.py`](b2b/test_b2b.py) is a
+  pytest suite for it ([Python and pytest](../docs/python.md)).
 - [`srsim`](srsim): one clabgen agent against a Nokia SR-SIM router, the
   lab clabgen's interop is tested in: CFM and Y.1731 (with MIPs in a VPLS),
   LLDP, IS-IS (point-to-point, LAN, L1/L2, segment routing, flex-algo,
