@@ -1,6 +1,7 @@
-# Tests: Go (vet, gofmt, unit and engine tests under -race, the UI schema
-# fixture) and the web UI (typecheck, build, Playwright against a mocked
-# agent). Runs on pull requests and pushes to main; images.yml runs it
+# Tests: Go (vet, gofmt, unit tests and the UI schema fixture under -race;
+# the internal/core engine tests, which mostly wait on protocol timers, in
+# parallel shards) and the web UI (typecheck, build, Playwright against a
+# mocked agent). Runs on pull requests and pushes to main; images.yml runs it
 # before publishing from dev or a release tag.
 name: CI
 
@@ -27,7 +28,23 @@ jobs:
           out=$(gofmt -l $(git ls-files '*.go'))
           if [ -n "$out" ]; then echo "not gofmt'ed:"; echo "$out"; exit 1; fi
       - run: go vet ./...
-      - run: go test -race -count=1 ./...
+      - name: go test (all but internal/core)
+        run: go test -race -count=1 $(go list ./... | grep -v '/internal/core$')
+
+  core:
+    name: core (${{ matrix.shard }}/4)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3] # the 4 in the name and the script call must match
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: .github/scripts/test-shard.sh ${{ matrix.shard }} 4 -race
 
   web:
     runs-on: ubuntu-24.04 # Playwright 1.57 has no Chromium for newer Ubuntu
