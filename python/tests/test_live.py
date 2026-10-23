@@ -13,18 +13,18 @@ A_MAC, B_MAC = "02:00:00:00:0a:01", "02:00:00:00:0b:01"
 
 
 def two_devices(agent, **kw):
-    agent.add_device("a", "eth1", vlans=[100], mac=A_MAC, **kw.get("a", {}))
-    agent.add_device("b", "eth1", vlans=[100], mac=B_MAC, **kw.get("b", {}))
+    agent.add_device("a", agent.test_port, vlans=[100], mac=A_MAC, **kw.get("a", {}))
+    agent.add_device("b", agent.test_port, vlans=[100], mac=B_MAC, **kw.get("b", {}))
 
 
 def test_info_and_ports(agent):
     assert agent.info()["version"]
-    p = agent.port("eth1")
+    p = agent.port(agent.test_port)
     assert p["oper_up"] and isinstance(p["counters"].get("rx_frames", 0), int)
 
 
 def test_devices(clean):
-    d = clean.add_device("d", "eth1", vlans=["0x88a8:200", "10.3"], addresses=["10.0.0.1/24"])
+    d = clean.add_device("d", clean.test_port, vlans=["0x88a8:200", "10.3"], addresses=["10.0.0.1/24"])
     assert [v["vid"] for v in d["vlans"]] == [200, 10] and d["vlans"][0]["tpid"] == 0x88A8 and d["mac_derived"]
     d = clean.update_device("d", vlans=[300])
     assert [v["vid"] for v in d["vlans"]] == [300] and d["addresses"] == ["10.0.0.1/24"]
@@ -64,7 +64,7 @@ def test_scenario(clean):
 
 def test_events(clean):
     events = clean.events(timeout=10)
-    clean.add_device("ev", "eth1", vlans=[7])
+    clean.add_device("ev", clean.test_port, vlans=[7])
     for e in events:
         if e["source"] == "device/ev":
             assert e["kind"] and e["time"].year >= 2026
@@ -97,9 +97,9 @@ def test_measure_fail(clean):
     lab = echo_lab(clean)
     lab.wait_flows_pass(timeout=20)
     with lab.measure() as m:
-        clean.port_down("eth1")
+        clean.port_down(clean.test_port)
         time.sleep(1)
-        clean.port_up("eth1")
+        clean.port_up(clean.test_port)
     with pytest.raises(FlowsFailed) as e:
         m.assert_pass()
     assert [r.id for r in e.value.failed] == ["gen/rt"]

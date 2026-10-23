@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -27,21 +28,26 @@ def agent():
     name = f"clabgen-pytest-{uuid.uuid4().hex[:8]}"
     _docker("network", "create", name)
     try:
-        _docker("create", "--name", name, "--cap-add", "NET_ADMIN",
-                "-v", f"{AGENT_BIN}:/clabgen-agent:ro", IMAGE, "/clabgen-agent")
+        # The agent starts once the test network's interface is known: docker
+        # doesn't promise which ethN each network gets.
+        _docker("create", "--name", name, "--cap-add", "NET_ADMIN", "-v", f"{AGENT_BIN}:/clabgen-agent:ro", IMAGE,
+                "sh", "-c", "while [ ! -s /tmp/port ]; do sleep 0.1; done; exec /clabgen-agent -ports \"^$(cat /tmp/port)$\"")
         _docker("network", "connect", name, name)
         _docker("start", name)
-        # The API at the container's address on the default bridge (eth0): a
-        # published port may be forwarded over eth1, which tests take down.
-        ip = _docker("inspect", "-f", "{{.NetworkSettings.Networks.bridge.IPAddress}}", name)
-        a = Agent(f"{ip}:8080", name="test")
+        nets = json.loads(_docker("inspect", "-f", "{{json .NetworkSettings.Networks}}", name))
+        mac = nets[name]["MacAddress"]
+        port = _docker("exec", name, "sh", "-c", f"grep -l {mac} /sys/class/net/*/address | cut -d/ -f5")
+        _docker("exec", name, "sh", "-c", f"echo {port} > /tmp/port")
+        # The API at the container's address on the default bridge, which the tests never take down.
+        a = Agent(f"{nets['bridge']['IPAddress']}:8080", name="test")
+        a.test_port = port
 
         def up():
             try:
                 return a.ports()
             except ClabgenError:
                 return None
-        wait_until(up, 20, 0.2, "the agent and its eth1")
+        wait_until(up, 20, 0.2, "the agent and its port")
         yield a
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
