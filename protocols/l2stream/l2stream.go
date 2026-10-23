@@ -43,12 +43,12 @@ func init() { protocol.Register(streamType{}) }
 type Config struct {
 	DstMAC      string `json:"dst_mac" jsonschema:"description=Destination MAC: the far device's (its Devices tab) for unicast; default broadcast" jsonschema_extras:"x-group=Frames"`
 	SrcMAC      string `json:"src_mac,omitempty" jsonschema:"description=First source MAC. Default: the device's" jsonschema_extras:"x-group=Frames"`
-	SrcMACCount int    `json:"src_mac_count" jsonschema:"minimum=1,maximum=65536,description=Cycle through this many source MACs from src_mac (one per frame); e.g. to fill MAC tables" jsonschema_extras:"x-group=Frames"`
-	EtherType   uint16 `json:"ethertype" jsonschema:"minimum=1536,maximum=65535,description=Ethertype (default 0x88b5). Not IP; ARP; CFM; LLDP; LACP; PTP or VLAN tags" jsonschema_extras:"x-group=Frames"`
+	SrcMACCount int    `json:"src_mac_count" jsonschema:"minimum=1,maximum=65536" jsonschema_description:"Cycle through this many source MACs from src_mac (one per frame), e.g. to fill MAC tables" jsonschema_extras:"x-group=Frames"`
+	EtherType   uint16 `json:"ethertype" jsonschema:"minimum=1536,maximum=65535" jsonschema_description:"Ethertype (default 0x88b5; not IP, ARP, CFM, LLDP, LACP, PTP or VLAN tags)" jsonschema_extras:"x-group=Frames"`
 	PCP         *uint8 `json:"vlan_pcp,omitempty" jsonschema:"minimum=0,maximum=7,description=PCP on every VLAN tag. Default: the device's" jsonschema_extras:"x-group=Frames"`
-	FrameSize   int    `json:"frame_size" jsonschema:"minimum=60,maximum=9018,description=Bytes per frame without the FCS; VLAN tags included (60 is a 64-byte frame on the wire)" jsonschema_extras:"x-group=Frames"`
+	FrameSize   int    `json:"frame_size" jsonschema:"minimum=60,maximum=9018" jsonschema_description:"Bytes per frame without the FCS, VLAN tags included (60 is a 64-byte frame on the wire)" jsonschema_extras:"x-group=Frames"`
 	Pattern     string `json:"payload_pattern" jsonschema:"enum=increment,enum=zeros,enum=random,description=Fill after the signature" jsonschema_extras:"x-group=Frames,x-advanced=true"`
-	Reply       string `json:"reply" jsonschema:"enum=none,enum=echo,description=echo: an l2-echo responder on the far device sends each frame back; for round-trip loss; outage; RTT and checks" jsonschema_extras:"x-group=Frames"`
+	Reply       string `json:"reply" jsonschema:"enum=none,enum=echo" jsonschema_description:"echo: an l2-echo responder on the far device sends each frame back, for round-trip loss, outage, RTT and checks" jsonschema_extras:"x-group=Frames"`
 
 	ipflow.Run
 

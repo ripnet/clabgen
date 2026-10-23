@@ -50,15 +50,15 @@ type Config struct {
 	LeakToL1    []string  `json:"leak_to_l1,omitempty" jsonschema:"description=L1L2: level-2 prefixes within these ranges (e.g. 192.0.2.0/24; 0.0.0.0/0 for all IPv4) are leaked into level 1 with the up/down bit" jsonschema_extras:"x-group=L1/L2,x-show-if=level=L1L2"`
 
 	BFD             BFDConfig       `json:"bfd" jsonschema:"description=BFD (RFC 5880/5881) with every neighbor: a failed session drops the adjacency at once"`
-	GracefulRestart GracefulRestart `json:"graceful_restart" jsonschema:"description=Graceful restart (RFC 8706, restart TLV 211)"`
+	GracefulRestart GracefulRestart `json:"graceful_restart" jsonschema_description:"Graceful restart (RFC 8706, restart TLV 211)"`
 	// Interface subnets are advertised automatically.
 	Prefixes []Prefix `json:"prefixes,omitempty" jsonschema:"description=Extra prefixes to advertise (route injection)" jsonschema_extras:"x-summary={prefix}[ ×{count}][ metric {metric}]"`
 	// Loopbacks are the router's own addresses, answered on every interface.
-	Loopbacks []string `json:"loopbacks,omitempty" jsonschema:"description=Router loopback addresses (e.g. 192.0.2.50/32): advertised at metric 0 and answered (ping, flows) on every interface; the first IPv4 one is the router ID" jsonschema_extras:"x-group=Router"`
+	Loopbacks []string `json:"loopbacks,omitempty" jsonschema_description:"Router loopback addresses (e.g. 192.0.2.50/32): advertised at metric 0 and answered (ping, flows) on every interface; the first IPv4 one is the router ID" jsonschema_extras:"x-group=Router"`
 
-	SegmentRouting SegmentRouting `json:"segment_routing" jsonschema:"description=Segment routing (RFC 8667; MPLS): SRGB, node SIDs, adjacency SIDs"`
-	FlexAlgos      []FlexAlgo     `json:"flex_algos,omitempty" jsonschema:"description=Flexible algorithms (RFC 9350) we take part in, optionally with their definitions" jsonschema_extras:"x-summary={algorithm}[ {metric_type}][ {participate_only}]"`
-	SRv6           SRv6           `json:"srv6" jsonschema:"description=SRv6 (RFC 9352): locators with End SIDs, End.X SIDs on adjacencies"`
+	SegmentRouting SegmentRouting `json:"segment_routing" jsonschema_description:"Segment routing (RFC 8667; MPLS): SRGB, node SIDs, adjacency SIDs"`
+	FlexAlgos      []FlexAlgo     `json:"flex_algos,omitempty" jsonschema_description:"Flexible algorithms (RFC 9350) we take part in, optionally with their definitions" jsonschema_extras:"x-summary={algorithm}[ {metric_type}][ {participate_only}]"`
+	SRv6           SRv6           `json:"srv6" jsonschema_description:"SRv6 (RFC 9352): locators with End SIDs, End.X SIDs on adjacencies"`
 
 	Topology Topology `json:"topology" jsonschema:"description=Simulated routers behind this one; their LSPs are originated here"`
 }
@@ -94,7 +94,7 @@ type SegmentRouting struct {
 
 // SIDMapping maps Range consecutive prefixes from Prefix to indexes from Index.
 type SIDMapping struct {
-	Prefix    string `json:"prefix" jsonschema:"description=First prefix, e.g. 10.255.1.1/32"`
+	Prefix    string `json:"prefix" jsonschema_description:"First prefix, e.g. 10.255.1.1/32"`
 	Range     uint16 `json:"range,omitempty" jsonschema:"minimum=1,description=Number of consecutive prefixes. Default 1"`
 	Index     uint32 `json:"index" jsonschema:"description=SID index of the first prefix"`
 	Algorithm byte   `json:"algorithm,omitempty"`
@@ -121,14 +121,14 @@ type SRv6 struct {
 	// Simulated routers' locators: the first node's, then the next ones.
 	TopologyLocatorBase string              `json:"topology_locator_base,omitempty" jsonschema:"description=Locator of the first simulated router (e.g. fc00:0:100::/48); the others count up"`
 	Behavior            string              `json:"behavior,omitempty" jsonschema:"enum=end,enum=end-psp,enum=end-usp,enum=end-psp-usp,enum=un,enum=un-psp,enum=un-usp,enum=un-psp-usp,description=End SID behavior (End.X follows the same flavor). Default end; un for uSID"`
-	Structure           *SIDStructureConfig `json:"structure,omitempty" jsonschema:"description=SID structure (bits). Default: block = locator − 16, node 16, function 16"`
+	Structure           *SIDStructureConfig `json:"structure,omitempty" jsonschema_description:"SID structure (bits). Default: block = locator − 16, node 16, function 16"`
 }
 
 type SRv6Locator struct {
 	Prefix    string `json:"prefix" jsonschema:"description=e.g. fc00:0:50::/48"`
 	Algorithm byte   `json:"algorithm,omitempty" jsonschema:"description=0 or a flex-algo"`
 	Metric    uint32 `json:"metric,omitempty"`
-	EndSID    string `json:"end_sid,omitempty" jsonschema:"description=Default: the locator itself for uSID (un), else locator::1"`
+	EndSID    string `json:"end_sid,omitempty" jsonschema_description:"Default: the locator itself for uSID (un), else locator::1"`
 }
 
 type SIDStructureConfig struct {
@@ -292,7 +292,7 @@ type Summary struct {
 
 // GracefulRestart configures RFC 8706 graceful restart.
 type GracefulRestart struct {
-	Helper bool `json:"helper" jsonschema:"description=Help restarting neighbors: keep their adjacencies, acknowledge (RA) and resend the LSDB"`
+	Helper bool `json:"helper" jsonschema_description:"Help restarting neighbors: keep their adjacencies, acknowledge (RA) and resend the LSDB"`
 	// HoldS is how long a neighbor keeps our adjacency while we restart
 	// (the remaining time we ask for), and our database sync limit.
 	HoldS int `json:"restart_hold_s,omitempty" jsonschema:"minimum=1,maximum=65535,description=Our restart: how long neighbors keep our adjacencies and we wait for the LSDB to resynchronize. Default 60"`

@@ -21,7 +21,10 @@ func (c *Config) Validate() error { ... } // optional; runs after decoding
   appear in the published schema.
 - `jsonschema:` tags (from [invopop/jsonschema](https://github.com/invopop/jsonschema))
   add enums, ranges and descriptions. UIs build forms from that schema, so
-  adding a protocol needs no UI changes.
+  adding a protocol needs no UI changes. That tag splits on commas, so a
+  description with a comma goes in its own tag:
+  `jsonschema_description:"Seconds between hellos, at least 1"` (a test
+  catches descriptions cut short).
 - Action arguments work the same way: `Action.NewArgs` returns a defaulted
   pointer, and it may implement `Validate()`.
 

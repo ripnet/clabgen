@@ -86,10 +86,10 @@ type FlapArgs struct {
 	Interface string `json:"interface,omitempty" jsonschema:"description=Device name; empty: every interface"`
 }
 type LSAArgs struct {
-	Type   string `json:"type" jsonschema:"description=LSA type as the LSDB lists it: router / network / external / nssa, summary / asbr-summary (v2), link / intra-area-prefix / inter-area-prefix (v3)"`
+	Type   string `json:"type" jsonschema_description:"LSA type as the LSDB lists it: router / network / external / nssa, summary / asbr-summary (v2), link / intra-area-prefix / inter-area-prefix (v3)"`
 	ID     string `json:"id" jsonschema:"description=Link state ID"`
 	AdvRtr string `json:"adv_router,omitempty" jsonschema:"description=Advertising router. Default: the only match"`
-	Area   string `json:"area,omitempty" jsonschema:"description=Area ID, or as for AS-scoped LSAs. Default: the only match"`
+	Area   string `json:"area,omitempty" jsonschema_description:"Area ID, or as for AS-scoped LSAs. Default: the only match"`
 }
 
 func (a *CostArgs) Validate() error {

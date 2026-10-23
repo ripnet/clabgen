@@ -25,7 +25,7 @@ type Topology struct {
 	Area   AreaID   `json:"area,omitempty" jsonschema:"description=Area of the simulated routers and our links to them. Default: the router's area; another one makes us an area border router"`
 
 	RouterIDBase    string `json:"router_id_base,omitempty" jsonschema:"description=Router ID of the first node; the others count up. Default 10.254.0.1"`
-	LoopbackBase    string `json:"loopback_base,omitempty" jsonschema:"description=Loopback of the first node (10.255.0.1/32, or 2001:db8:ff::1/128 for OSPFv3); the others count up"`
+	LoopbackBase    string `json:"loopback_base,omitempty" jsonschema_description:"Loopback of the first node (10.255.0.1/32, or 2001:db8:ff::1/128 for OSPFv3); the others count up"`
 	PrefixBase      string `json:"prefix_base,omitempty" jsonschema:"description=First prefix (e.g. 10.200.0.0/24); each node gets prefixes_per_node consecutive ones"`
 	PrefixesPerNode int    `json:"prefixes_per_node,omitempty" jsonschema:"minimum=0,maximum=100"`
 

@@ -40,10 +40,10 @@ type xroute struct {
 
 // EVPNRoute is an EVPN route (or count MAC/IP or IP prefix routes).
 type EVPNRoute struct {
-	Type         string   `json:"type" jsonschema:"required,enum=mac-ip,enum=inclusive-multicast,enum=ethernet-ad,enum=ethernet-segment,enum=ip-prefix,description=Route type 2, 3, 1, 4 or 5"`
-	RD           string   `json:"rd" jsonschema:"required,description=Route distinguisher, e.g. 65100:600 or 192.0.2.50:600"`
-	RouteTargets []string `json:"route_targets,omitempty" jsonschema:"description=Route targets, e.g. 65100:600"`
-	ESI          string   `json:"esi,omitempty" jsonschema:"description=Ethernet segment identifier (10 bytes, e.g. 01:00:00:00:00:00:00:00:00:01). Default 0 (single-homed)" jsonschema_extras:"x-show-if=type!=inclusive-multicast"`
+	Type         string   `json:"type" jsonschema:"required,enum=mac-ip,enum=inclusive-multicast,enum=ethernet-ad,enum=ethernet-segment,enum=ip-prefix" jsonschema_description:"Route type 2, 3, 1, 4 or 5"`
+	RD           string   `json:"rd" jsonschema:"required" jsonschema_description:"Route distinguisher, e.g. 65100:600 or 192.0.2.50:600"`
+	RouteTargets []string `json:"route_targets,omitempty" jsonschema_description:"Route targets, e.g. 65100:600"`
+	ESI          string   `json:"esi,omitempty" jsonschema_description:"Ethernet segment identifier (10 bytes, e.g. 01:00:00:00:00:00:00:00:00:01). Default 0 (single-homed)" jsonschema_extras:"x-show-if=type!=inclusive-multicast"`
 	EthernetTag  uint32   `json:"ethernet_tag,omitempty" jsonschema_extras:"x-advanced=true"`
 	MAC          string   `json:"mac,omitempty" jsonschema:"description=mac-ip: the first MAC" jsonschema_extras:"x-show-if=type=mac-ip"`
 	IP           string   `json:"ip,omitempty" jsonschema:"description=mac-ip: the first host address (optional; counts up with the MAC)" jsonschema_extras:"x-show-if=type=mac-ip"`

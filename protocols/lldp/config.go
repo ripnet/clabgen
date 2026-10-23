@@ -14,13 +14,13 @@ type Config struct {
 	Mode string `json:"mode" jsonschema:"enum=tx-rx,enum=tx-only,enum=rx-only,enum=disabled,description=Admin status"`
 
 	TxInterval int `json:"tx_interval" jsonschema:"minimum=1,maximum=3600,description=Seconds between LLDPDUs (msgTxInterval)"`
-	TxHold     int `json:"tx_hold" jsonschema:"minimum=1,maximum=100,description=TTL = interval × hold (msgTxHold), capped at 65535"`
+	TxHold     int `json:"tx_hold" jsonschema:"minimum=1,maximum=100" jsonschema_description:"TTL = interval × hold (msgTxHold), capped at 65535"`
 	FastCount  int `json:"fast_count" jsonschema:"minimum=0,maximum=8,description=LLDPDUs sent 1 s apart at start and when a new neighbor appears (txFastInit)"`
 
 	ChassisIDSubtype string `json:"chassis_id_subtype" jsonschema:"enum=mac,enum=local,enum=network-address,enum=interface-name,enum=interface-alias,enum=chassis-component,enum=port-component"`
 	ChassisID        string `json:"chassis_id,omitempty" jsonschema:"description=Default: the device MAC (mac) or the system name"`
 	PortIDSubtype    string `json:"port_id_subtype" jsonschema:"enum=interface-name,enum=mac,enum=local,enum=interface-alias,enum=network-address,enum=port-component,enum=agent-circuit-id"`
-	PortID           string `json:"port_id,omitempty" jsonschema:"description=Default: the port name (interface-name), the device MAC (mac) or the device name"`
+	PortID           string `json:"port_id,omitempty" jsonschema_description:"Default: the port name (interface-name), the device MAC (mac) or the device name"`
 
 	PortDescription   string   `json:"port_description,omitempty" jsonschema:"description=Default: the device name"`
 	SystemName        string   `json:"system_name,omitempty" jsonschema:"description=Default: the agent's hostname"`
@@ -37,14 +37,14 @@ type Config struct {
 	MaxFrameSize uint16      `json:"max_frame_size,omitempty" jsonschema:"description=802.3 Maximum Frame Size TLV (0: none)"`
 	MACPHY       *MACPHY     `json:"mac_phy,omitempty" jsonschema:"description=802.3 MAC/PHY Configuration/Status TLV"`
 	LinkAgg      *LinkAgg    `json:"link_aggregation,omitempty" jsonschema:"description=802.1 Link Aggregation TLV"`
-	CustomTLVs   []CustomTLV `json:"custom_tlvs,omitempty" jsonschema:"description=Extra TLVs (any type, or org-specific with an OUI), e.g. for negative testing"`
+	CustomTLVs   []CustomTLV `json:"custom_tlvs,omitempty" jsonschema_description:"Extra TLVs (any type, or org-specific with an OUI), e.g. for negative testing"`
 }
 
 type MACPHY struct {
 	AutonegSupported bool   `json:"autoneg_supported"`
 	AutonegEnabled   bool   `json:"autoneg_enabled"`
 	Advertised       uint16 `json:"advertised_capabilities,omitempty" jsonschema:"description=PMD auto-negotiation advertised capability bits"`
-	MAUType          uint16 `json:"mau_type" jsonschema:"description=Operational MAU type (IANA dot3MauType, e.g. 16 = 100BASE-TX FD, 30 = 1000BASE-T FD)"`
+	MAUType          uint16 `json:"mau_type" jsonschema_description:"Operational MAU type (IANA dot3MauType, e.g. 16 = 100BASE-TX FD, 30 = 1000BASE-T FD)"`
 }
 
 type LinkAgg struct {

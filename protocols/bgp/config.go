@@ -44,15 +44,15 @@ type Route struct {
 	ASPath           []uint32 `json:"as_path,omitempty" jsonschema:"description=AS numbers after ours (eBGP) / the whole path (iBGP)" jsonschema_extras:"x-group=Path attributes"`
 	MED              *uint32  `json:"med,omitempty" jsonschema_extras:"x-group=Path attributes"`
 	LocalPref        *uint32  `json:"local_pref,omitempty" jsonschema:"description=iBGP only. Default 100" jsonschema_extras:"x-group=Path attributes"`
-	Communities      []string `json:"communities,omitempty" jsonschema:"description=Standard communities: 65000:100, no-export, no-advertise, no-export-subconfed, blackhole" jsonschema_extras:"x-group=Path attributes"`
+	Communities      []string `json:"communities,omitempty" jsonschema_description:"Standard communities: 65000:100, no-export, no-advertise, no-export-subconfed, blackhole" jsonschema_extras:"x-group=Path attributes"`
 	LargeCommunities []string `json:"large_communities,omitempty" jsonschema:"description=Large communities global:local1:local2" jsonschema_extras:"x-group=Path attributes"`
-	ExtCommunities   []string `json:"ext_communities,omitempty" jsonschema:"description=Extended communities: rt:65000:100, soo:65000:1, rt:192.0.2.1:7" jsonschema_extras:"x-group=Path attributes"`
+	ExtCommunities   []string `json:"ext_communities,omitempty" jsonschema_description:"Extended communities: rt:65000:100, soo:65000:1, rt:192.0.2.1:7" jsonschema_extras:"x-group=Path attributes"`
 	AtomicAggregate  bool     `json:"atomic_aggregate,omitempty" jsonschema_extras:"x-group=Path attributes"`
 	Peers            []string `json:"peers,omitempty" jsonschema:"description=Only to these peers (addresses). Default: all" jsonschema_extras:"x-group=Advanced,x-advanced=true"`
 	// VPN (RFC 4364 / 4659): a route distinguisher makes the route VPNv4/v6.
 	RD           string   `json:"rd,omitempty" jsonschema:"description=Route distinguisher (65100:500 or 192.0.2.50:500): advertise as VPNv4 / VPNv6" jsonschema_extras:"x-group=VPN"`
 	Label        uint32   `json:"label,omitempty" jsonschema:"description=VPN label. Default 30000" jsonschema_extras:"x-group=VPN"`
-	RouteTargets []string `json:"route_targets,omitempty" jsonschema:"description=Route targets, e.g. 65100:500" jsonschema_extras:"x-group=VPN"`
+	RouteTargets []string `json:"route_targets,omitempty" jsonschema_description:"Route targets, e.g. 65100:500" jsonschema_extras:"x-group=VPN"`
 }
 
 func defaultConfig() *Config {
@@ -239,7 +239,7 @@ type PeerArgs struct {
 type NotifyArgs struct {
 	Peer    string `json:"peer,omitempty" jsonschema:"description=Peer address; empty: every peer"`
 	Code    uint8  `json:"code" jsonschema:"description=NOTIFICATION error code (6: Cease)"`
-	Subcode uint8  `json:"subcode" jsonschema:"description=e.g. Cease 2 administrative shutdown, 4 administrative reset"`
+	Subcode uint8  `json:"subcode" jsonschema_description:"e.g. Cease 2 administrative shutdown, 4 administrative reset"`
 	Message string `json:"message,omitempty" jsonschema:"description=Shutdown communication (RFC 9003) for Cease 2/4"`
 }
 

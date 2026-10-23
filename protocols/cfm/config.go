@@ -25,15 +25,15 @@ type Config struct {
 	InterfaceStatusTLV bool `json:"interface_status_tlv,omitempty" jsonschema:"description=Include Interface Status TLV in CCMs" jsonschema_extras:"x-group=CCM"`
 
 	// More TLVs in CCMs.
-	SenderID   string  `json:"sender_id,omitempty" jsonschema:"description=Chassis ID (subtype local) for a Sender ID TLV in CCMs, LBMs and LTMs; empty: none" jsonschema_extras:"x-group=CCM,x-advanced=true"`
+	SenderID   string  `json:"sender_id,omitempty" jsonschema_description:"Chassis ID (subtype local) for a Sender ID TLV in CCMs, LBMs and LTMs; empty: none" jsonschema_extras:"x-group=CCM,x-advanced=true"`
 	OrgTLV     *OrgTLV `json:"org_tlv,omitempty" jsonschema:"description=An Organization-Specific TLV in CCMs"`
 	CCMPadding int     `json:"ccm_padding,omitempty" jsonschema:"minimum=0,maximum=1400,description=Bytes of Data TLV padding in CCMs" jsonschema_extras:"x-group=CCM,x-advanced=true"`
 
 	// AIS (Y.1731 7.4) toward the client level while we have a defect.
-	AIS AISConfig `json:"ais" jsonschema:"description=AIS (and LCK) toward the client MEG level: AIS while the MEP has a defect (or forced), LCK while locked (fault action)"`
+	AIS AISConfig `json:"ais" jsonschema_description:"AIS (and LCK) toward the client MEG level: AIS while the MEP has a defect (or forced), LCK while locked (fault action)"`
 
 	// Proactive measurement sessions with history.
-	Sessions []Session `json:"sessions,omitempty" jsonschema:"description=Continuous delay / synthetic loss / frame loss measurements, kept in bins" jsonschema_extras:"x-summary={name}: {type}[ → MEP {target_mep_id}][ → {target_mac}]"`
+	Sessions []Session `json:"sessions,omitempty" jsonschema_description:"Continuous delay / synthetic loss / frame loss measurements, kept in bins" jsonschema_extras:"x-summary={name}: {type}[ → MEP {target_mep_id}][ → {target_mac}]"`
 
 	// Responder controls, for negative testing.
 	DisableLBR bool `json:"disable_lbr,omitempty" jsonschema_extras:"x-group=Responders,x-advanced=true"`

@@ -24,7 +24,7 @@ type BFDConfig struct {
 	MinRxMs    int      `json:"min_rx_ms,omitempty" jsonschema:"minimum=100,maximum=10000,description=Required receive interval. Default 300"`
 	Multiplier int      `json:"multiplier,omitempty" jsonschema:"minimum=2,maximum=255,description=Detection multiplier. Default 3"`
 	Families   []string `json:"families,omitempty" jsonschema:"enum=ipv4,enum=ipv6,description=Address families with a session per neighbor (IPv6 over link-local addresses). Default ipv4"`
-	TLV        bool     `json:"tlv" jsonschema:"description=Send the BFD-enabled TLV (RFC 6213): with a neighbor that sends it too, the adjacency comes up only once BFD is up"`
+	TLV        bool     `json:"tlv" jsonschema_description:"Send the BFD-enabled TLV (RFC 6213): with a neighbor that sends it too, the adjacency comes up only once BFD is up"`
 }
 
 type BFDArgs struct {
