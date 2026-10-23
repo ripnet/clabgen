@@ -1,6 +1,6 @@
 """Tests for the b2b lab, with the clabgen Python package (python/):
 
-    pip install "git+https://github.com/ripnet/clabgen#subdirectory=python"
+    pip install clabgen
     pytest examples/b2b --clabgen-lab b2b
 """
 

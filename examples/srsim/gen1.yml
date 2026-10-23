@@ -57,6 +57,9 @@ protocols:
     type: cfm-mep
     device: t300b
     config: {level: 6, mep_id: 302, remote_meps: [301], md_format: string, md_name: transit, ma_name: t300, ccm_interval: 1s}
+  # Checks in this lab allow 1.5 s outages: SR-SIM stalls forwarding for
+  # up to about 0.8 s now and then (seen once in ~17 h); a link or SAP
+  # failure still fails them. Tighten them on real hardware.
   # A raw L2 stream across VPLS 300 from 50 source MACs, echoed back by
   # l300b: loss, outages and RTT of the circuit without an IP stack.
   - {name: l2-echo-t300, type: l2-echo, device: l300b}
@@ -64,7 +67,7 @@ protocols:
     type: l2
     device: l300a
     config: {dst_mac: "02:c1:00:00:30:02", src_mac: "02:c1:00:01:00:00", src_mac_count: 50, reply: echo,
-             rate: 100, frame_size: 512, auto_start: true, checks: {max_loss_pct: 1, max_outage_ms: 100}}
+             rate: 100, frame_size: 512, auto_start: true, checks: {max_loss_pct: 1, max_outage_ms: 1500}}
   # Traffic: continuous pings to the SR interface, and a TTL=1 flow through
   # the SR (expects ICMP time exceeded back).
   - name: ping-sr
@@ -73,12 +76,12 @@ protocols:
     # Checks: pass while the SR answers within these limits (see the Flows
     # page). An average RTT limit, as SR-SIM has the odd slow reply over hours.
     config: {destination: 10.0.4.1, rate: 10, auto_start: true,
-             checks: {max_loss_pct: 1, max_outage_ms: 500, max_rtt_avg_ms: 20}}
+             checks: {max_loss_pct: 1, max_outage_ms: 1500, max_rtt_avg_ms: 20}}
   - name: ping-sr-v6
     type: icmp
     device: v400
     config: {destination: "2001:db8:4::1", rate: 10, auto_start: true,
-             checks: {max_loss_pct: 1, max_outage_ms: 500, max_rtt_avg_ms: 20}}
+             checks: {max_loss_pct: 1, max_outage_ms: 1500, max_rtt_avg_ms: 20}}
   - name: ttl1
     type: icmp
     device: v400
@@ -95,7 +98,7 @@ protocols:
     type: udp
     device: v400
     config: {destination: "2001:db8:41::2", reply: echo, rate: 50, auto_start: true,
-             checks: {max_loss_pct: 1, max_outage_ms: 500}}
+             checks: {max_loss_pct: 1, max_outage_ms: 1500}}
   # To a closed port on the SR: expect ICMP port unreachable.
   - name: udp-closed
     type: udp

@@ -7,8 +7,12 @@ under test, and assert on what the flows measured. It talks to the agents'
 library (Python 3.9 or newer); pytest is only needed for the fixtures.
 
 ```sh
-pip install "git+https://github.com/ripnet/clabgen#subdirectory=python"
+pip install clabgen                     # the latest release
+pip install "git+https://github.com/ripnet/clabgen@dev#subdirectory=python"   # the development branch
 ```
+
+Its version follows the agent's releases; it works with agents of the
+same release (an agent's API only grows, so a newer agent works too).
 
 ## A test
 

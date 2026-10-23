@@ -68,6 +68,9 @@ jobs:
       - run: pip install "./python[test]"
       - name: pytest (the live tests run the agent in a container)
         run: pytest python -ra
+      - name: package builds
+        if: matrix.python == '3.13'
+        run: pip install build && python -m build python
 
   web:
     runs-on: ubuntu-24.04 # Playwright 1.57 has no Chromium for newer Ubuntu

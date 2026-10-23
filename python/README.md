@@ -5,11 +5,12 @@ Python client and pytest helpers for
 traffic generator for containerlab. Standard library only; Python 3.9+.
 
 ```sh
-pip install "git+https://github.com/ripnet/clabgen#subdirectory=python"
+pip install clabgen
 ```
 
-(Ubuntu 22.04's own pip 22.0 builds it as `UNKNOWN`: use a newer pip, e.g.
-in a virtualenv after `pip install -U pip`.)
+Installing from a checkout or from git builds the package: Ubuntu 22.04's
+own pip 22.0 builds it as `UNKNOWN`, so use a newer pip there (e.g. in a
+virtualenv after `pip install -U pip`).
 
 ```python
 def test_failover(clabgen_lab):              # pytest --clabgen-lab b2b

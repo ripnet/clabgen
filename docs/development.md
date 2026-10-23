@@ -57,8 +57,10 @@ without it.
   `.github/scripts/test-shard.sh 2 4 -race` (shard 2 of 4).
 - A push to `dev` runs them and then publishes `:dev` and `:sha-<commit>`
   images ([`images.yml`](../.github/workflows/images.yml)).
-- A tag `vX.Y.Z` on `main` publishes `:X.Y.Z`, `:X.Y` and `:latest`, and a
-  GitHub release with `clabgenctl` binaries. `:latest` only moves on a
+- A tag `vX.Y.Z` on `main` publishes `:X.Y.Z`, `:X.Y` and `:latest`, a
+  GitHub release with `clabgenctl` binaries, and the Python package X.Y.Z
+  on PyPI (trusted publishing from the `pypi` environment; the version
+  comes from the tag). `:latest` only moves on a
   release.
 
 Both images are multi-arch (amd64 and arm64).

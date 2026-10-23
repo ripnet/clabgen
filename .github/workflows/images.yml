@@ -3,7 +3,8 @@
 # pass.
 #   push to dev       → :dev (and :sha-<commit>)
 #   tag vX.Y.Z (main) → :X.Y.Z, :X.Y and :latest, plus a GitHub release with
-#                       clabgenctl binaries
+#                       clabgenctl binaries, and the Python package X.Y.Z on
+#                       PyPI (trusted publishing: no token in the repo)
 # :latest only ever moves on a release tag, so it never carries work in
 # progress.
 name: Images
@@ -103,3 +104,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag
+
+  pypi:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/clabgen
+    permissions:
+      id-token: write # trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: build (the version is the tag's)
+        run: |
+          sed -i "s/^__version__ = .*/__version__ = \"${GITHUB_REF_NAME#v}\"/" python/src/clabgen/__init__.py
+          pip install build
+          python -m build python
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist

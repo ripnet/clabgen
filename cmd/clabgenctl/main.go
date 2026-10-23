@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"os/exec"
 	"os/signal"
 	"sort"
 	"strconv"
@@ -34,11 +35,18 @@ import (
 var (
 	serverAddr string
 	outFormat  string
+	labArg     string
 	timeout    time.Duration
 )
 
 func client() clabgenv1connect.AgentServiceClient {
-	addr := serverAddr
+	return clientFor(serverAddr)
+}
+
+func clientFor(addr string) clabgenv1connect.AgentServiceClient {
+	if labArg != "" && !strings.ContainsAny(addr, ".:/") && addr != "localhost" {
+		addr = nodeAddr(labArg, addr)
+	}
 	if !strings.Contains(addr, "://") {
 		addr = "http://" + addr
 	}
@@ -46,6 +54,112 @@ func client() clabgenv1connect.AgentServiceClient {
 		addr += ":8080"
 	}
 	return clabgenv1connect.NewAgentServiceClient(http.DefaultClient, addr)
+}
+
+// labOf reads a lab argument: a lab name, or a topology file (its name
+// and container name prefix).
+func labOf(arg string) (name, prefix string, err error) {
+	prefix = "clab"
+	if !strings.HasSuffix(arg, ".yml") && !strings.HasSuffix(arg, ".yaml") {
+		return arg, prefix, nil
+	}
+	b, err := os.ReadFile(arg)
+	if err != nil {
+		return "", "", err
+	}
+	var t struct {
+		Name   string  `json:"name"`
+		Prefix *string `json:"prefix"`
+	}
+	j, err := yaml.YAMLToJSON(b)
+	if err == nil {
+		err = json.Unmarshal(j, &t)
+	}
+	if err != nil || t.Name == "" {
+		return "", "", fmt.Errorf("%s: not a containerlab topology (no name)", arg)
+	}
+	if t.Prefix != nil {
+		prefix = *t.Prefix
+	}
+	return t.Name, prefix, nil
+}
+
+// labNodes lists a running lab's nodes and their management addresses
+// (from docker, through containerlab's labels).
+func labNodes(lab string) (map[string]string, error) {
+	ids, err := exec.Command("docker", "ps", "-q", "--filter", "label=containerlab="+lab).Output()
+	if err != nil {
+		return nil, fmt.Errorf("docker: %w", err)
+	}
+	if len(strings.Fields(string(ids))) == 0 {
+		return map[string]string{}, nil
+	}
+	out, err := exec.Command("docker", append([]string{"inspect", "-f", `{{index .Config.Labels "clab-node-name"}} {{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}`}, strings.Fields(string(ids))...)...).Output()
+	if err != nil {
+		return nil, fmt.Errorf("docker inspect: %w", err)
+	}
+	nodes := map[string]string{}
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if f := strings.Fields(l); len(f) >= 2 {
+			nodes[f[0]] = f[1]
+		}
+	}
+	return nodes, nil
+}
+
+// nodeAddr is the address of a lab's node: its management IP from docker,
+// else its containerlab container name (prefix-lab-node).
+func nodeAddr(arg, node string) string {
+	lab, prefix, err := labOf(arg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "warning:", err)
+		return node
+	}
+	if nodes, err := labNodes(lab); err == nil {
+		if ip, ok := nodes[node]; ok {
+			return ip
+		}
+	}
+	full := prefix + "-" + lab + "-"
+	if prefix == "" || strings.HasPrefix(node, full) {
+		return node // no prefix, or already the container's name
+	}
+	return full + node
+}
+
+func nodesCmd() *cobra.Command {
+	return &cobra.Command{
+		Use: "nodes", Short: "List the lab's clabgen agents (with --lab)", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if labArg == "" {
+				return errors.New("nodes needs --lab NAME or --lab topology.clab.yml (or CLABGEN_LAB)")
+			}
+			lab, _, err := labOf(labArg)
+			if err != nil {
+				return err
+			}
+			nodes, err := labNodes(lab)
+			if err != nil {
+				return err
+			}
+			names := make([]string, 0, len(nodes))
+			for n := range nodes {
+				names = append(names, n)
+			}
+			sort.Strings(names)
+			w := table()
+			fmt.Fprintln(w, "NODE\tADDRESS\tVERSION\tUP SINCE")
+			for _, n := range names {
+				c, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				r, err := clientFor(nodes[n]).GetInfo(c, connect.NewRequest(&v1.GetInfoRequest{}))
+				cancel()
+				if err != nil {
+					continue // not a clabgen agent
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", n, nodes[n], r.Msg.Version, r.Msg.StartTime.AsTime().Local().Format(time.DateTime))
+			}
+			return w.Flush()
+		}}
 }
 
 func ctx() (context.Context, context.CancelFunc) {
@@ -227,6 +341,22 @@ func printPreview(cmd *cobra.Command, r *structpb.Struct) error {
 
 func asList(v any) []any { l, _ := v.([]any); return l }
 
+// vlanList shows a device's tags, outermost first: 100, 0x88a8:200, 10.5.
+func vlanList(d *v1.Device) []string {
+	var tags []string
+	for _, t := range d.Vlans {
+		s := strconv.Itoa(int(t.Vid))
+		if t.Tpid != 0 && t.Tpid != 0x8100 {
+			s = fmt.Sprintf("%#x:%s", t.Tpid, s)
+		}
+		if t.Pcp != 0 {
+			s += fmt.Sprintf(".%d", t.Pcp)
+		}
+		tags = append(tags, s)
+	}
+	return tags
+}
+
 func parseVLAN(s string) (*v1.VlanTag, error) {
 	// [tpid:]vid[.pcp], e.g. 100, 0x88a8:200, 100.5
 	t := &v1.VlanTag{}
@@ -263,7 +393,8 @@ func main() {
 	if def == "" {
 		def = "localhost:8080"
 	}
-	root.PersistentFlags().StringVarP(&serverAddr, "server", "s", def, "agent address host[:port] (env CLABGEN_SERVER)")
+	root.PersistentFlags().StringVarP(&serverAddr, "server", "s", def, "agent address host[:port], or with --lab a node name (env CLABGEN_SERVER)")
+	root.PersistentFlags().StringVar(&labArg, "lab", os.Getenv("CLABGEN_LAB"), "containerlab lab (name or topology file): -s takes its node names (env CLABGEN_LAB)")
 	root.PersistentFlags().StringVarP(&outFormat, "output", "o", "yaml", "output format for detailed views: yaml or json")
 	root.PersistentFlags().DurationVar(&timeout, "timeout", 0, "overall request timeout (0 = none)")
 
@@ -279,7 +410,7 @@ func main() {
 			return printMsg(r.Msg)
 		}})
 
-	root.AddCommand(portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), previewCmd(), groupsCmd(), groupCmd(), eventsCmd(), scenarioCmd(),
+	root.AddCommand(nodesCmd(), portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), previewCmd(), groupsCmd(), groupCmd(), eventsCmd(), scenarioCmd(),
 		flowCmd("start"), flowCmd("stop"), pingCmd(), receivedCmd())
 
 	if err := root.Execute(); err != nil {
@@ -369,14 +500,7 @@ func devicesCmd() *cobra.Command {
 					}
 					continue
 				}
-				var tags []string
-				for _, t := range d.Vlans {
-					s := strconv.Itoa(int(t.Vid))
-					if t.Tpid != 0 && t.Tpid != 0x8100 {
-						s = fmt.Sprintf("%#x:%s", t.Tpid, s)
-					}
-					tags = append(tags, s)
-				}
+				tags := vlanList(d)
 				addrs := strings.Join(d.Addresses, ",")
 				if gw := strings.Trim(d.Gateway4+","+d.Gateway6, ","); gw != "" {
 					addrs += " gw " + gw
@@ -510,15 +634,46 @@ func deviceCmd() *cobra.Command {
 	set.Flags().StringArrayVar(&setGWs, "gw", nil, "set the IPv4 and/or IPv6 gateway; repeatable")
 	set.Flags().BoolVar(&noGW, "no-gw", false, "remove the gateways")
 	show := &cobra.Command{
-		Use: "show NAME", Short: "Show a device's addresses, neighbors and IP counters", Args: cobra.ExactArgs(1),
+		Use: "show NAME", Short: "Show a device: port, MAC, VLANs, addresses, neighbors and IP counters (-o json/yaml: all of it as data)", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, cancel := ctx()
 			defer cancel()
-			r, err := client().GetDeviceIP(c, connect.NewRequest(&v1.GetDeviceIPRequest{Name: args[0]}))
+			cl := client()
+			ds, err := cl.ListDevices(c, connect.NewRequest(&v1.ListDevicesRequest{}))
+			if err != nil {
+				return err
+			}
+			var d *v1.Device
+			for _, x := range ds.Msg.Devices {
+				if x.Name == args[0] {
+					d = x
+				}
+			}
+			if d == nil {
+				return fmt.Errorf("device %s: not found", args[0])
+			}
+			r, err := cl.GetDeviceIP(c, connect.NewRequest(&v1.GetDeviceIPRequest{Name: args[0]}))
 			if err != nil {
 				return err
 			}
 			m := r.Msg
+			if f := cmd.Flag("output"); f != nil && f.Changed {
+				mo := protojson.MarshalOptions{UseProtoNames: true}
+				db, _ := mo.Marshal(d)
+				ib, _ := mo.Marshal(m)
+				b, _ := json.Marshal(map[string]json.RawMessage{"device": db, "ip": ib})
+				return printJSON(b)
+			}
+			mac := d.Mac
+			if d.MacDerived {
+				mac += " (derived)"
+			}
+			fmt.Printf("port:      %s\n", d.Port)
+			fmt.Printf("mac:       %s\n", mac)
+			fmt.Printf("vlans:     %s\n", orNone(strings.Join(vlanList(d), ", ")))
+			if d.Group != "" {
+				fmt.Printf("group:     %s\n", d.Group)
+			}
 			fmt.Printf("addresses: %s\n", orNone(strings.Join(m.Addresses, ", ")))
 			fmt.Printf("gateways:  %s\n\n", orNone(strings.Trim(m.Gateway4+", "+m.Gateway6, ", ")))
 			w := table()

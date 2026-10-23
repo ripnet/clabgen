@@ -16,10 +16,22 @@ UI does, with tables for lists and YAML or JSON (`-o json`) for details.
 clabgenctl -s clab-b2b-gen1 protocols
 ```
 
+With `--lab` (or `CLABGEN_LAB`) set to a lab's name or its topology file,
+`-s` takes node names: the address comes from docker (containerlab's
+labels), else from the container name, the topology's `prefix` included.
+`nodes` lists the lab's agents:
+
+```sh
+export CLABGEN_LAB=examples/b2b/b2b.clab.yml
+clabgenctl nodes                  # NODE  ADDRESS  VERSION  UP SINCE
+clabgenctl -s gen2 received
+```
+
 ## Commands
 
 ```
 info                      agent hostname, version and start time
+nodes                     the lab's agents (with --lab)
 ports / port              data ports; port down|up <port>
 devices / device          emulated devices: add, set, show, del, resolve, clear-neighbors
 protocols / proto         protocol instances: add, show, set, disable, enable, del, run <action>
