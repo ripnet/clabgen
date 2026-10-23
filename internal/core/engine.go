@@ -601,6 +601,31 @@ func (e *Engine) startInstance(in *instance, d *device) {
 	d.insts = append(d.insts, in)
 }
 
+// PreviewProtocol shows what a config of a type would send from a device
+// before an instance exists, for types that implement protocol.Previewer.
+func (e *Engine) PreviewProtocol(ctx context.Context, typ, device string, raw json.RawMessage, args map[string]any) (any, error) {
+	t, ok := protocol.Lookup(typ)
+	if !ok {
+		return nil, fmt.Errorf("unknown protocol type %q", typ)
+	}
+	p, ok := t.(protocol.Previewer)
+	if !ok {
+		return nil, fmt.Errorf("protocol type %s has no preview", typ)
+	}
+	cfg := t.NewConfig()
+	if err := protocol.Decode(cfg, raw); err != nil {
+		return nil, err
+	}
+	e.mu.RLock()
+	d := e.devices[device]
+	e.mu.RUnlock()
+	if d == nil {
+		return nil, fmt.Errorf("device %s: %w", device, ErrNotFound)
+	}
+	in := &instance{spec: ProtocolSpec{Name: "preview:" + typ, Type: typ, Device: device}, typ: t, cfg: cfg}
+	return p.Preview(ctx, &env{e: e, in: in, dev: d, log: e.log}, cfg, args)
+}
+
 func (e *Engine) UpdateProtocol(name string, raw json.RawMessage) (ProtocolView, error) {
 	return e.updateProtocol(name, raw, "")
 }

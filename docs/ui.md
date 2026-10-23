@@ -71,6 +71,13 @@ address.
   shows).
 - A flow page: live loss, outage and RTT tiles, its checks, a per-second
   timeline and a per-packet log.
+- The packet editor (packet flows): the layers as cards to add, reorder,
+  edit and remove, or a template to start from, and a live preview from
+  the device: the frame as hex, coloured by layer, with each field's
+  value. Hovering a field shows its bytes; "+ modifier" changes it per
+  packet; the arrows step through packets to see the modifiers work.
+  "Import pcap…" lists a capture's frames: replay them all, or open one as
+  layers to edit.
 
 Forms come from each protocol's schema, so new protocol types appear
 without UI changes.

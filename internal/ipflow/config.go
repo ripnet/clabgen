@@ -108,24 +108,8 @@ func (s Spec) Validate() (netip.Addr, error) {
 			return dst, fmt.Errorf("dst_mac: %w", err)
 		}
 	}
-	switch s.Mode {
-	case "continuous":
-	case "count":
-		if s.Count == 0 {
-			return dst, errors.New("count mode needs count > 0")
-		}
-	case "duration":
-		if d, err := time.ParseDuration(s.Duration); err != nil || d <= 0 {
-			return dst, fmt.Errorf("duration mode needs a duration like 30s (got %q)", s.Duration)
-		}
-	default:
-		return dst, fmt.Errorf("invalid mode %q", s.Mode)
-	}
-	if s.Rate < 0.01 || s.Rate > 100000 {
-		return dst, errors.New("rate must be 0.01-100000 pps")
-	}
-	if to, err := time.ParseDuration(s.Timeout); err != nil || to <= 0 {
-		return dst, fmt.Errorf("invalid timeout %q", s.Timeout)
+	if err := s.Run.Validate(); err != nil {
+		return dst, err
 	}
 	if s.PCP != nil && *s.PCP > 7 {
 		return dst, errors.New("vlan_pcp must be 0-7")
@@ -159,6 +143,30 @@ func (s Spec) Validate() (netip.Addr, error) {
 		return dst, fmt.Errorf("invalid payload_pattern %q", s.PayloadPattern)
 	}
 	return dst, nil
+}
+
+// Validate checks the run settings: mode, count or duration, rate, timeout.
+func (r Run) Validate() error {
+	switch r.Mode {
+	case "continuous":
+	case "count":
+		if r.Count == 0 {
+			return errors.New("count mode needs count > 0")
+		}
+	case "duration":
+		if d, err := time.ParseDuration(r.Duration); err != nil || d <= 0 {
+			return fmt.Errorf("duration mode needs a duration like 30s (got %q)", r.Duration)
+		}
+	default:
+		return fmt.Errorf("invalid mode %q", r.Mode)
+	}
+	if r.Rate < 0.01 || r.Rate > 100000 {
+		return errors.New("rate must be 0.01-100000 pps")
+	}
+	if to, err := time.ParseDuration(r.Timeout); err != nil || to <= 0 {
+		return fmt.Errorf("invalid timeout %q", r.Timeout)
+	}
+	return nil
 }
 
 func CheckChecksumMode(v string) error {

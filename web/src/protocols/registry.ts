@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import type { JsonObject } from "@bufbuild/protobuf";
+import type { Obj, Schema } from "../components/SchemaForm";
 
 export type Health = "ok" | "warn" | "bad" | "idle";
 
@@ -14,6 +15,19 @@ export type ProtocolView = {
   // Rich status panel for the detail page.
   // agentId and name let a view run the instance's actions.
   Status?: ComponentType<{ status: JsonObject; agentId?: string; name?: string }>;
+  // Config editor replacing the generic form (create and edit), e.g. the
+  // packet builder's layers with a live preview from the device.
+  ConfigEditor?: ComponentType<ConfigEditorProps>;
+};
+
+export type ConfigEditorProps = {
+  schema: Schema;
+  value: Obj;
+  onChange: (v: Obj) => void;
+  original?: Obj;
+  errorText?: string;
+  agentId: string;
+  device: string;
 };
 
 const views: Record<string, ProtocolView> = {};

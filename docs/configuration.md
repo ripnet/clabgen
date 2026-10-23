@@ -137,6 +137,58 @@ The stream answers for every MAC it cycles through, so echo works with
              checks: {max_loss_pct: 0.1, max_outage_ms: 50}}
 ```
 
+### Packet builder
+
+A packet flow (`type: packet`) sends frames you build layer by layer, with
+every field settable, or replays a capture. Layers go outermost first; the
+device adds its MAC and VLAN tags to the first Ethernet header, written or
+not. Lengths, checksums, next-protocol numbers and ethertypes are filled
+in unless set (set them wrong on purpose to test how a device copes).
+
+```yaml
+  - name: crafted
+    type: packet
+    device: v400
+    config:
+      layers:
+        - ipv4: {dst: 10.0.41.2, dscp: 46, ttl: 5}
+        - udp: {dst_port: 7001}
+        - payload: {size: 64}
+      modifiers:
+        - {field: udp.src_port, mode: increment, start: "30000", count: 16}
+        - {field: ipv4.ttl, mode: list, values: ["64", "1"]}
+      rate: 100
+      auto_start: true
+```
+
+- **Layers**: `ethernet`, `vlan` (a tag inside the device's own), `mpls`,
+  `arp`, `ipv4`, `ipv6`, `udp`, `tcp`, `icmp`, `icmpv6`, `vxlan`, `raw`
+  (hex bytes) and `payload`. An `ethernet` layer after VXLAN or MPLS is an
+  inner frame. Each layer's fields are in the schema (`clabgenctl types
+  packet`). Unset source addresses are the device's, and an unset first
+  destination MAC is the next hop of the first IP destination (ARP/ND).
+- **Modifiers** change a field from packet to packet. A field is named
+  `layer.field` (`ipv4.src`, `ethernet.src`, `vlan.vid`), or
+  `layer[n].field` for the nth layer of a kind (`vlan[2].vid`). The modes
+  are `increment` and `decrement` (from `start`, by `step`, `count` values
+  before wrapping), `random` (in `count` values from `start`, or the whole
+  range) and `list` (`values`). `repeat` holds each value for that many
+  packets. Checksums are redone after each change. Addresses step in their
+  own form (`step: 0.0.1.0`) or as numbers.
+- **Measuring**: the payload starts with the signature (on by default), so
+  clabgen receivers count the stream one way, like the other flows. A
+  packet flow doesn't wait for replies.
+- **Replaying a capture**: `pcap: {data: <base64 of a pcap or pcapng>}`
+  replays its frames in order, at the flow's rate. `frames` picks some
+  (`1-10,15`). `src_mac: keep` keeps the captured source MAC (default: the
+  device's). `vlans: keep` keeps the captured VLAN tags inside the
+  device's (default: the device's tags replace them). `clabgenctl proto
+  add NAME --type packet --pcap FILE` fills in the data; a capture is at
+  most 8 MiB and is stored in the flow's config.
+- **Previewing**: `clabgenctl preview` (below) and the UI's packet editor
+  show the exact bytes, decoded by layer, for any packet index, before or
+  after the flow exists.
+
 ### Pass/fail checks
 
 `checks` give a flow a verdict: limits on what it measured since it

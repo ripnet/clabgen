@@ -91,6 +91,9 @@ const (
 	// AgentServiceSetProtocolDisabledProcedure is the fully-qualified name of the AgentService's
 	// SetProtocolDisabled RPC.
 	AgentServiceSetProtocolDisabledProcedure = "/clabgen.v1.AgentService/SetProtocolDisabled"
+	// AgentServicePreviewProtocolProcedure is the fully-qualified name of the AgentService's
+	// PreviewProtocol RPC.
+	AgentServicePreviewProtocolProcedure = "/clabgen.v1.AgentService/PreviewProtocol"
 	// AgentServiceListDeviceGroupsProcedure is the fully-qualified name of the AgentService's
 	// ListDeviceGroups RPC.
 	AgentServiceListDeviceGroupsProcedure = "/clabgen.v1.AgentService/ListDeviceGroups"
@@ -159,6 +162,9 @@ type AgentServiceClient interface {
 	RunProtocolAction(context.Context, *connect.Request[v1.RunProtocolActionRequest]) (*connect.Response[v1.RunProtocolActionResponse], error)
 	// Stops an instance keeping its config, or starts it again.
 	SetProtocolDisabled(context.Context, *connect.Request[v1.SetProtocolDisabledRequest]) (*connect.Response[v1.SetProtocolDisabledResponse], error)
+	// What a config would send from a device, before an instance exists (for
+	// editors); for types that offer it (the packet builder).
+	PreviewProtocol(context.Context, *connect.Request[v1.PreviewProtocolRequest]) (*connect.Response[v1.PreviewProtocolResponse], error)
 	// Device groups are many devices from one template, each with the same
 	// set of protocol instances. Members are listed as ordinary devices and
 	// protocols (with group set) and change only through their group.
@@ -311,6 +317,12 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(agentServiceMethods.ByName("SetProtocolDisabled")),
 			connect.WithClientOptions(opts...),
 		),
+		previewProtocol: connect.NewClient[v1.PreviewProtocolRequest, v1.PreviewProtocolResponse](
+			httpClient,
+			baseURL+AgentServicePreviewProtocolProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("PreviewProtocol")),
+			connect.WithClientOptions(opts...),
+		),
 		listDeviceGroups: connect.NewClient[v1.ListDeviceGroupsRequest, v1.ListDeviceGroupsResponse](
 			httpClient,
 			baseURL+AgentServiceListDeviceGroupsProcedure,
@@ -396,6 +408,7 @@ type agentServiceClient struct {
 	deleteProtocol      *connect.Client[v1.DeleteProtocolRequest, v1.DeleteProtocolResponse]
 	runProtocolAction   *connect.Client[v1.RunProtocolActionRequest, v1.RunProtocolActionResponse]
 	setProtocolDisabled *connect.Client[v1.SetProtocolDisabledRequest, v1.SetProtocolDisabledResponse]
+	previewProtocol     *connect.Client[v1.PreviewProtocolRequest, v1.PreviewProtocolResponse]
 	listDeviceGroups    *connect.Client[v1.ListDeviceGroupsRequest, v1.ListDeviceGroupsResponse]
 	getDeviceGroup      *connect.Client[v1.GetDeviceGroupRequest, v1.GetDeviceGroupResponse]
 	createDeviceGroup   *connect.Client[v1.CreateDeviceGroupRequest, v1.CreateDeviceGroupResponse]
@@ -508,6 +521,11 @@ func (c *agentServiceClient) SetProtocolDisabled(ctx context.Context, req *conne
 	return c.setProtocolDisabled.CallUnary(ctx, req)
 }
 
+// PreviewProtocol calls clabgen.v1.AgentService.PreviewProtocol.
+func (c *agentServiceClient) PreviewProtocol(ctx context.Context, req *connect.Request[v1.PreviewProtocolRequest]) (*connect.Response[v1.PreviewProtocolResponse], error) {
+	return c.previewProtocol.CallUnary(ctx, req)
+}
+
 // ListDeviceGroups calls clabgen.v1.AgentService.ListDeviceGroups.
 func (c *agentServiceClient) ListDeviceGroups(ctx context.Context, req *connect.Request[v1.ListDeviceGroupsRequest]) (*connect.Response[v1.ListDeviceGroupsResponse], error) {
 	return c.listDeviceGroups.CallUnary(ctx, req)
@@ -594,6 +612,9 @@ type AgentServiceHandler interface {
 	RunProtocolAction(context.Context, *connect.Request[v1.RunProtocolActionRequest]) (*connect.Response[v1.RunProtocolActionResponse], error)
 	// Stops an instance keeping its config, or starts it again.
 	SetProtocolDisabled(context.Context, *connect.Request[v1.SetProtocolDisabledRequest]) (*connect.Response[v1.SetProtocolDisabledResponse], error)
+	// What a config would send from a device, before an instance exists (for
+	// editors); for types that offer it (the packet builder).
+	PreviewProtocol(context.Context, *connect.Request[v1.PreviewProtocolRequest]) (*connect.Response[v1.PreviewProtocolResponse], error)
 	// Device groups are many devices from one template, each with the same
 	// set of protocol instances. Members are listed as ordinary devices and
 	// protocols (with group set) and change only through their group.
@@ -742,6 +763,12 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(agentServiceMethods.ByName("SetProtocolDisabled")),
 		connect.WithHandlerOptions(opts...),
 	)
+	agentServicePreviewProtocolHandler := connect.NewUnaryHandler(
+		AgentServicePreviewProtocolProcedure,
+		svc.PreviewProtocol,
+		connect.WithSchema(agentServiceMethods.ByName("PreviewProtocol")),
+		connect.WithHandlerOptions(opts...),
+	)
 	agentServiceListDeviceGroupsHandler := connect.NewUnaryHandler(
 		AgentServiceListDeviceGroupsProcedure,
 		svc.ListDeviceGroups,
@@ -844,6 +871,8 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 			agentServiceRunProtocolActionHandler.ServeHTTP(w, r)
 		case AgentServiceSetProtocolDisabledProcedure:
 			agentServiceSetProtocolDisabledHandler.ServeHTTP(w, r)
+		case AgentServicePreviewProtocolProcedure:
+			agentServicePreviewProtocolHandler.ServeHTTP(w, r)
 		case AgentServiceListDeviceGroupsProcedure:
 			agentServiceListDeviceGroupsHandler.ServeHTTP(w, r)
 		case AgentServiceGetDeviceGroupProcedure:
@@ -951,6 +980,10 @@ func (UnimplementedAgentServiceHandler) RunProtocolAction(context.Context, *conn
 
 func (UnimplementedAgentServiceHandler) SetProtocolDisabled(context.Context, *connect.Request[v1.SetProtocolDisabledRequest]) (*connect.Response[v1.SetProtocolDisabledResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.SetProtocolDisabled is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) PreviewProtocol(context.Context, *connect.Request[v1.PreviewProtocolRequest]) (*connect.Response[v1.PreviewProtocolResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.PreviewProtocol is not implemented"))
 }
 
 func (UnimplementedAgentServiceHandler) ListDeviceGroups(context.Context, *connect.Request[v1.ListDeviceGroupsRequest]) (*connect.Response[v1.ListDeviceGroupsResponse], error) {

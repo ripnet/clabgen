@@ -95,6 +95,12 @@ for e in gen1.events(replay=True):              # a stream of events
     print(e["time"], e["source"], e["message"])
 ```
 
+Packet flows: `gen1.preview("v100", layers=[...], modifiers=[...],
+index=3)` returns the packet a config would send (hex, summary, layers
+with their fields) without creating anything; `pcap=` takes a capture's
+path or bytes. `pcap_data(path)` encodes a capture for a flow's config:
+`add_protocol("replay", "packet", "v100", pcap={"data": pcap_data("x.pcapng")})`.
+
 Errors from an agent raise `ClabgenError` with Connect's `code`
 (`not_found`, `invalid_argument`, `already_exists`, `unavailable`, …).
 `agent.call("Method", {...})` reaches any API method directly.

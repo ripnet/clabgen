@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import copy
 import time
 from pathlib import Path
@@ -36,6 +37,13 @@ def _vlan(v: Any) -> dict:
         tag["pcp"] = int(pcp)
     tag["vid"] = int(s)
     return tag
+
+
+def pcap_data(capture: str | Path | bytes) -> str:
+    """A capture (a pcap or pcapng file's path, or its bytes) as the packet
+    type's pcap.data: add_protocol("r", "packet", "d1", pcap={"data": pcap_data("x.pcap")})."""
+    raw = capture if isinstance(capture, bytes) else Path(capture).read_bytes()
+    return base64.b64encode(raw).decode()
 
 
 def merge(dst: dict, src: dict) -> dict:
@@ -186,6 +194,18 @@ class Agent:
         changes = merge(copy.deepcopy(config or {}), fields)
         cfg = changes if replace else merge(copy.deepcopy(self.protocol(name).get("config", {})), changes)
         return self.call("UpdateProtocol", {"name": name, "config": cfg})["protocol"]
+
+    def preview(self, device: str, config: dict | None = None, *, type: str = "packet", index: int = 0,
+                pcap: str | Path | bytes | None = None, **fields: Any) -> dict:
+        """What a config would send from device, without creating anything
+        (the packet builder's preview): hex, summary, and layers with their
+        fields. index picks the packet (modifiers change fields per packet)
+        or the captured frame; pcap is a capture to replay (a path or bytes)."""
+        cfg = merge(copy.deepcopy(config or {}), fields)
+        if pcap is not None:
+            merge(cfg, {"pcap": {"data": pcap_data(pcap)}})
+        r = self.call("PreviewProtocol", {"type": type, "device": device, "config": cfg, "args": {"index": index}})
+        return r.get("result", {})
 
     def delete_protocol(self, name: str) -> None:
         self.call("DeleteProtocol", {"name": name})

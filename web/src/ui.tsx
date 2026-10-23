@@ -45,7 +45,7 @@ export function HealthText({ health, children }: { health: Health; children: Rea
   );
 }
 
-export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean | "x" }) {
   useEffect(() => {
     const f = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", f);
@@ -53,7 +53,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   }, [onClose]);
   return (
     <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal ${wide ? "wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
+      <div className={`modal ${wide === "x" ? "wide xwide" : wide ? "wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
           <h3>{title}</h3>
           <button className="icon-btn" onClick={onClose} aria-label="Close">

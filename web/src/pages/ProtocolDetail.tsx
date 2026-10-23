@@ -106,6 +106,9 @@ export function ProtocolDetail({ agentId, name }: { agentId: string; name: strin
           {editing && type && (
             <EditConfig
               schemaText={type.configSchema}
+              type={proto.type}
+              agentId={agentId}
+              device={proto.device}
               value={(proto.config ?? {}) as Obj}
               onClose={() => setEditing(false)}
               onSave={async (cfg) => {
@@ -125,7 +128,24 @@ export function ProtocolDetail({ agentId, name }: { agentId: string; name: strin
 // EditConfig edits a running instance's config: the form, then a review of
 // the changes before applying. A rejected config comes back to the form
 // with the fields the error names marked.
-function EditConfig({ schemaText, value, onClose, onSave }: { schemaText: string; value: Obj; onClose: () => void; onSave: (v: Obj) => Promise<void> }) {
+function EditConfig({
+  schemaText,
+  type,
+  agentId,
+  device,
+  value,
+  onClose,
+  onSave,
+}: {
+  schemaText: string;
+  type: string;
+  agentId: string;
+  device: string;
+  value: Obj;
+  onClose: () => void;
+  onSave: (v: Obj) => Promise<void>;
+}) {
+  const Editor = viewFor(type).ConfigEditor;
   const schema = useMemo(() => parseSchema(schemaText), [schemaText]);
   const [original] = useState(value);
   const [cfg, setCfg] = useState<Obj>(value);
@@ -145,11 +165,15 @@ function EditConfig({ schemaText, value, onClose, onSave }: { schemaText: string
     }
   };
   return (
-    <Modal title={step === "edit" ? "Edit configuration" : "Review changes"} onClose={onClose} wide>
+    <Modal title={step === "edit" ? "Edit configuration" : "Review changes"} onClose={onClose} wide={Editor ? "x" : true}>
       {/* Kept mounted during review so the section, open items and filter stay. */}
       <div hidden={step !== "edit"}>
         {error ? <div className="error-box" role="alert">The agent rejected the configuration: {error}</div> : <div className="warn-box">Applying restarts the instance: counters and the remote state are reset.</div>}
-        <SchemaForm schema={schema} value={cfg} onChange={setCfg} mode="config" original={original} errorText={error} />
+        {Editor ? (
+          <Editor schema={schema} value={cfg} onChange={setCfg} original={original} errorText={error} agentId={agentId} device={device} />
+        ) : (
+          <SchemaForm schema={schema} value={cfg} onChange={setCfg} mode="config" original={original} errorText={error} />
+        )}
       </div>
       {step === "review" && (
         <>

@@ -116,7 +116,14 @@ implements `ipflow.Transport` (build its header around the payload) and
 `HandleRx` (match replies and ICMP errors). `protocols/icmp` and
 `protocols/udp` are about 200 lines each. Keep the signature on: clabgen
 receivers (`internal/flowrx`, fed by the device IP stack) measure any
-signed flow one way.
+signed flow one way. `ipflow.Run` alone (mode, rate, count, duration)
+with `Run.Pace` gives any flow the same send loop.
+
+A type can also implement `protocol.Previewer`: `Preview(ctx, env, cfg,
+args)` shows what a config would send before an instance exists (the
+`PreviewProtocol` API; the packet editor calls it as you type). The env
+is bound to the device but isn't an instance's: don't keep it or send
+with it.
 
 ## 6. Wire it in
 
@@ -139,7 +146,9 @@ The web UI needs no changes for a new protocol:
   key/value pairs, arrays of objects as tables).
 
 For a richer view, add `web/src/protocols/<name>.tsx` that calls
-`registerView("<type>", { summary, Status })` and import it in
+`registerView("<type>", { summary, Status })` (and optionally
+`ConfigEditor`, a component replacing the generic create and edit form,
+as `web/src/protocols/packet.tsx` does) and import it in
 `web/src/main.tsx`. `summary` returns a health (ok/warn/bad/idle) and one
 line of text for tables; `Status` renders the detail panel. See
 `web/src/protocols/cfm.tsx`. `Status` also receives `agentId` and `name`

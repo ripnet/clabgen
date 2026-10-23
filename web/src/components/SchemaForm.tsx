@@ -935,6 +935,12 @@ const countFields = (s: Schema): number =>
 // Schemas with lists of objects or nested objects get sections. Big forms
 // get a field filter. original (the config being edited) marks changed
 // sections; errorText (the agent's rejection) marks the fields it names.
+// SchemaFields is a bare set of fields for an object (no toolbar), for
+// editors that lay out several objects of their own.
+export function SchemaFields({ schema, value, onChange, mode = "config" }: { schema: Schema; value: Obj; onChange: (v: Obj) => void; mode?: FormMode }) {
+  return <FieldSet schema={schema} value={value} mode={mode} onChange={onChange} />;
+}
+
 export function SchemaForm({
   schema,
   value,

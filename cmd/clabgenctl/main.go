@@ -3,6 +3,8 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -148,6 +150,83 @@ func buildStruct(jsonArg string, sets []string) (*structpb.Struct, error) {
 	return structpb.NewStruct(m)
 }
 
+// withPcap puts a capture file into a packet config (pcap.data, base64).
+func withPcap(s *structpb.Struct, path string) (*structpb.Struct, error) {
+	if path == "" {
+		return s, nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	m := s.AsMap()
+	merge(m, map[string]any{"pcap": map[string]any{"data": base64.StdEncoding.EncodeToString(b)}})
+	return structpb.NewStruct(m)
+}
+
+// printPreview shows a packet preview (the packet builder's): a summary,
+// each layer's fields, and a hex dump. -o yaml or json prints it as is.
+func printPreview(cmd *cobra.Command, r *structpb.Struct) error {
+	if f := cmd.Flag("output"); f != nil && f.Changed {
+		return printMsg(r)
+	}
+	m := r.AsMap()
+	raw, _ := hex.DecodeString(fmt.Sprint(m["hex"]))
+	if raw == nil {
+		return printMsg(r)
+	}
+	fmt.Printf("%v (packet %v)\n", m["summary"], m["index"])
+	if n, _ := m["note"].(string); n != "" {
+		fmt.Println("note:", n)
+	}
+	w := table()
+	for _, x := range asList(m["layers"]) {
+		l := x.(map[string]any)
+		var fs []string
+		for _, y := range asList(l["fields"]) {
+			f := y.(map[string]any)
+			fs = append(fs, fmt.Sprintf("%v=%v", f["name"], f["value"]))
+		}
+		fmt.Fprintf(w, "%4.0f\t%v\t%s\n", l["offset"], l["title"], strings.Join(fs, " "))
+	}
+	w.Flush()
+	fmt.Println()
+	for off := 0; off < len(raw); off += 16 {
+		end := min(off+16, len(raw))
+		var hx, asc strings.Builder
+		for i := off; i < off+16; i++ {
+			if i < end {
+				fmt.Fprintf(&hx, "%02x ", raw[i])
+				if c := raw[i]; c >= 0x20 && c < 0x7f {
+					asc.WriteByte(c)
+				} else {
+					asc.WriteByte('.')
+				}
+			} else {
+				hx.WriteString("   ")
+			}
+			if i == off+7 {
+				hx.WriteByte(' ')
+			}
+		}
+		fmt.Printf("%04x  %s %s\n", off, hx.String(), asc.String())
+	}
+	if fr := asList(m["frames"]); len(fr) > 0 {
+		fmt.Printf("\n%d frames in the capture:\n", len(fr))
+		for i, x := range fr {
+			if i == 20 {
+				fmt.Printf("  … %d more\n", len(fr)-20)
+				break
+			}
+			f := x.(map[string]any)
+			fmt.Printf("  %4.0f  %v\n", f["index"].(float64)+1, f["summary"])
+		}
+	}
+	return nil
+}
+
+func asList(v any) []any { l, _ := v.([]any); return l }
+
 func parseVLAN(s string) (*v1.VlanTag, error) {
 	// [tpid:]vid[.pcp], e.g. 100, 0x88a8:200, 100.5
 	t := &v1.VlanTag{}
@@ -200,7 +279,7 @@ func main() {
 			return printMsg(r.Msg)
 		}})
 
-	root.AddCommand(portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), groupsCmd(), groupCmd(), eventsCmd(), scenarioCmd(),
+	root.AddCommand(portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), previewCmd(), groupsCmd(), groupCmd(), eventsCmd(), scenarioCmd(),
 		flowCmd("start"), flowCmd("stop"), pingCmd(), receivedCmd())
 
 	if err := root.Execute(); err != nil {
@@ -700,7 +779,7 @@ func summary(p *v1.Protocol) string {
 	if p.Type == "l2-echo" {
 		return fmt.Sprintf("received=%v sent=%v", m["received"], m["sent"])
 	}
-	if p.Type == "icmp" || p.Type == "udp" || p.Type == "l2" {
+	if p.Type == "icmp" || p.Type == "udp" || p.Type == "l2" || p.Type == "packet" {
 		out := fmt.Sprintf("%v → %v %v@%vpps tx=%v rx=%v lost=%v", m["state"], m["destination"], m["kind"], m["rate"], m["tx"], m["rx"], m["lost"])
 		if m["tracks_replies"] == false {
 			// One way: receivers report rx/loss (clabgenctl received).
@@ -771,12 +850,16 @@ func protocolsCmd() *cobra.Command {
 func protoCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "proto", Short: "Create, inspect, change and drive protocol instances"}
 
-	var typ, dev, cfgJSON string
+	var typ, dev, cfgJSON, pcapFile string
 	add := &cobra.Command{
 		Use: "add NAME [key=value...]", Short: "Create a protocol instance", Args: cobra.MinimumNArgs(1),
-		Example: "  clabgenctl proto add mep1 --type cfm-mep --device d1 level=3 mep_id=1 ma_format=icc ma_name=CLABGEN00001 remote_meps=[2]",
+		Example: "  clabgenctl proto add mep1 --type cfm-mep --device d1 level=3 mep_id=1 ma_format=icc ma_name=CLABGEN00001 remote_meps=[2]\n" +
+			"  clabgenctl proto add replay --type packet --device d1 --pcap capture.pcapng rate=100 auto_start=true",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := buildStruct(cfgJSON, args[1:])
+			if err == nil {
+				cfg, err = withPcap(cfg, pcapFile)
+			}
 			if err != nil {
 				return err
 			}
@@ -792,6 +875,7 @@ func protoCmd() *cobra.Command {
 	add.Flags().StringVar(&typ, "type", "cfm-mep", "protocol type")
 	add.Flags().StringVar(&dev, "device", "", "device name")
 	add.Flags().StringVar(&cfgJSON, "config", "", "config as JSON/YAML, or @file")
+	add.Flags().StringVar(&pcapFile, "pcap", "", "packet type: replay this capture (pcap or pcapng)")
 	add.MarkFlagRequired("device")
 
 	show := &cobra.Command{
@@ -806,7 +890,7 @@ func protoCmd() *cobra.Command {
 			return printMsg(r.Msg.Protocol)
 		}}
 
-	var setJSON string
+	var setJSON, setPcap string
 	set := &cobra.Command{
 		Use: "set NAME key=value...", Short: "Change config (merged onto current config; restarts the instance)", Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -818,6 +902,9 @@ func protoCmd() *cobra.Command {
 				return err
 			}
 			upd, err := buildStruct(setJSON, args[1:])
+			if err == nil {
+				upd, err = withPcap(upd, setPcap)
+			}
 			if err != nil {
 				return err
 			}
@@ -834,6 +921,7 @@ func protoCmd() *cobra.Command {
 			return printMsg(r.Msg.Protocol.Config)
 		}}
 	set.Flags().StringVar(&setJSON, "config", "", "config fragment as JSON/YAML, or @file")
+	set.Flags().StringVar(&setPcap, "pcap", "", "packet type: replay this capture instead")
 
 	del := &cobra.Command{
 		Use: "del NAME...", Aliases: []string{"delete", "rm"}, Short: "Delete protocol instances", Args: cobra.MinimumNArgs(1),
@@ -882,11 +970,48 @@ func protoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if args[1] == "preview" {
+				return printPreview(cmd, r.Msg.Result)
+			}
 			return printMsg(r.Msg.Result)
 		}}
 	run.Flags().StringVar(&argsJSON, "args", "", "arguments as JSON/YAML, or @file")
 
 	cmd.AddCommand(add, show, set, disable, enable, del, run)
+	return cmd
+}
+
+func previewCmd() *cobra.Command {
+	var typ, dev, cfgJSON, pcapFile string
+	var index uint64
+	cmd := &cobra.Command{
+		Use: "preview [key=value...]", Short: "Show the packet a config would send, without creating anything (packet type)",
+		Example: "  clabgenctl preview --device d1 --config '{layers: [{ipv4: {dst: 10.0.0.2}}, {udp: {dst_port: 53}}]}'\n" +
+			"  clabgenctl preview --device d1 --config @packet.yml --index 5\n" +
+			"  clabgenctl preview --device d1 --pcap capture.pcapng --index 2",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := buildStruct(cfgJSON, args)
+			if err == nil {
+				cfg, err = withPcap(cfg, pcapFile)
+			}
+			if err != nil {
+				return err
+			}
+			a, _ := structpb.NewStruct(map[string]any{"index": float64(index)})
+			c, cancel := ctx()
+			defer cancel()
+			r, err := client().PreviewProtocol(c, connect.NewRequest(&v1.PreviewProtocolRequest{Type: typ, Device: dev, Config: cfg, Args: a}))
+			if err != nil {
+				return err
+			}
+			return printPreview(cmd, r.Msg.Result)
+		}}
+	cmd.Flags().StringVar(&typ, "type", "packet", "protocol type")
+	cmd.Flags().StringVar(&dev, "device", "", "device to send from")
+	cmd.Flags().StringVar(&cfgJSON, "config", "", "config as JSON/YAML, or @file")
+	cmd.Flags().StringVar(&pcapFile, "pcap", "", "a capture (pcap or pcapng) to replay")
+	cmd.Flags().Uint64Var(&index, "index", 0, "which packet (0-based: modifiers change packets) or captured frame")
+	cmd.MarkFlagRequired("device")
 	return cmd
 }
 

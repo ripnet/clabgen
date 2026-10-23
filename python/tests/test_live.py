@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from clabgen import ClabgenError, FlowsFailed, Lab
+from clabgen import ClabgenError, FlowsFailed, Lab, pcap_data
 
 pytestmark = pytest.mark.agent
 
@@ -119,3 +119,23 @@ def test_start_stop(clean):
     assert lab.flow_results(["rt"])[0].state == "running"
     with pytest.raises(KeyError):
         lab.flow_results(["nope"])
+
+
+def test_packet_builder(clean):
+    two_devices(clean)
+    p = clean.preview("a", layers=[{"ethernet": {"dst": B_MAC}}, {"vlan": {"vid": 5}}, {"payload": {"size": 30}}],
+                      modifiers=[{"field": "vlan.vid", "mode": "increment"}], index=2)
+    assert p["index"] == 2 and [l["title"] for l in p["layers"]] == ["Ethernet", "Device VLAN tags (1)", "EtherType", "VLAN", "Payload"]
+    vlan = {f["name"]: f["value"] for f in p["layers"][3]["fields"]}
+    assert vlan["vid"] == "7"
+    # The previewed frame, replayed from a capture: b counts it (it is signed).
+    frame = bytes.fromhex(clean.preview("a", layers=[{"ethernet": {"dst": B_MAC}}, {"payload": {"size": 46}}])["hex"])
+    import struct
+    cap = struct.pack("<IHHiIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, 1) + struct.pack("<IIII", 0, 0, len(frame), len(frame)) + frame
+    assert clean.preview("a", pcap=cap)["frames"][0]["length"] == len(frame)
+    clean.add_protocol("replay", "packet", "a", pcap={"data": pcap_data(cap)}, mode="count", count=20, rate=200, auto_start=True)
+    clean.wait_protocol("replay", lambda x: x["status"]["state"] == "done", timeout=10)
+    assert clean.status("replay")["tx"] == 20
+    with pytest.raises(ClabgenError) as e:
+        clean.preview("a", layers=[{"udp": {}}])
+    assert "needs an IPv4 or IPv6 layer" in e.value.message

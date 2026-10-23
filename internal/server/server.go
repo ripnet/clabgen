@@ -382,6 +382,22 @@ func (s *Server) RunProtocolAction(ctx context.Context, r *connect.Request[v1.Ru
 	return connect.NewResponse(&v1.RunProtocolActionResponse{Result: st}), nil
 }
 
+func (s *Server) PreviewProtocol(ctx context.Context, r *connect.Request[v1.PreviewProtocolRequest]) (*connect.Response[v1.PreviewProtocolResponse], error) {
+	raw, err := fromStruct(r.Msg.Config)
+	if err != nil {
+		return nil, connectErr(err)
+	}
+	res, err := s.eng.PreviewProtocol(ctx, r.Msg.Type, r.Msg.Device, raw, r.Msg.Args.AsMap())
+	if err != nil {
+		return nil, connectErr(err)
+	}
+	st, err := toStruct(res)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&v1.PreviewProtocolResponse{Result: st}), nil
+}
+
 func eventPB(e events.Event) *v1.Event {
 	d, _ := toStruct(e.Data)
 	return &v1.Event{Time: timestamppb.New(e.Time), Source: e.Source, Kind: e.Kind, Message: e.Message, Data: d}

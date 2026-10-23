@@ -27,11 +27,14 @@ def agent():
     name = f"clabgen-pytest-{uuid.uuid4().hex[:8]}"
     _docker("network", "create", name)
     try:
-        _docker("create", "--name", name, "-p", "127.0.0.1::8080", "--cap-add", "NET_ADMIN",
+        _docker("create", "--name", name, "--cap-add", "NET_ADMIN",
                 "-v", f"{AGENT_BIN}:/clabgen-agent:ro", IMAGE, "/clabgen-agent")
         _docker("network", "connect", name, name)
         _docker("start", name)
-        a = Agent(_docker("port", name, "8080").splitlines()[0], name="test")
+        # The API at the container's address on the default bridge (eth0): a
+        # published port may be forwarded over eth1, which tests take down.
+        ip = _docker("inspect", "-f", "{{.NetworkSettings.Networks.bridge.IPAddress}}", name)
+        a = Agent(f"{ip}:8080", name="test")
 
         def up():
             try:

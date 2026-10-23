@@ -297,8 +297,12 @@ export function IpFlowView({ status, agentId, name, extra }: { status: JsonObjec
       {s.verdict && <VerdictPanel v={s.verdict} />}
       {s.tracks_replies !== false && <FlowTimeline s={s} />}
       {flowId && <Receivers flowId={flowId} s={s} />}
-      <h4>Packets</h4>
-      <FlowLog s={s} />
+      {(s.tracks_replies !== false || s.recent.length > 0) && (
+        <>
+          <h4>Packets</h4>
+          <FlowLog s={s} />
+        </>
+      )}
     </div>
   );
 }

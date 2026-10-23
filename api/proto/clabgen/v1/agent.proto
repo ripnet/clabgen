@@ -49,6 +49,9 @@ service AgentService {
   rpc RunProtocolAction(RunProtocolActionRequest) returns (RunProtocolActionResponse);
   // Stops an instance keeping its config, or starts it again.
   rpc SetProtocolDisabled(SetProtocolDisabledRequest) returns (SetProtocolDisabledResponse);
+  // What a config would send from a device, before an instance exists (for
+  // editors); for types that offer it (the packet builder).
+  rpc PreviewProtocol(PreviewProtocolRequest) returns (PreviewProtocolResponse);
 
   // Device groups are many devices from one template, each with the same
   // set of protocol instances. Members are listed as ordinary devices and
@@ -263,6 +266,15 @@ message RunProtocolActionRequest {
   google.protobuf.Struct args = 3;
 }
 message RunProtocolActionResponse { google.protobuf.Struct result = 1; }
+
+message PreviewProtocolRequest {
+  string type = 1;
+  string device = 2;
+  google.protobuf.Struct config = 3;
+  // Type-specific, e.g. {"index": 5}: packet 5 (modifiers change packets).
+  google.protobuf.Struct args = 4;
+}
+message PreviewProtocolResponse { google.protobuf.Struct result = 1; }
 
 message DeviceGroup {
   string name = 1;

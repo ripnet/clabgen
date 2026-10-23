@@ -37,6 +37,7 @@ import (
 	_ "github.com/ripnet/clabgen/protocols/l2stream"
 	_ "github.com/ripnet/clabgen/protocols/lldp"
 	_ "github.com/ripnet/clabgen/protocols/ospf"
+	_ "github.com/ripnet/clabgen/protocols/packet"
 	_ "github.com/ripnet/clabgen/protocols/udp"
 	_ "github.com/ripnet/clabgen/protocols/udpecho"
 )

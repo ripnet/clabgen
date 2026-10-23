@@ -157,6 +157,13 @@ type MACClaimer interface {
 // without it are in CategoryProtocol.
 type Categorized interface{ Category() string }
 
+// Previewer is a type that can show what a config would send before an
+// instance of it exists (for editors). env is bound to the device, but it
+// isn't an instance's: Preview mustn't keep it or send with it.
+type Previewer interface {
+	Preview(ctx context.Context, env Env, cfg any, args map[string]any) (any, error)
+}
+
 const (
 	CategoryProtocol = "protocol"
 	// CategoryTraffic types are flows: started and stopped by actions and

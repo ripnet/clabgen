@@ -102,7 +102,7 @@ func New(env protocol.Env, spec Spec, echo bool, tp Transport) *Flow {
 	if spec.IPID != nil {
 		f.ipID = *spec.IPID
 	}
-	f.pattern = fill(spec.Payload)
+	f.pattern = Fill(spec.Payload)
 	f.release = func() {}
 	if ip := env.IP(); ip != nil {
 		f.release = ip.ClaimFlow(f.FlowID)
@@ -124,7 +124,8 @@ func (f *Flow) Begin() {
 	}
 }
 
-func fill(p Payload) []byte {
+// Fill makes a payload of the pattern (the signature is written over its start).
+func Fill(p Payload) []byte {
 	b := make([]byte, p.PayloadSize)
 	switch p.PayloadPattern {
 	case "increment":
@@ -359,44 +360,9 @@ func (f *Flow) run(ctx context.Context, cancel context.CancelFunc, done chan str
 		}()
 	}
 
-	iv := f.Spec.Interval()
-	tick := iv
-	if tick < time.Millisecond {
-		tick = time.Millisecond
-	}
-	t := time.NewTicker(tick)
-	defer t.Stop()
-	begin := time.Now()
-	var sent uint64
-	var end time.Time
-	if f.Spec.Mode == "duration" {
-		end = begin.Add(f.Spec.DurationD())
-	}
-	countDone := func() bool { return f.Spec.Mode == "count" && sent >= f.Spec.Count }
-	f.sendOne()
-	sent++
-	finished := countDone()
-	for !finished {
-		select {
-		case <-ctx.Done():
-			f.Tracker().Expire(time.Now(), false)
-			return
-		case now := <-t.C:
-			due := uint64(now.Sub(begin)/iv) + 1
-			if due > sent+1000 { // far behind (e.g. the host stalled): skip ahead instead of bursting
-				sent = due - 1
-			}
-			for sent < due && !finished {
-				if !end.IsZero() && !now.Before(end) {
-					finished = true
-					break
-				}
-				f.sendOne()
-				sent++
-				finished = countDone()
-			}
-			f.Tracker().Expire(now, false)
-		}
+	if !f.Spec.Run.Pace(ctx, f.sendOne, func(now time.Time) { f.Tracker().Expire(now, false) }) {
+		f.Tracker().Expire(time.Now(), false)
+		return
 	}
 	// Wait for the last replies, then settle.
 	select {

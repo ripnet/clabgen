@@ -482,3 +482,57 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .verdict.fail { background: var(--bad-soft); color: var(--bad); }
 .verdict.pending { background: var(--surface-2); color: var(--text-3); }
 .verdict-panel h4 { display: flex; align-items: center; gap: 8px; }
+
+/* Packet builder: layer cards, preview with a hex dump coloured by layer. */
+.t0 { --tint: rgba(42, 109, 244, 0.14); --tint-edge: #2a6df4; }
+.t1 { --tint: rgba(31, 157, 85, 0.15); --tint-edge: #1f9d55; }
+.t2 { --tint: rgba(201, 138, 0, 0.17); --tint-edge: #c98a00; }
+.t3 { --tint: rgba(132, 84, 214, 0.15); --tint-edge: #8454d6; }
+.t4 { --tint: rgba(0, 150, 160, 0.15); --tint-edge: #00969f; }
+.t5 { --tint: rgba(214, 69, 120, 0.14); --tint-edge: #d64578; }
+.tn { --tint: rgba(128, 138, 152, 0.16); --tint-edge: var(--border-strong); }
+.modal.xwide { max-width: 1240px; }
+.pkt-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 520px); gap: 18px; align-items: start; }
+.pkt-build { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.pkt-build h4, .pkt-preview h4 { margin: 0; }
+.pkt-preview { position: sticky; top: 0; max-height: 82vh; overflow: auto; background: var(--surface); padding-bottom: 6px; min-width: 0; }
+.pkt-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.input.small { height: 26px; padding: 0 6px; font-size: 12.5px; width: auto; }
+.link.small { font-size: 12px; }
+.pkt-implicit { padding: 4px 10px; margin: 4px 0; border-left: 4px solid var(--border-strong); font-size: 12.5px; }
+.pkt-layers { list-style: none; padding: 0; margin: 6px 0 10px; display: flex; flex-direction: column; gap: 6px; }
+.pkt-layer { border: 1px solid var(--border); border-left: 4px solid var(--tint-edge); border-radius: 6px; background: var(--surface); }
+.pkt-layer.hot { border-color: var(--tint-edge); box-shadow: 0 0 0 1px var(--tint-edge); }
+.pkt-layer-head { display: flex; align-items: center; gap: 4px; padding: 2px 4px; }
+.pkt-layer-title { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 5px 4px; cursor: pointer; color: inherit; font: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pkt-layer-title .caret { color: var(--text-3); display: inline-block; width: 1em; }
+.pkt-layer-tools { display: flex; flex-shrink: 0; }
+.pkt-layer-tools .icon-btn { width: 26px; height: 26px; font-size: 15px; }
+.pkt-layer-body { padding: 2px 12px 10px; border-top: 1px solid var(--border); }
+.card-lite { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
+.pkt-frames { max-height: 240px; overflow: auto; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 6px; }
+.pkt-frame { text-align: left; background: none; border: 0; border-bottom: 1px solid var(--border); padding: 4px 8px; cursor: pointer; color: inherit; font: inherit; font-size: 12px; overflow-wrap: anywhere; }
+.pkt-frame:hover { background: var(--accent-soft); }
+.pkt-index { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; }
+.pkt-index .icon-btn { width: 26px; height: 26px; font-size: 17px; }
+.pkt-summary { font-size: 12px; margin: 4px 0 8px; overflow-wrap: anywhere; }
+.stale { opacity: 0.55; }
+.hex-dump { font-size: 12px; line-height: 1.55; background: var(--surface-2); padding: 8px 10px; border-radius: 6px; overflow-x: auto; margin-bottom: 10px; }
+.hex-row { display: flex; gap: 12px; white-space: nowrap; }
+.hex-off { color: var(--text-3); }
+.hex-bytes { display: inline-flex; align-items: flex-start; }
+.hex-b { display: inline-block; width: 2.5ch; text-align: center; background: var(--tint); cursor: default; }
+.hex-b.gap { margin-right: 0.8ch; }
+.hex-b.hex-pad { background: none; }
+.hex-b.lit { background: var(--accent); color: #fff; }
+.hex-ascii { color: var(--text-3); }
+.pkt-fields { font-size: 12px; }
+.pkt-fields .pkt-layer-row th { background: var(--tint); text-align: left; font-weight: 600; }
+.pkt-fields tr.lit td { background: var(--accent-soft); }
+.pkt-fields td.num { width: 1%; white-space: nowrap; }
+.pkt-next summary { cursor: pointer; list-style: none; }
+.pkt-next summary h4 { display: inline; }
+@media (max-width: 900px) {
+  .pkt-editor { grid-template-columns: 1fr; }
+  .pkt-preview { position: static; max-height: none; }
+}

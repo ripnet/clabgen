@@ -28,6 +28,7 @@ groups / group            device groups: add, set, show, disable, enable, del, r
 ping                      ping from a device (a temporary icmp flow)
 start / stop              start or stop traffic flows
 received                  flows arriving at the agent's devices (one-way statistics)
+preview                   the packet a config would send (packet type), decoded and as hex
 events                    stream the agent's events
 scenario get / apply      export or apply the whole config
 ```
@@ -62,6 +63,15 @@ clabgenctl -s clab-b2b-gen1 ping untagged 192.0.2.2 -c 5 -i 100ms
 clabgenctl -s clab-b2b-gen1 stop ping-gen2                    # flows: start / stop
 clabgenctl -s clab-b2b-gen2 received                          # flows arriving at gen2
 clabgenctl -s clab-b2b-gen1 scenario get > saved.yml
+```
+
+Packet flows (see [configuration](configuration.md#packet-builder)):
+
+```sh
+clabgenctl preview --device untagged --config '{layers: [{ipv4: {dst: 192.0.2.2}}, {tcp: {dst_port: 22, flags: SA}}]}'
+clabgenctl preview --device untagged --config @packet.yml --index 5   # packet 5: modifiers applied
+clabgenctl proto add replay --type packet --device untagged --pcap capture.pcapng rate=100 auto_start=true
+clabgenctl proto run replay preview index=2                            # a running flow's packet
 ```
 
 Device groups (see [configuration](configuration.md#device-groups)):

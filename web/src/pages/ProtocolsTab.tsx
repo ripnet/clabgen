@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { JsonObject } from "@bufbuild/protobuf";
 import { client, errorText, usePoll } from "../api";
 import { href, navigate } from "../router";
-import { summarize } from "../protocols/registry";
+import { summarize, viewFor } from "../protocols/registry";
 import { SchemaForm, defaults, parseSchema, type Obj } from "../components/SchemaForm";
 import { Empty, ErrorBox, HealthText, Modal, useBusy } from "../ui";
 
@@ -166,9 +166,10 @@ export function CreateProtocol({
     setCfg({ ...defaults(schema), ...(t.name === preset?.type ? preset?.config : {}) });
   }
   const dev = device || devices.data?.devices[0]?.name || "";
+  const Editor = t ? viewFor(t.name).ConfigEditor : undefined;
 
   return (
-    <Modal title={preset?.title ?? (category === "traffic" ? "New flow" : "New protocol")} onClose={onClose} wide>
+    <Modal title={preset?.title ?? (category === "traffic" ? "New flow" : "New protocol")} onClose={onClose} wide={Editor ? "x" : true}>
       <ErrorBox error={allTypes.error || devices.error} />
       {devices.data && devices.data.devices.length === 0 && (
         <div className="warn-box">This agent has no devices yet. Create one in the Devices tab first.</div>
@@ -216,7 +217,11 @@ export function CreateProtocol({
           </div>
         </div>
         <h4>Configuration</h4>
-        <SchemaForm schema={schema} value={cfg} onChange={setCfg} mode="config" />
+        {Editor && t ? (
+          <Editor schema={schema} value={cfg} onChange={setCfg} agentId={agentId} device={dev} />
+        ) : (
+          <SchemaForm schema={schema} value={cfg} onChange={setCfg} mode="config" />
+        )}
         <div className="modal-foot">
           <button type="button" className="btn" onClick={onClose}>
             Cancel

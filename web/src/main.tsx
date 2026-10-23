@@ -9,6 +9,7 @@ import "./protocols/cfm";
 import "./protocols/icmp";
 import "./protocols/udp";
 import "./protocols/l2";
+import "./protocols/packet";
 import "./protocols/isis";
 import "./protocols/lldp";
 import "./protocols/bgp";

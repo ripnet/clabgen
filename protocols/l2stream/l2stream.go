@@ -100,9 +100,7 @@ func (c *Config) Validate() error {
 	if c.Reply != "none" && c.Reply != "echo" {
 		return errors.New("reply must be none or echo")
 	}
-	// The Run checks are shared with IP flows (a dummy destination).
-	if _, err := (ipflow.Spec{Target: ipflow.Target{Destination: "192.0.2.1"}, Run: c.Run, IPHeader: ipflow.DefaultIPHeader,
-		Payload: ipflow.Payload{PayloadPattern: "zeros"}}).Validate(); err != nil {
+	if err := c.Run.Validate(); err != nil {
 		return err
 	}
 	return c.Checks.Validate()
@@ -269,40 +267,9 @@ func (f *stream) Stop() {
 // far behind instead of bursting).
 func (f *stream) run(ctx context.Context, done chan struct{}) {
 	defer close(done)
-	iv := f.cfg.Interval()
-	t := time.NewTicker(max(iv, time.Millisecond))
-	defer t.Stop()
-	begin := time.Now()
-	var sent uint64
-	var end time.Time
-	if f.cfg.Mode == "duration" {
-		end = begin.Add(f.cfg.DurationD())
-	}
-	countDone := func() bool { return f.cfg.Mode == "count" && sent >= f.cfg.Count }
-	f.sendOne()
-	sent++
-	finished := countDone()
-	for !finished {
-		select {
-		case <-ctx.Done():
-			f.tracker0().Expire(time.Now(), false)
-			return
-		case now := <-t.C:
-			due := uint64(now.Sub(begin)/iv) + 1
-			if due > sent+1000 {
-				sent = due - 1
-			}
-			for sent < due && !finished {
-				if !end.IsZero() && !now.Before(end) {
-					finished = true
-					break
-				}
-				f.sendOne()
-				sent++
-				finished = countDone()
-			}
-			f.tracker0().Expire(now, false)
-		}
+	if !f.cfg.Run.Pace(ctx, f.sendOne, func(now time.Time) { f.tracker0().Expire(now, false) }) {
+		f.tracker0().Expire(time.Now(), false)
+		return
 	}
 	select {
 	case <-ctx.Done():
