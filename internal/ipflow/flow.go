@@ -473,7 +473,7 @@ func (f *Flow) BaseStatus() Base {
 	if f.state != StateRunning {
 		s.OutageCurrentMs = 0 // a stopped flow isn't in an outage now
 	}
-	s.Verdict = f.Spec.Checks.evaluate(s.Stats, f.Echo)
+	s.Verdict = f.Spec.Checks.Evaluate(s.Stats, f.Echo)
 	if f.lastErr != "" && f.state == StateRunning && now.Sub(f.errAt) > errorShownFor {
 		s.Error, s.LastError, s.LastErrorS = "", f.lastErr, now.Sub(f.errAt).Round(time.Second).Seconds()
 	}

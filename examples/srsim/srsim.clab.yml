@@ -3,7 +3,8 @@
 #     VLAN 100: SR MEP 1 <-> clabgen MEP 101  (MD "lab" level 5, MA string "v100", 1s)
 #     VLAN 200: SR MEP 1 <-> clabgen MEP 2    (MD none level 3, ICC "CLABGEN00001", 1s)
 #     VLAN 300: clabgen MEP 301 -- SR VPLS 300 with MIPs -- clabgen MEP 302 (level 6),
-#               also hosts 10.0.30.1 and .2 bridged through the VPLS
+#               also hosts 10.0.30.1 and .2 bridged through the VPLS, and a
+#               raw L2 echo stream (no IP) from 50 source MACs
 #     VLAN 400: SR IES interface 10.0.4.1/24, 2001:db8:4::1/64 -- clabgen host .2
 #   gen1:eth2 -- sr1:1/1/c2/1 (dot1q)
 #     VLAN 300: the far side of VPLS 300 (MEP 302)

@@ -7,6 +7,7 @@ package flowrx
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 	"net/netip"
 	"sort"
@@ -47,7 +48,7 @@ func ParseSignature(data []byte) (flowID uint32, seq uint64, sent time.Time, ok 
 // Key identifies a received flow.
 type Key struct {
 	FlowID uint32
-	Proto  string // "udp", "icmp"
+	Proto  string // "udp", "icmp", "l2"
 }
 
 // Packet is one received signed packet.
@@ -60,11 +61,18 @@ type Packet struct {
 	SrcPort  uint16
 	DstPort  uint16
 	Bytes    int
+	// Raw L2 (Proto "l2"): the MACs and ethertype instead of addresses.
+	SrcMAC, DstMAC string
+	EtherType      uint16
 }
 
 type entry struct {
 	key       Key
 	src, dst  netip.Addr
+	srcMAC    string // raw L2: the last source MAC seen
+	dstMAC    string
+	etherType uint16
+	srcMACs   map[string]struct{} // distinct source MACs, up to maxMACs
 	sport     uint16
 	dport     uint16
 	first     time.Time
@@ -138,6 +146,9 @@ type Table struct {
 
 func New() *Table { return &Table{m: map[Key]*entry{}} }
 
+// maxMACs caps the distinct source MACs counted per raw L2 flow.
+const maxMACs = 4096
+
 // Record counts one packet.
 func (t *Table) Record(p Packet) {
 	k := Key{p.FlowID, p.Proto}
@@ -186,6 +197,15 @@ func (t *Table) Record(p Packet) {
 	}
 	e.settle(p.Rx)
 	e.src, e.dst, e.sport, e.dport = p.Src, p.Dst, p.SrcPort, p.DstPort
+	if p.SrcMAC != "" {
+		e.srcMAC, e.dstMAC, e.etherType = p.SrcMAC, p.DstMAC, p.EtherType
+		if e.srcMACs == nil {
+			e.srcMACs = map[string]struct{}{}
+		}
+		if len(e.srcMACs) < maxMACs {
+			e.srcMACs[p.SrcMAC] = struct{}{}
+		}
+	}
 	e.last = p.Rx
 	e.rx++
 	e.bytes += uint64(p.Bytes)
@@ -209,8 +229,10 @@ func (t *Table) Record(p Packet) {
 type Flow struct {
 	FlowID    string  `json:"flow_id"`
 	Proto     string  `json:"proto"`
-	Src       string  `json:"src"`
+	Src       string  `json:"src"` // address, or MAC for raw L2
 	Dst       string  `json:"dst"`
+	EtherType string  `json:"ethertype,omitempty"` // raw L2, e.g. 0x88b5
+	SrcMACs   int     `json:"src_macs,omitempty"`  // raw L2: distinct source MACs seen (up to 4096)
 	SrcPort   uint16  `json:"src_port,omitempty"`
 	DstPort   uint16  `json:"dst_port,omitempty"`
 	First     string  `json:"first_seen"`
@@ -258,6 +280,10 @@ func (t *Table) Snapshot(now time.Time) []Flow {
 			IdleMs: float64(now.Sub(e.last)) / float64(time.Millisecond), Rx: e.rx, Bytes: e.bytes, Lost: e.lost,
 			Reordered: e.reordered, Duplicate: e.dup, TooLate: e.tooLate, Outages: e.outages, OutageMaxMs: e.outMax,
 			OutageLast: e.outLast, OutageTotal: e.outTotal}
+		if e.srcMAC != "" {
+			f.Src, f.Dst, f.SrcMACs = e.srcMAC, e.dstMAC, len(e.srcMACs)
+			f.EtherType = fmt.Sprintf("%#04x", e.etherType)
+		}
 		if total := e.rx + e.lost; total > 0 {
 			f.LossPct = 100 * float64(e.lost) / float64(total)
 		}

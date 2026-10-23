@@ -136,7 +136,7 @@ func (s Spec) Validate() (netip.Addr, error) {
 	if err := CheckChecksumMode(s.IPChecksum); err != nil {
 		return dst, err
 	}
-	if err := s.Checks.validate(); err != nil {
+	if err := s.Checks.Validate(); err != nil {
 		return dst, err
 	}
 	if s.PayloadSize < 0 || s.PayloadSize > 9000 {

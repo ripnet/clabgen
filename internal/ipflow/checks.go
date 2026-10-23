@@ -18,7 +18,7 @@ type Checks struct {
 	MaxJitterMs float64 `json:"max_jitter_ms,omitempty" jsonschema:"minimum=0,description=Highest jitter (mean RTT change between packets) in ms"`
 }
 
-func (c Checks) validate() error {
+func (c Checks) Validate() error {
 	for _, v := range []float64{c.MaxLossPct, c.MaxOutageMs, c.MaxRTTAvgMs, c.MaxRTTMs, c.MaxJitterMs} {
 		if v < 0 {
 			return errors.New("checks: limits must not be negative")
@@ -56,9 +56,9 @@ type Verdict struct {
 	Failed  string        `json:"failed,omitempty"` // the failed checks, for summaries
 }
 
-// evaluate checks st. tracksReplies says whether loss and RTT are known
+// Evaluate checks st. tracksReplies says whether loss and RTT are known
 // (one-way flows are measured at their receivers instead).
-func (c Checks) evaluate(st flowstats.Stats, tracksReplies bool) *Verdict {
+func (c Checks) Evaluate(st flowstats.Stats, tracksReplies bool) *Verdict {
 	if !c.any() {
 		return nil
 	}

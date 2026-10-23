@@ -35,6 +35,8 @@ type SendOpts struct {
 	// When SetPCP is true, PCP overrides the priority on every VLAN tag.
 	SetPCP bool
 	PCP    uint8
+	// Src, when set, replaces the device's MAC as the source address.
+	Src pkt.MAC
 }
 
 // IP is the device's IP stack, for protocols that send IP packets.
@@ -138,6 +140,18 @@ type FrameCounter interface{ DataFrames() (tx, rx uint64) }
 // short word for group views, e.g. "established" or "up". Counts of each
 // word are shown per group, so it should have few distinct values.
 type Healther interface{ Health() string }
+
+// ConfigEtherTypes may be implemented by a Type whose ethertypes depend
+// on the instance's config (e.g. raw L2 streams); the result replaces
+// EtherTypes for that instance.
+type ConfigEtherTypes interface{ EtherTypesFor(cfg any) []uint16 }
+
+// MACClaimer may be implemented by an Env: the device also accepts frames
+// addressed to the claimed MACs (e.g. a stream's extra source MACs, for
+// replies to them), until release is called.
+type MACClaimer interface {
+	ClaimMACs(macs []pkt.MAC) (release func())
+}
 
 // Categorized may be implemented by a Type to group it in UIs. Types
 // without it are in CategoryProtocol.

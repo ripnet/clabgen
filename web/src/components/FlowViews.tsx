@@ -14,6 +14,8 @@ export type RxFlow = {
   dst: string;
   src_port?: number;
   dst_port?: number;
+  ethertype?: string; // l2: src and dst are MACs
+  src_macs?: number;
   rx: number;
   rate_pps: number;
   lost: number;
@@ -133,7 +135,9 @@ export function ReceivedTable({ rows, showAgent, index }: { rows: RxAt[]; showAg
                   </td>
                 )}
                 <td className="mono">
-                  {f.proto} {ep(f.src, f.src_port)} → {ep(f.dst, f.dst_port)}
+                  {f.proto} {ep(f.src, f.src_port)}
+                  {f.src_macs && f.src_macs > 1 ? <span className="muted"> ×{f.src_macs}</span> : null} → {ep(f.dst, f.dst_port)}
+                  {f.ethertype && <span className="muted"> {f.ethertype}</span>}
                 </td>
                 <td className="num mono">{n(f.rx)}</td>
                 <td className="num mono">{stale ? "—" : `${f.rate_pps.toFixed(0)} pps`}</td>

@@ -697,7 +697,10 @@ func summary(p *v1.Protocol) string {
 		}
 		return out
 	}
-	if p.Type == "icmp" || p.Type == "udp" {
+	if p.Type == "l2-echo" {
+		return fmt.Sprintf("received=%v sent=%v", m["received"], m["sent"])
+	}
+	if p.Type == "icmp" || p.Type == "udp" || p.Type == "l2" {
 		out := fmt.Sprintf("%v → %v %v@%vpps tx=%v rx=%v lost=%v", m["state"], m["destination"], m["kind"], m["rate"], m["tx"], m["rx"], m["lost"])
 		if m["tracks_replies"] == false {
 			// One way: receivers report rx/loss (clabgenctl received).
@@ -1167,6 +1170,12 @@ func receivedCmd() *cobra.Command {
 				if m["proto"] == "udp" {
 					hp := func(h any, p float64) string { return net.JoinHostPort(fmt.Sprint(h), strconv.Itoa(int(p))) }
 					from, to = hp(m["src"], g("src_port")), hp(m["dst"], g("dst_port"))
+				}
+				if m["proto"] == "l2" {
+					if n := g("src_macs"); n > 1 {
+						from += fmt.Sprintf(" ×%.0f", n)
+					}
+					to += fmt.Sprintf(" %v", m["ethertype"])
 				}
 				fmt.Fprintf(w, "%s\t%v\t%v\t%s\t%s\t%.0f\t%.0f\t%.0f (%.2f%%)\t%.0f\t%.0f\t%.3f/%.3f ms\t%.0f (%.0f ms)\t%s\n",
 					f.Device, m["flow_id"], m["proto"], from, to, g("rx"), g("rate_pps"), g("lost"), g("loss_pct"), g("reordered"), g("duplicate"),

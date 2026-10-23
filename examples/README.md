@@ -7,7 +7,8 @@
   lab clabgen's interop is tested in: CFM and Y.1731 (with MIPs in a VPLS),
   LLDP, IS-IS (point-to-point, LAN, L1/L2, segment routing, flex-algo,
   SRv6, BFD), OSPFv2/v3 (areas, NSSA, segment routing), BGP (unicast,
-  VPNv4/v6, EVPN, L2VPN, a group of eight CEs) and flows routed by the SR.
+  VPNv4/v6, EVPN, L2VPN, a group of eight CEs) flows routed by the SR
+  and raw L2 streams across a VPLS.
   The topology file lists every VLAN and what runs on it.
 
 ```sh

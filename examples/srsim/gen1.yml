@@ -4,6 +4,9 @@ devices:
   - {name: v200, port: eth1, vlans: [{vid: 200}]}
   - {name: t300a, port: eth1, vlans: [{vid: 300}], addresses: [10.0.30.1/24, 2001:db8:30::1/64]}
   - {name: t300b, port: eth2, vlans: [{vid: 300}], addresses: [10.0.30.2/24, 2001:db8:30::2/64]}
+  # The two ends of VPLS 300 again, with no IP: raw L2 streams only.
+  - {name: l300a, port: eth1, mac: "02:c1:00:00:30:01", vlans: [{vid: 300}]}
+  - {name: l300b, port: eth2, mac: "02:c1:00:00:30:02", vlans: [{vid: 300}]}
   # Host on SR IES 400 (interface 10.0.4.1/24, 2001:db8:4::1/64).
   - {name: v400, port: eth1, vlans: [{vid: 400}], addresses: [10.0.4.2/24, 2001:db8:4::2/64], gateway4: 10.0.4.1, gateway6: 2001:db8:4::1}
   # Second host behind another SR interface (eth2 VLAN 401): flows between
@@ -54,6 +57,14 @@ protocols:
     type: cfm-mep
     device: t300b
     config: {level: 6, mep_id: 302, remote_meps: [301], md_format: string, md_name: transit, ma_name: t300, ccm_interval: 1s}
+  # A raw L2 stream across VPLS 300 from 50 source MACs, echoed back by
+  # l300b: loss, outages and RTT of the circuit without an IP stack.
+  - {name: l2-echo-t300, type: l2-echo, device: l300b}
+  - name: l2-t300
+    type: l2
+    device: l300a
+    config: {dst_mac: "02:c1:00:00:30:02", src_mac: "02:c1:00:01:00:00", src_mac_count: 50, reply: echo,
+             rate: 100, frame_size: 512, auto_start: true, checks: {max_loss_pct: 1, max_outage_ms: 100}}
   # Traffic: continuous pings to the SR interface, and a TTL=1 flow through
   # the SR (expects ICMP time exceeded back).
   - name: ping-sr

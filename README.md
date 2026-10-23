@@ -75,8 +75,8 @@ SR-SIM image and license).
 - **Emulated topologies** behind IS-IS and OSPF routers (grids, rings,
   custom graphs) with link and node failures.
 - **LLDP**.
-- **Traffic flows**: ICMP (ping or crafted packets) and UDP, one way or
-  echoed.
+- **Traffic flows**: ICMP (ping or crafted packets), UDP, and raw L2
+  streams for testing circuits without an IP stack, one way or echoed.
 
 Interop is verified against Nokia SR-SIM.
 

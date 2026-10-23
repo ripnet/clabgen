@@ -87,6 +87,56 @@ and latency per direction).
     config: {destination: 10.0.41.2, reply: echo, rate: 100, src_port_count: 16, auto_start: true}
 ```
 
+### Raw L2 streams
+
+An L2 stream (`type: l2`) sends Ethernet frames with no IP header, so it
+tests a circuit (an Epipe, a VPLS, a bridge domain) with no addresses on
+either end. Its devices need only a port, a MAC and their VLAN tags. The
+payload starts with the same signature as the IP flows, so the far device
+counts the stream on its own: loss, reordering, duplicates, one-way
+latency and outages, with the source MACs it saw and the ethertype.
+
+```yaml
+devices:
+  - {name: a, port: eth1, mac: "02:00:00:00:01:01", vlans: [{vid: 300}]}
+  - {name: b, port: eth2, mac: "02:00:00:00:02:01", vlans: [{vid: 300}]}
+protocols:
+  - name: a-to-b
+    type: l2
+    device: a
+    config: {dst_mac: "02:00:00:00:02:01", rate: 1000, frame_size: 1500, auto_start: true}
+```
+
+- `dst_mac`: the far device's MAC. The default is broadcast, which a VPLS
+  floods.
+- `src_mac`: the first source MAC. The default is the device's MAC.
+- `src_mac_count`: cycles through this many source MACs, one per frame,
+  to fill MAC tables or test MAC limits.
+- `ethertype`: the default is 0x88b5 (local experimental). Types that a
+  switch or router would consume are refused: IP, ARP, CFM, LLDP, slow
+  protocols (LACP, OAM), PTP and VLAN tags.
+- `frame_size`: 60–9018 bytes without the FCS, VLAN tags included. 60 is
+  a minimum 64-byte frame on the wire.
+- `vlan_pcp`: the PCP on every VLAN tag.
+- `payload_pattern`: the fill after the signature.
+- `mode`, `rate`, `count`, `duration` and `timeout`: as for the IP flows.
+
+`reply: echo` measures the round trip. An `l2-echo` responder on the far
+device answers stream frames of its ethertypes. Each answer goes back to
+the frame's source MAC and keeps the request's PCP. The stream then has
+loss, outage, RTT and jitter, and `checks` work as for the IP flows below.
+The stream answers for every MAC it cycles through, so echo works with
+`src_mac_count` too.
+
+```yaml
+  - {name: echo, type: l2-echo, device: b, config: {ethertypes: [0x88b5]}}
+  - name: a-b-rt
+    type: l2
+    device: a
+    config: {dst_mac: "02:00:00:00:02:01", reply: echo, rate: 100, auto_start: true,
+             checks: {max_loss_pct: 0.1, max_outage_ms: 50}}
+```
+
 ### Pass/fail checks
 
 `checks` give a flow a verdict: limits on what it measured since it

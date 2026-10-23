@@ -292,7 +292,7 @@ export function FlowLog({ s }: { s: FlowStatus }) {
     <pre className="flow-log mono">
       {s.recent.map((l, i) => (
         <div key={i} className={l.result === "reply" ? "" : l.result === "timeout" || l.result === "error" || l.result === "tx-error" ? "bad-text" : "warn-text"}>
-          {l.time} seq={l.seq} {l.result === "reply" ? `${l.detail} time=${ms(l.rtt_us)}` : `${l.result}${l.detail ? " " + l.detail : ""}`}
+          {l.time} seq={l.seq} {l.result === "reply" ? `${l.detail ? l.detail + " " : ""}time=${ms(l.rtt_us)}` : `${l.result}${l.detail ? " " + l.detail : ""}`}
         </div>
       ))}
     </pre>

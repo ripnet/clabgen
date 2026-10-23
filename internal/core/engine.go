@@ -103,6 +103,10 @@ type device struct {
 
 	// Data (non-CFM) frames sent and received, for Y.1731 loss measurement.
 	dataTx, dataRx atomic.Uint64
+
+	// More unicast MACs the device accepts (protocol.MACClaimer), with
+	// claim counts. Guarded by Engine.mu.
+	extraMACs map[pkt.MAC]int
 }
 
 func (d *device) Name() string         { return d.name }
@@ -226,14 +230,14 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 	f.Port, f.RxTime = port, ts
 	var targets []protocol.Session
 	var tapRx []func(*pkt.Frame)
-	var stacks []*ipstack.Stack
+	var stacks, l2 []*ipstack.Stack
 	isIP := f.EtherType == pkt.EtherTypeARP || f.EtherType == pkt.EtherTypeIPv4 || f.EtherType == pkt.EtherTypeIPv6
 	e.mu.RLock()
 	for _, d := range e.byPort[port] {
 		if d == from {
 			continue
 		}
-		if f.Dst != d.mac && !f.Dst.IsMulticast() {
+		if f.Dst != d.mac && !f.Dst.IsMulticast() && d.extraMACs[f.Dst] == 0 {
 			continue
 		}
 		if !pkt.SameVLANs(d.vlans, f.Tags) {
@@ -241,6 +245,9 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 		}
 		if f.EtherType != pkt.EtherTypeCFM {
 			d.dataRx.Add(1)
+		}
+		if !isIP && f.EtherType != pkt.EtherTypeCFM && f.EtherType != pkt.EtherTypeLLC {
+			l2 = append(l2, d.ip) // raw L2 streams are counted where they land
 		}
 		if isIP {
 			stacks = append(stacks, d.ip)
@@ -260,6 +267,11 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 	used := false
 	for _, s := range stacks {
 		if s.HandleRx(f) {
+			used = true
+		}
+	}
+	for _, s := range l2 {
+		if s.RecordL2(f) {
 			used = true
 		}
 	}
@@ -546,7 +558,11 @@ func (e *Engine) createProtocol(s ProtocolSpec, group string) (ProtocolView, err
 	if s.Disabled {
 		in.state, in.err = StateDisabled, ""
 	}
-	for _, et := range t.EtherTypes() {
+	ets := t.EtherTypes()
+	if c, ok := t.(protocol.ConfigEtherTypes); ok {
+		ets = c.EtherTypesFor(cfg)
+	}
+	for _, et := range ets {
 		in.ets[et] = true
 	}
 	e.mu.Lock()
@@ -918,6 +934,36 @@ func (v *env) Send(dst pkt.MAC, et uint16, payload []byte, opt protocol.SendOpts
 	return v.e.sendFrom(v.dev, dst, et, payload, opt)
 }
 
+// ClaimMACs implements protocol.MACClaimer for the instance's device.
+func (v *env) ClaimMACs(macs []pkt.MAC) func() {
+	e, d := v.e, v.dev
+	e.mu.Lock()
+	if d.extraMACs == nil {
+		d.extraMACs = map[pkt.MAC]int{}
+	}
+	for _, m := range macs {
+		if m != d.mac {
+			d.extraMACs[m]++
+		}
+	}
+	e.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			e.mu.Lock()
+			for _, m := range macs {
+				if m == d.mac {
+					continue
+				}
+				if d.extraMACs[m]--; d.extraMACs[m] <= 0 {
+					delete(d.extraMACs, m)
+				}
+			}
+			e.mu.Unlock()
+		})
+	}
+}
+
 // sendFrom transmits a payload from a device, adding its MAC and VLANs.
 func (e *Engine) sendFrom(d *device, dst pkt.MAC, et uint16, payload []byte, opt protocol.SendOpts) error {
 	tags := d.vlans
@@ -927,7 +973,11 @@ func (e *Engine) sendFrom(d *device, dst pkt.MAC, et uint16, payload []byte, opt
 			tags[i].PCP = opt.PCP
 		}
 	}
-	f := pkt.Frame{Dst: dst, Src: d.mac, Tags: tags, EtherType: et, Payload: payload}
+	src := d.mac
+	if !opt.Src.IsZero() {
+		src = opt.Src
+	}
+	f := pkt.Frame{Dst: dst, Src: src, Tags: tags, EtherType: et, Payload: payload}
 	if et != pkt.EtherTypeCFM {
 		d.dataTx.Add(1)
 	}

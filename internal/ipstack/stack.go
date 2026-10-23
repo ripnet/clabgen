@@ -664,6 +664,28 @@ func (s *Stack) ClaimFlow(id uint32) func() {
 	}
 }
 
+// RecordL2 counts a signed raw L2 frame (an l2 stream) addressed to the
+// device, and reports whether it was one.
+func (s *Stack) RecordL2(f *pkt.Frame) bool {
+	id, seq, sent, ok := flowrx.ParseSignature(f.Payload)
+	if !ok {
+		return false
+	}
+	s.mu.Lock()
+	own := s.ownFlows[id] > 0
+	s.mu.Unlock()
+	if own {
+		return true // our own stream's echo coming back
+	}
+	rx := f.RxTime
+	if rx.IsZero() {
+		rx = s.now()
+	}
+	s.flows.Record(flowrx.Packet{FlowID: id, Seq: seq, Sent: sent, Rx: rx, Proto: "l2", Bytes: 14 + 4*len(f.Tags) + len(f.Payload),
+		SrcMAC: f.Src.String(), DstMAC: f.Dst.String(), EtherType: f.EtherType})
+	return true
+}
+
 // ReceivedFlows returns the signed flows received by the device.
 func (s *Stack) ReceivedFlows() []flowrx.Flow { return s.flows.Snapshot(s.now()) }
 
