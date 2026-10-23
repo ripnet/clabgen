@@ -155,7 +155,7 @@ export function FlowsPage() {
                   <th>State</th>
                   <th className="num">Sent</th>
                   <th className="num">Lost</th>
-                  <th className="num">Longest outage</th>
+                  <th className="num" title="Longest outage (consecutive losses)">Outage</th>
                   <th className="num">RTT avg</th>
                   <th>Checks</th>
                 </tr>

@@ -59,14 +59,15 @@ protocols:
   - name: ping-sr
     type: icmp
     device: v400
-    # Checks: pass while the SR answers within these limits (see the Flows page).
+    # Checks: pass while the SR answers within these limits (see the Flows
+    # page). An average RTT limit, as SR-SIM has the odd slow reply over hours.
     config: {destination: 10.0.4.1, rate: 10, auto_start: true,
-             checks: {max_loss_pct: 1, max_outage_ms: 500, max_rtt_ms: 100}}
+             checks: {max_loss_pct: 1, max_outage_ms: 500, max_rtt_avg_ms: 20}}
   - name: ping-sr-v6
     type: icmp
     device: v400
     config: {destination: "2001:db8:4::1", rate: 10, auto_start: true,
-             checks: {max_loss_pct: 1, max_outage_ms: 500, max_rtt_ms: 100}}
+             checks: {max_loss_pct: 1, max_outage_ms: 500, max_rtt_avg_ms: 20}}
   - name: ttl1
     type: icmp
     device: v400

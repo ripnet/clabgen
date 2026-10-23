@@ -33,9 +33,15 @@ scenario get / apply      export or apply the whole config
 ```
 
 `clabgenctl <command> --help` lists each command's options. Configs and
-action arguments take `key=value` pairs (values parsed as YAML, so
-`remote_meps=[2]` is a list) or a whole document with `--config` /
-`--args` (JSON, YAML, or `@file`).
+action arguments take `key=value` pairs or a whole document with
+`--config` / `--args` (JSON, YAML, or `@file`). A value is read as JSON
+when it is valid JSON (`remote_meps=[2]` is a list, `rate=50` a number)
+and as a string otherwise; dots reach into nested settings:
+
+```sh
+clabgenctl proto add ping --type icmp --device d1 destination=10.9.0.2 rate=50 auto_start=true \
+  checks.max_loss_pct=1 checks.max_outage_ms=200
+```
 
 ## Examples
 
