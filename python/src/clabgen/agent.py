@@ -5,6 +5,9 @@ from __future__ import annotations
 import base64
 import copy
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
@@ -252,6 +255,52 @@ class Agent:
 
     def clear_received(self, device: str = "", flow_id: str = "") -> None:
         self.call("ClearReceivedFlows", {"device": device, "flow_id": flow_id})
+
+    # Packet capture.
+
+    def capture(self, ports: Iterable[str] = (), *, device: str = "", direction: str = "",
+                ethertypes: Iterable[int] = (), snaplen: int = 0, count: int = 0, seconds: float = 0,
+                summaries: bool = True, timeout: float | None = None) -> Iterator[dict]:
+        """Frames the ports receive and send, as they happen: dicts with time,
+        port, direction ("rx"/"tx"), data (bytes), length, summary (one line)
+        and dropped (frames lost because the reader fell behind). Stops after
+        count frames or seconds (0: when you stop iterating). The capture is
+        running when this returns."""
+        req = {"ports": list(ports), "device": device, "direction": direction, "ethertypes": list(ethertypes),
+               "snaplen": snaplen, "count": count, "seconds": seconds, "summaries": summaries}
+        frames = self._t.stream("Capture", req, timeout=timeout)
+
+        def decoded() -> Iterator[dict]:
+            for f in frames:
+                f["data"] = base64.b64decode(f.get("data", ""))
+                f.setdefault("summary", "")
+                f.setdefault("dropped", 0)
+                yield f
+        return decoded()
+
+    def capture_to_file(self, path: str | Path, ports: Iterable[str] = (), *, device: str = "", direction: str = "",
+                        ethertypes: Iterable[int] = (), snaplen: int = 0, count: int = 0, seconds: float = 0) -> int:
+        """Save a capture as pcapng (Wireshark's format); give count or seconds.
+        Returns the bytes written."""
+        if not count and not seconds:
+            raise ValueError("capture_to_file needs count or seconds")
+        q = [("port", p) for p in ports] + [("ethertype", hex(e)) for e in ethertypes]
+        q += [(k, str(v)) for k, v in (("device", device), ("direction", direction), ("snaplen", snaplen),
+                                       ("count", count), ("seconds", seconds)) if v]
+        url = f"{self.url}/capture.pcapng?{urllib.parse.urlencode(q)}"
+        n = 0
+        try:
+            with urllib.request.urlopen(url, timeout=(seconds or 0) + self._t.timeout) as r, open(path, "wb") as f:
+                while chunk := r.read(65536):
+                    n += f.write(chunk)
+        except urllib.error.HTTPError as e:
+            raise ClabgenError("invalid_argument", e.read().decode(errors="replace").strip(), "capture.pcapng") from None
+        return n
+
+    def decode(self, frame: bytes) -> dict:
+        """A frame decoded: summary, layers (title, offset, length, fields) and
+        decoded (the packet type's layers that build it)."""
+        return self.call("DecodeFrame", {"data": base64.b64encode(frame).decode()}).get("result", {})
 
     # Device groups.
 

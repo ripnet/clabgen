@@ -166,6 +166,11 @@ type Engine struct {
 	// Frames a device sends are also delivered to the other devices on the
 	// same port, like hosts on one segment (the port only sends them out).
 	local chan localFrame
+
+	// Packet captures (capture.go); capN lets taps skip the lock when none.
+	capMu sync.RWMutex
+	caps  []*Capture
+	capN  atomic.Int32
 }
 
 type localFrame struct {
@@ -193,6 +198,9 @@ func New(ports PortIO, bus *events.Bus, log *slog.Logger) *Engine {
 // devices on that port.
 func (e *Engine) transmit(d *device, frame []byte) error {
 	err := e.ports.Send(d.port, frame)
+	if err == nil {
+		e.tap(d.port, "tx", frame, time.Now())
+	}
 	e.mu.RLock()
 	peers := len(e.byPort[d.port]) > 1
 	e.mu.RUnlock()
@@ -217,6 +225,7 @@ var (
 // Receive dispatches one frame from a port. It returns false if nothing
 // consumed it.
 func (e *Engine) Receive(port string, b []byte, ts time.Time) bool {
+	e.tap(port, "rx", b, ts)
 	return e.receive(port, b, ts, nil)
 }
 

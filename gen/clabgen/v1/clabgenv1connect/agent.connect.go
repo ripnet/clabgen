@@ -118,6 +118,11 @@ const (
 	// AgentServiceWatchEventsProcedure is the fully-qualified name of the AgentService's WatchEvents
 	// RPC.
 	AgentServiceWatchEventsProcedure = "/clabgen.v1.AgentService/WatchEvents"
+	// AgentServiceCaptureProcedure is the fully-qualified name of the AgentService's Capture RPC.
+	AgentServiceCaptureProcedure = "/clabgen.v1.AgentService/Capture"
+	// AgentServiceDecodeFrameProcedure is the fully-qualified name of the AgentService's DecodeFrame
+	// RPC.
+	AgentServiceDecodeFrameProcedure = "/clabgen.v1.AgentService/DecodeFrame"
 	// AgentServiceGetScenarioProcedure is the fully-qualified name of the AgentService's GetScenario
 	// RPC.
 	AgentServiceGetScenarioProcedure = "/clabgen.v1.AgentService/GetScenario"
@@ -181,6 +186,12 @@ type AgentServiceClient interface {
 	// selected members; on all of them it is recorded in the group spec.
 	SetGroupDisabled(context.Context, *connect.Request[v1.SetGroupDisabledRequest]) (*connect.Response[v1.SetGroupDisabledResponse], error)
 	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest]) (*connect.ServerStreamForClient[v1.Event], error)
+	// Packet capture: the frames ports receive and send, as on the wire.
+	// An agent also serves them as a live pcapng stream at
+	// /capture.pcapng?port=eth1&… (Wireshark: curl … | wireshark -k -i -).
+	Capture(context.Context, *connect.Request[v1.CaptureRequest]) (*connect.ServerStreamForClient[v1.CapturedFrame], error)
+	// Decode a frame: its layers and fields, a summary.
+	DecodeFrame(context.Context, *connect.Request[v1.DecodeFrameRequest]) (*connect.Response[v1.DecodeFrameResponse], error)
 	// Scenarios are the whole agent config as YAML.
 	GetScenario(context.Context, *connect.Request[v1.GetScenarioRequest]) (*connect.Response[v1.GetScenarioResponse], error)
 	ApplyScenario(context.Context, *connect.Request[v1.ApplyScenarioRequest]) (*connect.Response[v1.ApplyScenarioResponse], error)
@@ -371,6 +382,18 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(agentServiceMethods.ByName("WatchEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		capture: connect.NewClient[v1.CaptureRequest, v1.CapturedFrame](
+			httpClient,
+			baseURL+AgentServiceCaptureProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("Capture")),
+			connect.WithClientOptions(opts...),
+		),
+		decodeFrame: connect.NewClient[v1.DecodeFrameRequest, v1.DecodeFrameResponse](
+			httpClient,
+			baseURL+AgentServiceDecodeFrameProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("DecodeFrame")),
+			connect.WithClientOptions(opts...),
+		),
 		getScenario: connect.NewClient[v1.GetScenarioRequest, v1.GetScenarioResponse](
 			httpClient,
 			baseURL+AgentServiceGetScenarioProcedure,
@@ -417,6 +440,8 @@ type agentServiceClient struct {
 	runGroupAction      *connect.Client[v1.RunGroupActionRequest, v1.RunGroupActionResponse]
 	setGroupDisabled    *connect.Client[v1.SetGroupDisabledRequest, v1.SetGroupDisabledResponse]
 	watchEvents         *connect.Client[v1.WatchEventsRequest, v1.Event]
+	capture             *connect.Client[v1.CaptureRequest, v1.CapturedFrame]
+	decodeFrame         *connect.Client[v1.DecodeFrameRequest, v1.DecodeFrameResponse]
 	getScenario         *connect.Client[v1.GetScenarioRequest, v1.GetScenarioResponse]
 	applyScenario       *connect.Client[v1.ApplyScenarioRequest, v1.ApplyScenarioResponse]
 }
@@ -566,6 +591,16 @@ func (c *agentServiceClient) WatchEvents(ctx context.Context, req *connect.Reque
 	return c.watchEvents.CallServerStream(ctx, req)
 }
 
+// Capture calls clabgen.v1.AgentService.Capture.
+func (c *agentServiceClient) Capture(ctx context.Context, req *connect.Request[v1.CaptureRequest]) (*connect.ServerStreamForClient[v1.CapturedFrame], error) {
+	return c.capture.CallServerStream(ctx, req)
+}
+
+// DecodeFrame calls clabgen.v1.AgentService.DecodeFrame.
+func (c *agentServiceClient) DecodeFrame(ctx context.Context, req *connect.Request[v1.DecodeFrameRequest]) (*connect.Response[v1.DecodeFrameResponse], error) {
+	return c.decodeFrame.CallUnary(ctx, req)
+}
+
 // GetScenario calls clabgen.v1.AgentService.GetScenario.
 func (c *agentServiceClient) GetScenario(ctx context.Context, req *connect.Request[v1.GetScenarioRequest]) (*connect.Response[v1.GetScenarioResponse], error) {
 	return c.getScenario.CallUnary(ctx, req)
@@ -631,6 +666,12 @@ type AgentServiceHandler interface {
 	// selected members; on all of them it is recorded in the group spec.
 	SetGroupDisabled(context.Context, *connect.Request[v1.SetGroupDisabledRequest]) (*connect.Response[v1.SetGroupDisabledResponse], error)
 	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.Event]) error
+	// Packet capture: the frames ports receive and send, as on the wire.
+	// An agent also serves them as a live pcapng stream at
+	// /capture.pcapng?port=eth1&… (Wireshark: curl … | wireshark -k -i -).
+	Capture(context.Context, *connect.Request[v1.CaptureRequest], *connect.ServerStream[v1.CapturedFrame]) error
+	// Decode a frame: its layers and fields, a summary.
+	DecodeFrame(context.Context, *connect.Request[v1.DecodeFrameRequest]) (*connect.Response[v1.DecodeFrameResponse], error)
 	// Scenarios are the whole agent config as YAML.
 	GetScenario(context.Context, *connect.Request[v1.GetScenarioRequest]) (*connect.Response[v1.GetScenarioResponse], error)
 	ApplyScenario(context.Context, *connect.Request[v1.ApplyScenarioRequest]) (*connect.Response[v1.ApplyScenarioResponse], error)
@@ -817,6 +858,18 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(agentServiceMethods.ByName("WatchEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	agentServiceCaptureHandler := connect.NewServerStreamHandler(
+		AgentServiceCaptureProcedure,
+		svc.Capture,
+		connect.WithSchema(agentServiceMethods.ByName("Capture")),
+		connect.WithHandlerOptions(opts...),
+	)
+	agentServiceDecodeFrameHandler := connect.NewUnaryHandler(
+		AgentServiceDecodeFrameProcedure,
+		svc.DecodeFrame,
+		connect.WithSchema(agentServiceMethods.ByName("DecodeFrame")),
+		connect.WithHandlerOptions(opts...),
+	)
 	agentServiceGetScenarioHandler := connect.NewUnaryHandler(
 		AgentServiceGetScenarioProcedure,
 		svc.GetScenario,
@@ -889,6 +942,10 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 			agentServiceSetGroupDisabledHandler.ServeHTTP(w, r)
 		case AgentServiceWatchEventsProcedure:
 			agentServiceWatchEventsHandler.ServeHTTP(w, r)
+		case AgentServiceCaptureProcedure:
+			agentServiceCaptureHandler.ServeHTTP(w, r)
+		case AgentServiceDecodeFrameProcedure:
+			agentServiceDecodeFrameHandler.ServeHTTP(w, r)
 		case AgentServiceGetScenarioProcedure:
 			agentServiceGetScenarioHandler.ServeHTTP(w, r)
 		case AgentServiceApplyScenarioProcedure:
@@ -1016,6 +1073,14 @@ func (UnimplementedAgentServiceHandler) SetGroupDisabled(context.Context, *conne
 
 func (UnimplementedAgentServiceHandler) WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.Event]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.WatchEvents is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) Capture(context.Context, *connect.Request[v1.CaptureRequest], *connect.ServerStream[v1.CapturedFrame]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.Capture is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) DecodeFrame(context.Context, *connect.Request[v1.DecodeFrameRequest]) (*connect.Response[v1.DecodeFrameResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.DecodeFrame is not implemented"))
 }
 
 func (UnimplementedAgentServiceHandler) GetScenario(context.Context, *connect.Request[v1.GetScenarioRequest]) (*connect.Response[v1.GetScenarioResponse], error) {

@@ -105,6 +105,15 @@ with their fields) without creating anything; `pcap=` takes a capture's
 path or bytes. `pcap_data(path)` encodes a capture for a flow's config:
 `add_protocol("replay", "packet", "v100", pcap={"data": pcap_data("x.pcapng")})`.
 
+Packet capture:
+
+```python
+for f in gen1.capture(["eth1"], count=10):      # running once capture() returns
+    print(f["time"], f["direction"], f["summary"])   # f["data"]: the frame's bytes
+gen1.capture_to_file("v100.pcapng", device="v100", seconds=10)
+gen1.decode(frame_bytes)["layers"]
+```
+
 Errors from an agent raise `ClabgenError` with Connect's `code`
 (`not_found`, `invalid_argument`, `already_exists`, `unavailable`, …).
 `agent.call("Method", {...})` reaches any API method directly.

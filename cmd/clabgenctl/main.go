@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +31,7 @@ import (
 
 	v1 "github.com/ripnet/clabgen/gen/clabgen/v1"
 	"github.com/ripnet/clabgen/gen/clabgen/v1/clabgenv1connect"
+	"github.com/ripnet/clabgen/internal/pcapng"
 )
 
 var (
@@ -410,7 +412,7 @@ func main() {
 			return printMsg(r.Msg)
 		}})
 
-	root.AddCommand(nodesCmd(), portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), previewCmd(), groupsCmd(), groupCmd(), eventsCmd(), scenarioCmd(),
+	root.AddCommand(nodesCmd(), captureCmd(), portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), previewCmd(), groupsCmd(), groupCmd(), eventsCmd(), scenarioCmd(),
 		flowCmd("start"), flowCmd("stop"), pingCmd(), receivedCmd())
 
 	if err := root.Execute(); err != nil {
@@ -1133,6 +1135,107 @@ func protoCmd() *cobra.Command {
 	run.Flags().StringVar(&argsJSON, "args", "", "arguments as JSON/YAML, or @file")
 
 	cmd.AddCommand(add, show, set, disable, enable, del, run)
+	return cmd
+}
+
+func captureCmd() *cobra.Command {
+	var dev, dir, out string
+	var ets []string
+	var snaplen, count uint32
+	var seconds float64
+	cmd := &cobra.Command{
+		Use: "capture [PORT...]", Short: "Capture the frames ports receive and send (live, or to a pcapng file)",
+		Example: "  clabgenctl capture eth1                       # one line per frame, like tcpdump\n" +
+			"  clabgenctl capture --device v100 -c 20\n" +
+			"  clabgenctl capture eth1 -w trace.pcapng --seconds 30\n" +
+			"  clabgenctl capture eth1 -w - | wireshark -k -i -   # live in Wireshark",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			req := &v1.CaptureRequest{Ports: args, Device: dev, Direction: dir, Snaplen: snaplen, Count: count, Seconds: seconds, Summaries: out == ""}
+			for _, e := range ets {
+				for _, x := range strings.Split(e, ",") {
+					v, err := strconv.ParseUint(x, 0, 16)
+					if err != nil {
+						return fmt.Errorf("ethertype %q: a number like 0x0800", x)
+					}
+					req.Ethertypes = append(req.Ethertypes, uint32(v))
+				}
+			}
+			c, cancel := ctx()
+			defer cancel()
+			cl := client()
+			var pw *pcapng.Writer
+			var names []string
+			if out != "" {
+				ports, err := cl.ListPorts(c, connect.NewRequest(&v1.ListPortsRequest{}))
+				if err != nil {
+					return err
+				}
+				var ifs []pcapng.Interface
+				for _, p := range ports.Msg.Ports {
+					if len(args) == 0 || slices.Contains(args, p.Name) {
+						names = append(names, p.Name)
+						ifs = append(ifs, pcapng.Interface{Name: p.Name, Snaplen: int(snaplen)})
+					}
+				}
+				w := os.Stdout
+				if out != "-" {
+					f, err := os.Create(out)
+					if err != nil {
+						return err
+					}
+					defer f.Close()
+					w = f
+				}
+				if pw, err = pcapng.NewWriter(w, ifs, "clabgenctl"); err != nil {
+					return err
+				}
+			}
+			st, err := cl.Capture(c, connect.NewRequest(req))
+			if err != nil {
+				return err
+			}
+			defer st.Close()
+			n, dropped := 0, uint64(0)
+			for st.Receive() {
+				f := st.Msg()
+				n++
+				dropped = f.Dropped
+				if pw == nil {
+					arrow := "In "
+					if f.Direction == "tx" {
+						arrow = "Out"
+					}
+					fmt.Printf("%s %s %s %s\n", f.Time.AsTime().Local().Format("15:04:05.000000"), f.Port, arrow, f.Summary)
+					continue
+				}
+				d := pcapng.Inbound
+				if f.Direction == "tx" {
+					d = pcapng.Outbound
+				}
+				if err := pw.WritePacket(max(slices.Index(names, f.Port), 0), f.Time.AsTime(), f.Data, int(f.Length), d); err != nil {
+					return err
+				}
+			}
+			if err := st.Err(); err != nil && c.Err() == nil {
+				if connect.CodeOf(err) == connect.CodeUnimplemented {
+					return errors.New("this agent has no packet capture: redeploy its node with a newer clabgen image")
+				}
+				return err
+			}
+			msg := fmt.Sprintf("%d frames captured", n)
+			if dropped > 0 {
+				msg += fmt.Sprintf(", %d dropped (the reader fell behind; try a filter or --snaplen)", dropped)
+			}
+			fmt.Fprintln(os.Stderr, msg)
+			return nil
+		}}
+	cmd.Flags().StringVar(&dev, "device", "", "only frames to or from this device (its MAC or multicast, on its VLANs)")
+	cmd.Flags().StringVar(&dir, "direction", "", "rx or tx (default both)")
+	cmd.Flags().StringArrayVar(&ets, "ethertype", nil, "only these ethertypes, e.g. 0x0800,0x86dd; repeatable")
+	cmd.Flags().Uint32Var(&snaplen, "snaplen", 0, "bytes kept per frame (default all)")
+	cmd.Flags().Uint32VarP(&count, "count", "c", 0, "stop after this many frames")
+	cmd.Flags().Float64Var(&seconds, "seconds", 0, "stop after this many seconds")
+	cmd.Flags().StringVarP(&out, "write", "w", "", "write pcapng to this file (- for stdout) instead of printing")
 	return cmd
 }
 

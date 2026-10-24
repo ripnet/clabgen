@@ -47,3 +47,16 @@ test("a server without /api/info shows no version", async ({ page }) => {
   await expect(page.locator(".agent-meta")).toContainText("v0.2.0");
   await expect(page.locator(".brand-version")).toHaveCount(0);
 });
+
+test("development builds are ordered by the release they follow", async ({ page }) => {
+  await mockAgent(page, p(), () => undefined, { agentVersion: "v0.1.0", ui: { version: "v0.3.1-4-gabc1234-dirty", update_available: false } });
+  await page.goto("./#/a/a1/protocols");
+  await expect(page.locator(".sidebar .side-ver.warn")).toHaveText("update");
+  await expect(page.locator(".agent-meta")).toContainText("v0.1.0 (UI dev v0.3.1-4-gabc1234-dirty)");
+});
+
+test("development builds after the same release: not flagged", async ({ page }) => {
+  await mockAgent(page, p(), () => undefined, { agentVersion: "v0.3.1", ui: { version: "v0.3.1-2-gdef5678", update_available: false } });
+  await page.goto("./#/a/a1/protocols");
+  await expect(page.locator(".sidebar .side-ver")).toHaveCount(0);
+});

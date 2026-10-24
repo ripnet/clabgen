@@ -103,8 +103,10 @@ func main() {
 	}()
 
 	api := http.NewServeMux()
-	path, h := clabgenv1connect.NewAgentServiceHandler(server.New(eng, pm))
+	srv := server.New(eng, pm)
+	path, h := clabgenv1connect.NewAgentServiceHandler(srv)
 	api.Handle(path, h)
+	api.Handle("/capture.pcapng", srv.CaptureHandler())
 
 	// The UI reaches this agent as "self" without a network hop and can be
 	// pointed at other agents by address.
@@ -114,6 +116,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle(path, h)
+	mux.Handle("/capture.pcapng", srv.CaptureHandler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprintln(w, "ok") })
 	if *profile {
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -122,15 +125,15 @@ func main() {
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	}
 	mux.Handle("/", webui.Handler(reg, webui.Options{AllowManual: true, Version: version.Version}))
-	srv := &http.Server{Addr: *listen, Handler: h2c.NewHandler(mux, &http2.Server{}), ReadHeaderTimeout: 10 * time.Second}
+	hs := &http.Server{Addr: *listen, Handler: h2c.NewHandler(mux, &http2.Server{}), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		srv.Shutdown(sctx)
+		hs.Shutdown(sctx)
 	}()
 	log.Info("clabgen-agent starting", "version", version.Version, "listen", *listen, "ports", *portsRE)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("http server", "err", err)
 		os.Exit(1)
 	}

@@ -1,4 +1,6 @@
-package packet
+// Package pcapng reads pcap and pcapng captures (Ethernet) and writes
+// pcapng, the format Wireshark reads live from a pipe.
+package pcapng
 
 import (
 	"encoding/binary"
@@ -6,16 +8,16 @@ import (
 	"fmt"
 )
 
-// Limits on an imported capture (it is kept in the protocol's config).
+// Limits on a capture Read accepts.
 const (
-	maxPcapBytes  = 8 << 20
-	maxPcapFrames = 100000
+	MaxBytes  = 8 << 20
+	MaxFrames = 100000
 )
 
-// readPcap returns the Ethernet frames of a pcap or pcapng capture.
-func readPcap(b []byte) ([][]byte, error) {
-	if len(b) > maxPcapBytes {
-		return nil, fmt.Errorf("capture is %d bytes; at most %d", len(b), maxPcapBytes)
+// Read returns the Ethernet frames of a pcap or pcapng capture.
+func Read(b []byte) ([][]byte, error) {
+	if len(b) > MaxBytes {
+		return nil, fmt.Errorf("capture is %d bytes; at most %d", len(b), MaxBytes)
 	}
 	if len(b) < 4 {
 		return nil, errors.New("not a pcap or pcapng capture")
@@ -49,8 +51,8 @@ func readClassic(b []byte) ([][]byte, error) {
 		if off+n > len(b) {
 			return nil, fmt.Errorf("pcap: frame %d truncated", len(out)+1)
 		}
-		if out = append(out, b[off:off+n]); len(out) > maxPcapFrames {
-			return nil, fmt.Errorf("pcap: more than %d frames", maxPcapFrames)
+		if out = append(out, b[off:off+n]); len(out) > MaxFrames {
+			return nil, fmt.Errorf("pcap: more than %d frames", MaxFrames)
 		}
 		off += n
 	}
@@ -105,8 +107,8 @@ func readPcapNG(b []byte) ([][]byte, error) {
 			ln := min(int(bo.Uint32(body)), len(body)-4)
 			out = append(out, body[4:4+ln])
 		}
-		if len(out) > maxPcapFrames {
-			return nil, fmt.Errorf("pcapng: more than %d frames", maxPcapFrames)
+		if len(out) > MaxFrames {
+			return nil, fmt.Errorf("pcapng: more than %d frames", MaxFrames)
 		}
 		off += n
 	}

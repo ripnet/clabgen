@@ -8,13 +8,21 @@ export function parseRelease(v: string | undefined): [number, number, number] | 
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : undefined;
 }
 
-// cmp orders two releases (undefined unless both are releases).
+// baseRelease is the release a version is (vX.Y.Z) or was built after
+// (vX.Y.Z-N-gHASH, vX.Y.Z-dirty, as git describe writes them).
+function baseRelease(v: string | undefined): [number, number, number] | undefined {
+  const m = v?.match(/^v?(\d+)\.(\d+)\.(\d+)(?:-|$)/);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : undefined;
+}
+
+// cmp orders two versions by release: undefined when either has none, or
+// when development builds share a base release (they can't be ordered).
 function cmp(a?: string, b?: string): number | undefined {
-  const x = parseRelease(a);
-  const y = parseRelease(b);
+  const x = baseRelease(a);
+  const y = baseRelease(b);
   if (!x || !y) return undefined;
   for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i];
-  return 0;
+  return parseRelease(a) && parseRelease(b) ? 0 : undefined;
 }
 
 // displayVersion is how a version reads in the UI.

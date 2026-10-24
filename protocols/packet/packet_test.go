@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ripnet/clabgen/internal/pcapng"
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/protocol"
 )
@@ -267,7 +268,7 @@ func TestPcap(t *testing.T) {
 	f1 := frameOf(mustBuild(t, layers(t, `[{"ipv4":{"dst":"10.0.0.2"}},{"udp":{}}]`)).packet(nil, 0, 1, time.Now()))
 	f2 := append([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0x81, 0, 0, 7}, f1[12:]...)
 	for name, capture := range map[string][]byte{"pcap": classicPcap(f1, f2), "pcapng": pcapNG(f1, f2)} {
-		fs, err := readPcap(capture)
+		fs, err := pcapng.Read(capture)
 		if err != nil || len(fs) != 2 || !bytes.Equal(fs[0], f1) || !bytes.Equal(fs[1], f2) {
 			t.Fatalf("%s: %d frames, %v", name, len(fs), err)
 		}
@@ -288,7 +289,7 @@ func TestPcap(t *testing.T) {
 	if _, err := (&Pcap{Data: base64.StdEncoding.EncodeToString(classicPcap(f1)), Frames: "2"}).frames(); err == nil {
 		t.Error("frame 2 of 1 accepted")
 	}
-	if _, err := readPcap([]byte("nope, not a capture")); err == nil {
+	if _, err := pcapng.Read([]byte("nope, not a capture")); err == nil {
 		t.Error("garbage accepted")
 	}
 }
@@ -318,5 +319,23 @@ func TestValidate(t *testing.T) {
 	}
 	if err := protocol.Decode(c, json.RawMessage(`{"layers":[{"ipv4":{"dst":"10.0.0.1","nope":1}}]}`)); err == nil {
 		t.Error("unknown layer field accepted")
+	}
+}
+
+func TestInspect(t *testing.T) {
+	f := frameOf(mustBuild(t, layers(t, `[{"ethernet":{"dst":"02:00:00:00:00:02"}},{"vlan":{"vid":7}},{"ipv4":{"dst":"10.0.0.2"}},{"udp":{"dst_port":53}},{"payload":{"size":20}}]`)).packet(nil, 0, 1, time.Now()))
+	r := Inspect(f)
+	if r.Summary != "02:00:00:00:00:01 > 02:00:00:00:00:02, VLAN 7, IPv4 10.0.0.1 > 10.0.0.2, UDP 50000 > 53, 66 bytes" {
+		t.Errorf("summary %q", r.Summary)
+	}
+	if len(r.Layers) != 5 || r.Layers[2].Title != "IPv4" || r.Layers[2].Offset != 18 || len(r.Decoded) != 5 {
+		t.Errorf("layers %+v", r.Layers)
+	}
+	cfm := frameOf(mustBuild(t, layers(t, `[{"ethernet":{"dst":"01:80:c2:00:00:33","ethertype":35074}},{"raw":{"hex":"6001"}}]`)).packet(nil, 0, 1, time.Now()))
+	if r := Inspect(cfm); r.Summary != "02:00:00:00:00:01 > 01:80:c2:00:00:33, CFM, 16 bytes" {
+		t.Errorf("CFM summary %q", r.Summary)
+	}
+	if r := Inspect([]byte{1, 2, 3}); r.Summary != "3 bytes" {
+		t.Errorf("short frame %q", r.Summary)
 	}
 }

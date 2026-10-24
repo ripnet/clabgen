@@ -13,7 +13,7 @@ export type Route =
   | { page: "protocol"; agent: string; protocol: string }
   | { page: "group"; agent: string; group: string };
 
-export const agentTabs = ["ports", "devices", "groups", "protocols", "traffic", "events", "scenario"] as const;
+export const agentTabs = ["ports", "devices", "groups", "protocols", "traffic", "capture", "events", "scenario"] as const;
 export type AgentTab = (typeof agentTabs)[number];
 
 export function parse(hash: string): Route {

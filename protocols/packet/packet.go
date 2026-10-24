@@ -20,6 +20,7 @@ import (
 
 	"github.com/ripnet/clabgen/internal/flowstats"
 	"github.com/ripnet/clabgen/internal/ipflow"
+	"github.com/ripnet/clabgen/internal/pcapng"
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/protocol"
 )
@@ -85,7 +86,7 @@ func (p *Pcap) frames() ([][]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pcap data: not base64: %w", err)
 	}
-	all, err := readPcap(raw)
+	all, err := pcapng.Read(raw)
 	if err != nil {
 		return nil, err
 	}
@@ -638,14 +639,33 @@ func locate(rs []region, frame []byte, tags int) []PreviewLayer {
 	return out
 }
 
+// Ethertypes clabgen doesn't decode, named in summaries.
+var etherNames = map[uint64]string{0x8902: "CFM", 0x88cc: "LLDP", 0x8809: "slow protocols (LACP)", 0x88f7: "PTP",
+	0x88b5: "experimental 0x88b5", 0x88e5: "MACsec", 0x8847: "MPLS", 0x8848: "MPLS multicast", 0x22f0: "AVTP"}
+
 func summary(ls []PreviewLayer, n int) string {
 	var parts []string
+	et, l3 := "", false
 	for _, l := range ls {
 		v := map[string]string{}
 		for _, f := range l.Fields {
 			v[f.Name] = f.Value
 		}
+		if e, ok := v["ethertype"]; ok {
+			et = e
+		}
 		switch l.Title {
+		case "Payload", "Raw":
+			if len(parts) > 0 && et != "" && !l3 {
+				// What follows Ethernet (or VLAN tags) isn't decoded: name it.
+				if x, err := strconv.ParseUint(et, 0, 16); err == nil && x < 0x600 {
+					parts = append(parts, "802.3 LLC")
+				} else if name, ok := etherNames[x]; ok {
+					parts = append(parts, name)
+				} else {
+					parts = append(parts, "ethertype "+et)
+				}
+			}
 		case "Ethernet":
 			parts = append(parts, fmt.Sprintf("%s > %s", v["src"], v["dst"]))
 		case "VLAN":
@@ -653,18 +673,37 @@ func summary(ls []PreviewLayer, n int) string {
 		case "MPLS":
 			parts = append(parts, "MPLS "+v["label"])
 		case "ARP":
+			l3 = true
 			parts = append(parts, fmt.Sprintf("ARP %s > %s", v["sender_ip"], v["target_ip"]))
 		case "IPv4", "IPv6":
+			l3 = true
 			parts = append(parts, fmt.Sprintf("%s %s > %s", l.Title, v["src"], v["dst"]))
 		case "UDP", "TCP":
 			parts = append(parts, fmt.Sprintf("%s %s > %s", l.Title, v["src_port"], v["dst_port"]))
 		case "ICMP", "ICMPv6":
 			parts = append(parts, fmt.Sprintf("%s type %s code %s", l.Title, v["type"], v["code"]))
 		case "VXLAN":
+			l3 = false // an inner frame follows
 			parts = append(parts, "VXLAN "+v["vni"])
 		}
 	}
 	return fmt.Sprintf("%s, %d bytes", strings.Join(parts, ", "), n)
+}
+
+// Inspect decodes any Ethernet frame: a summary, its layers with their
+// fields located, and the layers config that builds it (for captures).
+func Inspect(frame []byte) PreviewResult {
+	r := PreviewResult{Hex: hex.EncodeToString(frame), Length: len(frame), Summary: fmt.Sprintf("%d bytes", len(frame))}
+	if len(frame) < 14 {
+		return r // not even an Ethernet header
+	}
+	r.Decoded = decode(frame)
+	none := func(netip.Addr) (netip.Addr, bool) { return netip.Addr{}, false }
+	if t, err := build(r.Decoded, buildCtx{source: none}); err == nil {
+		r.Layers = locate(t.regions, frame, 0)
+		r.Summary = summary(r.Layers, len(frame))
+	}
+	return r
 }
 
 // previewPcap shows a captured frame as it would be sent, decoded.

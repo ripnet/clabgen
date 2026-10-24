@@ -139,3 +139,28 @@ def test_packet_builder(clean):
     with pytest.raises(ClabgenError) as e:
         clean.preview("a", layers=[{"udp": {}}])
     assert "needs an IPv4 or IPv6 layer" in e.value.message
+
+
+def test_capture(clean, tmp_path):
+    two_devices(clean)
+    frames = clean.capture(device="a", count=10, timeout=10)  # running once it returns
+    clean.add_protocol("s", "l2", "a", dst_mac=B_MAC, rate=100, auto_start=True)
+    got = list(frames)
+    assert len(got) == 10 and all(f["port"] == clean.test_port and f["direction"] == "tx" for f in got)
+    f = got[0]
+    assert f["data"][:6] == bytes.fromhex(B_MAC.replace(":", "")) and f["length"] == len(f["data"])
+    assert "experimental 0x88b5" in f["summary"] and f["time"].year >= 2026
+    d = clean.decode(f["data"])
+    assert d["summary"] == f["summary"] and [l["title"] for l in d["layers"]][:2] == ["Ethernet", "VLAN"]
+
+    path = tmp_path / "x.pcapng"
+    n = clean.capture_to_file(path, [clean.test_port], snaplen=32, count=5)
+    raw = path.read_bytes()
+    assert n == len(raw) and raw[:4] == bytes.fromhex("0a0d0d0a") and raw.count(b"clabgen") >= 1
+    # The agent reads its own capture back as a packet replay.
+    p = clean.preview("a", pcap=raw)
+    assert len(p["frames"]) == 5 and all(x["length"] == 32 for x in p["frames"])
+    with pytest.raises(ClabgenError):
+        clean.capture_to_file(path, ["nope"], count=1)
+    with pytest.raises(ClabgenError):
+        next(clean.capture(["nope"]))

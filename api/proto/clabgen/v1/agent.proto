@@ -71,6 +71,13 @@ service AgentService {
 
   rpc WatchEvents(WatchEventsRequest) returns (stream Event);
 
+  // Packet capture: the frames ports receive and send, as on the wire.
+  // An agent also serves them as a live pcapng stream at
+  // /capture.pcapng?port=eth1&… (Wireshark: curl … | wireshark -k -i -).
+  rpc Capture(CaptureRequest) returns (stream CapturedFrame);
+  // Decode a frame: its layers and fields, a summary.
+  rpc DecodeFrame(DecodeFrameRequest) returns (DecodeFrameResponse);
+
   // Scenarios are the whole agent config as YAML.
   rpc GetScenario(GetScenarioRequest) returns (GetScenarioResponse);
   rpc ApplyScenario(ApplyScenarioRequest) returns (ApplyScenarioResponse);
@@ -350,6 +357,42 @@ message Event {
   string message = 4;
   google.protobuf.Struct data = 5;
 }
+
+message CaptureRequest {
+  // Empty: every port.
+  repeated string ports = 1;
+  // Frames to or from this device (its MAC or multicast, on its VLANs).
+  string device = 2;
+  // "rx", "tx", or empty for both.
+  string direction = 3;
+  // Only these ethertypes (after any VLAN tags).
+  repeated uint32 ethertypes = 4;
+  // Bytes kept per frame; 0: all of it.
+  uint32 snaplen = 5;
+  // Stop after this many frames, or seconds; 0: until the client stops.
+  uint32 count = 6;
+  double seconds = 7;
+  // Add a one-line decode of each frame (costs agent CPU at high rates).
+  bool summaries = 8;
+}
+
+message CapturedFrame {
+  google.protobuf.Timestamp time = 1;
+  string port = 2;
+  // "rx" or "tx".
+  string direction = 3;
+  bytes data = 4;
+  // The frame's length (data may be cut short by snaplen).
+  uint32 length = 5;
+  string summary = 6;
+  // Frames dropped so far because the client fell behind.
+  uint64 dropped = 7;
+}
+
+message DecodeFrameRequest { bytes data = 1; }
+// hex, length, summary, layers (title, offset, length, fields) and decoded
+// (the packet type's layers config that builds the frame).
+message DecodeFrameResponse { google.protobuf.Struct result = 1; }
 
 message GetScenarioRequest {}
 message GetScenarioResponse { string yaml = 1; }

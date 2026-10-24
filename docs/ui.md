@@ -71,6 +71,12 @@ address.
   shows).
 - A flow page: live loss, outage and RTT tiles, its checks, a per-second
   timeline and a per-packet log.
+- Capture: the frames an agent's ports receive and send, live, with a
+  one-line decode each (filter by port, device, direction or ethertype).
+  Click a frame for its layers and bytes, "Build a flow from it" to send
+  it again from the packet builder, "Download .pcapng" for Wireshark, or
+  copy the `curl … | wireshark -k -i -` line to watch the same capture
+  live in Wireshark.
 - The packet editor (packet flows): the layers as cards to add, reorder,
   edit and remove, or a template to start from, and a live preview from
   the device: the frame as hex, coloured by layer, with each field's

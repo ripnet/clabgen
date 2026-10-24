@@ -8,6 +8,7 @@ import { TrafficTab } from "./TrafficTab";
 import { DevicesTab } from "./DevicesTab";
 import { GroupsTab } from "./GroupsTab";
 import { PortsTab } from "./PortsTab";
+import { CaptureTab } from "./CaptureTab";
 import { EventsTab } from "./EventsTab";
 import { ScenarioTab } from "./ScenarioTab";
 
@@ -67,6 +68,7 @@ export function AgentPage({ agentId, tab }: { agentId: string; tab: AgentTab }) 
       {tab === "groups" && <GroupsTab agentId={agentId} />}
       {tab === "protocols" && <ProtocolsTab agentId={agentId} />}
       {tab === "traffic" && <TrafficTab agentId={agentId} />}
+      {tab === "capture" && <CaptureTab agentId={agentId} />}
       {tab === "events" && <EventsTab agentId={agentId} />}
       {tab === "scenario" && <ScenarioTab agentId={agentId} />}
     </div>

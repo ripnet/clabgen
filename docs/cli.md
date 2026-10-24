@@ -41,6 +41,7 @@ ping                      ping from a device (a temporary icmp flow)
 start / stop              start or stop traffic flows
 received                  flows arriving at the agent's devices (one-way statistics)
 preview                   the packet a config would send (packet type), decoded and as hex
+capture                   frames the ports receive and send: live summaries, or pcapng
 events                    stream the agent's events
 scenario get / apply      export or apply the whole config
 ```
@@ -85,6 +86,21 @@ clabgenctl preview --device untagged --config @packet.yml --index 5   # packet 5
 clabgenctl proto add replay --type packet --device untagged --pcap capture.pcapng rate=100 auto_start=true
 clabgenctl proto run replay preview index=2                            # a running flow's packet
 ```
+
+Packet capture: every frame the agent's ports receive and send, as on the
+wire (device VLAN tags included). `-w` writes pcapng (`-` for stdout);
+filters are `--device`, `--direction rx|tx`, `--ethertype` and
+`--snaplen`; `-c` and `--seconds` stop it:
+
+```sh
+clabgenctl capture eth1                            # In/Out lines, like tcpdump
+clabgenctl capture --device v100 --ethertype 0x8902 -c 20
+clabgenctl capture eth1 eth2 -w trace.pcapng --seconds 30
+clabgenctl capture eth1 -w - | wireshark -k -i -   # live in Wireshark
+```
+
+A capture that can't keep up drops frames (never the agent's traffic)
+and says how many.
 
 Device groups (see [configuration](configuration.md#device-groups)):
 
