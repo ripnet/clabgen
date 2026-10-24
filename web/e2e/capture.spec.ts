@@ -86,3 +86,28 @@ test("capture: live frames, decode, download, rebuild as a flow", async ({ page 
   await expect(modal.locator(".pkt-layer")).toHaveCount(2);
   await expect(modal.locator(".pkt-layer").first()).toContainText("Ethernet");
 });
+
+for (const secure of [true, false]) {
+  test(`capture: copy the Wireshark command (${secure ? "HTTPS or localhost" : "plain HTTP"})`, async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    // A UI opened as http://host:8090 is not a secure context: no Clipboard API.
+    if (!secure) await page.addInitScript(() => Object.defineProperty(window, "isSecureContext", { value: false }));
+    await mockAgent(page, { name: "pk", type: "packet", device: "d1", state: "running", config: {} }, () => undefined);
+    await page.route(`**/agents/a1/${svc}/ListPorts`, (r) => r.fulfill({ json: { ports: [{ name: "eth1" }] } }));
+    await page.goto("./#/a/a1/capture");
+    const cmd = await page.locator(".ws-cmd").innerText();
+    expect(cmd).toContain("| wireshark -k -i -");
+    await page.locator(".capture-ws").first().getByRole("button", { name: "copy" }).click();
+    await expect(page.locator(".toast").last()).toContainText("Copied");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(cmd);
+  });
+}
+
+test("capture: an agent without capture says so", async ({ page }) => {
+  await mockAgent(page, { name: "pk", type: "packet", device: "d1", state: "running", config: {} }, () => undefined, { agentVersion: "v0.1.0" });
+  await page.route(`**/agents/a1/${svc}/DecodeFrame`, (r) => r.fulfill({ status: 404, json: { code: "unimplemented", message: "clabgen.v1.AgentService/DecodeFrame is not implemented" } }));
+  await page.goto("./#/a/a1/capture");
+  await expect(page.locator(".capture .warn-box")).toContainText("This agent (v0.1.0) has no packet capture");
+  await expect(page.getByRole("button", { name: /Start/ })).toBeDisabled();
+  await expect(page.locator(".ws-cmd")).toBeHidden();
+});

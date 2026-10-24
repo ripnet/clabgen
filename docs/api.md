@@ -15,8 +15,8 @@ Packet captures also come as a live pcapng stream over plain HTTP, from
 an agent or through clabgen-ui (`/agents/<id>/capture.pcapng`):
 
 ```sh
-curl -sN 'http://clab-b2b-gen1:8080/capture.pcapng?port=eth1' | wireshark -k -i -
-curl -sN 'http://host:8090/agents/clab-b2b-gen1/capture.pcapng?device=v100&seconds=10' -o v100.pcapng
+curl -sSfN 'http://clab-b2b-gen1:8080/capture.pcapng?port=eth1' | wireshark -k -i -
+curl -sSfN 'http://host:8090/agents/clab-b2b-gen1/capture.pcapng?device=v100&seconds=10' -o v100.pcapng
 ```
 
 Parameters (all optional): `port` (repeatable; default every port),

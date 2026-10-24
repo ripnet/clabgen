@@ -129,3 +129,45 @@ func TestDockerAgents(t *testing.T) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }
+
+// An agent from before packet capture answers /capture.pcapng with its web
+// page; the proxy says so instead of handing Wireshark HTML.
+func TestCaptureFromOldAgent(t *testing.T) {
+	old := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		io.WriteString(w, "<!doctype html><html></html>")
+	}))
+	defer old.Close()
+	cur := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-pcapng")
+		io.WriteString(w, "\n\r\r\n")
+	}))
+	defer cur.Close()
+	reg := NewRegistry()
+	if err := reg.Replace("docker", []Agent{{ID: "old", URL: old.URL}, {ID: "new", URL: cur.URL}}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(Handler(reg, Options{}))
+	defer srv.Close()
+	for _, c := range []struct {
+		id   string
+		code int
+		body string
+	}{{"old", 501, "this agent has no packet capture"}, {"new", 200, "\n\r\r\n"}} {
+		resp, err := http.Get(srv.URL + "/agents/" + c.id + "/capture.pcapng?port=eth1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != c.code || !strings.Contains(string(b), c.body) {
+			t.Errorf("%s: %d %q", c.id, resp.StatusCode, b)
+		}
+	}
+	// Other paths of an old agent are untouched.
+	resp, _ := http.Get(srv.URL + "/agents/old/")
+	if resp.StatusCode != 200 {
+		t.Errorf("old agent's page: %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}

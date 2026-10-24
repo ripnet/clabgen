@@ -105,7 +105,7 @@ func (s *Server) DecodeFrame(ctx context.Context, r *connect.Request[v1.DecodeFr
 //
 // Every parameter is optional (no port: every port). The stream runs until
 // the count or time is reached or the client goes away, e.g.
-// curl -sN http://agent:8080/capture.pcapng?port=eth1 | wireshark -k -i -
+// curl -sSfN http://agent:8080/capture.pcapng?port=eth1 | wireshark -k -i -
 func (s *Server) CaptureHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()

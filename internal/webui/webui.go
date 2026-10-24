@@ -10,6 +10,7 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httputil"
@@ -84,11 +85,28 @@ func newAgent(a Agent) (*Agent, error) {
 	target, _ := url.Parse(u)
 	p := httputil.NewSingleHostReverseProxy(target)
 	p.FlushInterval = -1 // stream WatchEvents immediately
+	p.ModifyResponse = tooOldForCapture
 	a.proxy = p
 	if a.Name == "" {
 		a.Name = a.ID
 	}
 	return &a, nil
+}
+
+// tooOldForCapture turns an agent's answer to /capture.pcapng into an
+// error when it isn't a capture: agents from before packet capture serve
+// their web UI's page for any unknown path, which Wireshark would be fed.
+func tooOldForCapture(r *http.Response) error {
+	if !strings.HasSuffix(r.Request.URL.Path, "/capture.pcapng") || strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-pcapng") || r.StatusCode != http.StatusOK {
+		return nil
+	}
+	r.Body.Close()
+	msg := "this agent has no packet capture (it runs an older clabgen): redeploy its node with a newer image\n"
+	r.StatusCode, r.Status = http.StatusNotImplemented, "501 Not Implemented"
+	r.Header = http.Header{"Content-Type": {"text/plain; charset=utf-8"}}
+	r.Body = io.NopCloser(strings.NewReader(msg))
+	r.ContentLength = int64(len(msg))
+	return nil
 }
 
 // Replace sets all agents of one source, keeping other sources' agents.

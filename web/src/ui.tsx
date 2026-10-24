@@ -127,3 +127,32 @@ export function useTheme(): [Theme, (t: Theme) => void] {
   }, [theme]);
   return [theme, setTheme];
 }
+
+// copyText puts text on the clipboard. The Clipboard API exists only on
+// secure pages (HTTPS or localhost); a UI opened as http://host:8090 falls
+// back to a hidden textarea and execCommand, which still works there.
+export async function copyText(text: string): Promise<boolean> {
+  if (window.isSecureContext && navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // fall through
+    }
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  ta.remove();
+  return ok;
+}

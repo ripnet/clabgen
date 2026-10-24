@@ -8,7 +8,7 @@ import type { CapturedFrame } from "../gen/clabgen/v1/agent_pb";
 import { PacketHex, type Preview } from "../components/PacketHex";
 import { pcapng } from "../pcapng";
 import { CreateProtocol, type CreatePreset } from "./ProtocolsTab";
-import { useToast } from "../ui";
+import { copyText, useToast } from "../ui";
 
 // Packet capture: the frames the agent's ports receive and send, live.
 
@@ -51,6 +51,15 @@ export function CaptureTab({ agentId }: { agentId: string }) {
   const list = useRef<HTMLDivElement>(null);
   const toast = useToast();
   const { info, ui } = useAgents();
+  // Does the agent capture at all? (DecodeFrame came with capture.)
+  const [unsupported, setUnsupported] = useState(false);
+  useEffect(() => {
+    setUnsupported(false);
+    c.decodeFrame({ data: new Uint8Array() }).catch((e) => {
+      if (e instanceof ConnectError && e.code === Code.Unimplemented) setUnsupported(true);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentId]);
   // Agents from before packet capture don't know the call.
   const why = (e: unknown) =>
     e instanceof ConnectError && e.code === Code.Unimplemented
@@ -155,7 +164,8 @@ export function CaptureTab({ agentId }: { agentId: string }) {
     if (r.direction) q.set("direction", r.direction);
     r.ethertypes.forEach((e) => q.append("ethertype", "0x" + e.toString(16).padStart(4, "0")));
     const base = new URL(`agents/${encodeURIComponent(agentId)}/capture.pcapng`, window.location.href);
-    return `curl -sN '${base.href}${q.size ? "?" + q.toString() : ""}' | wireshark -k -i -`;
+    // -f: an error (an agent without capture) stops curl instead of feeding Wireshark.
+    return `curl -sSfN '${base.href}${q.size ? "?" + q.toString() : ""}' | wireshark -k -i -`;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId, sel, device, direction, et]);
 
@@ -167,6 +177,11 @@ export function CaptureTab({ agentId }: { agentId: string }) {
         <h2>Capture</h2>
         <span className="muted small-note">Frames the ports receive and send, as on the wire (device VLAN tags included).</span>
       </div>
+      {unsupported && (
+        <div className="warn-box" role="alert">
+          {why(new ConnectError("", Code.Unimplemented))}
+        </div>
+      )}
       <div className="capture-controls">
         <fieldset className="capture-ports" disabled={running || !!device}>
           <legend className="field-label">ports</legend>
@@ -211,7 +226,7 @@ export function CaptureTab({ agentId }: { agentId: string }) {
               ■ Stop
             </button>
           ) : (
-            <button className="btn primary" onClick={start}>
+            <button className="btn primary" onClick={start} disabled={unsupported}>
               ● Start
             </button>
           )}
@@ -220,21 +235,25 @@ export function CaptureTab({ agentId }: { agentId: string }) {
           </button>
         </div>
       </div>
+      {!unsupported && (
       <div className="capture-ws muted small-note">
         Live in Wireshark:{" "}
         <code className="mono ws-cmd">{wireshark}</code>{" "}
         <button
           className="link small"
-          onClick={() =>
-            navigator.clipboard?.writeText(wireshark).then(
-              () => toast("ok", "Copied"),
-              () => toast("error", "Couldn't copy"),
-            )
-          }
+          onClick={async (e) => {
+            if (await copyText(wireshark)) return toast("ok", "Copied");
+            // Couldn't copy: select the command for Ctrl/Cmd+C.
+            const code = (e.currentTarget.previousElementSibling ?? null) as HTMLElement | null;
+            if (code) window.getSelection()?.selectAllChildren(code);
+            toast("error", "Couldn't copy: the command is selected, press Ctrl+C (Cmd+C on a Mac)");
+          }}
         >
           copy
         </button>
       </div>
+      )}
+      {!unsupported && (
       <div className="capture-ws muted small-note">
         Or in Wireshark itself, once: <code className="mono">clabgenctl wireshark install --ui {new URL(".", window.location.href).href.replace(/\/$/, "")}</code>, then pick a "clabgen …" interface (
         <a href="https://clabgen.dev/cli/#wireshark" target="_blank" rel="noreferrer">
@@ -242,6 +261,7 @@ export function CaptureTab({ agentId }: { agentId: string }) {
         </a>
         ).
       </div>
+      )}
       {error && <div className="error-box">{error}</div>}
       <div className="capture-bar">
         <span className="mono">
