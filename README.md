@@ -16,8 +16,8 @@ Add clabgen nodes to a topology:
 name: demo
 topology:
   nodes:
-    gen1: {kind: linux, image: ghcr.io/ripnet/clabgen}
-    gen2: {kind: linux, image: ghcr.io/ripnet/clabgen}
+    gen1: {kind: linux, image: ghcr.io/ripnet/clabgen, binds: [".:/clab"]}
+    gen2: {kind: linux, image: ghcr.io/ripnet/clabgen, binds: [".:/clab"]}
   links:
     - endpoints: [gen1:eth1, gen2:eth1]
 ```
@@ -36,7 +36,9 @@ docker run -d --name clabgen-ui --network host --restart unless-stopped \
 
 Open http://127.0.0.1:8090 (from a laptop: `ssh -L 8090:127.0.0.1:8090
 labhost`). The agents start empty: add devices and protocols in the UI,
-or [load a scenario file](docs/configuration.md) at startup. Two
+or [load a scenario file](docs/configuration.md) at startup. What you
+build is saved in `clab-demo/<node>/clabgen.yml` (that's the `.:/clab`
+bind) and comes back when the lab restarts. Two
 complete labs are in [`examples/`](examples): two agents back to back
 (`b2b`), and one against a Nokia SR-SIM router (`srsim`, which needs an
 SR-SIM image and license).
@@ -60,6 +62,8 @@ SR-SIM image and license).
 - **Scriptable**: the same things through [`clabgenctl`](docs/cli.md), an
   [API](docs/api.md), YAML scenarios, and a [Python package](docs/python.md)
   with pytest fixtures for turning a lab into a test suite.
+- **Kept across restarts**: what you build is saved in the lab's folder
+  (`clab-<lab>/<node>/clabgen.yml`) and restored when the lab comes back.
 
 ## Features
 

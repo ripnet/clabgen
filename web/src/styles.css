@@ -562,3 +562,6 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
   .capture-split:has(.capture-detail) { grid-template-columns: minmax(0, 1fr); }
   .capture-list { height: 360px; }
 }
+.saved-config { margin: 0 0 12px; font-size: 13px; }
+.saved-config code { overflow-wrap: anywhere; }
+.saved-config .btn-row.end { margin-top: 8px; }

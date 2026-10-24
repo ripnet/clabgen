@@ -91,6 +91,7 @@ preview                   the packet a config would send (packet type), decoded 
 capture                   frames the ports receive and send: live summaries, or pcapng
 events                    stream the agent's events
 scenario get / apply      export or apply the whole config
+scenario reset            forget the saved config: back to the topology's scenario
 ```
 
 `clabgenctl <command> --help` lists each command's options. Configs and
@@ -123,6 +124,7 @@ clabgenctl -s clab-b2b-gen1 ping untagged 192.0.2.2 -c 5 -i 100ms
 clabgenctl -s clab-b2b-gen1 stop ping-gen2                    # flows: start / stop
 clabgenctl -s clab-b2b-gen2 received                          # flows arriving at gen2
 clabgenctl -s clab-b2b-gen1 scenario get > saved.yml
+clabgenctl -s clab-b2b-gen1 scenario reset                    # back to gen1.yml (asks first; -y doesn't)
 ```
 
 Packet flows (see [configuration](configuration.md#packet-builder)):

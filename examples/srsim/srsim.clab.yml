@@ -33,7 +33,7 @@ topology:
     gen1:
       kind: linux
       image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
-      binds: [gen1.yml:/etc/clabgen/scenario.yml:ro]
+      binds: [gen1.yml:/etc/clabgen/scenario.yml:ro, .:/clab]   # .:/clab keeps the config in clab-<lab>/gen1/
       env: {CLABGEN_SCENARIO: /etc/clabgen/scenario.yml}
   links:
     - endpoints: [gen1:eth1, sr1:1/1/c1/1]

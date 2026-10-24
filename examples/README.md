@@ -10,6 +10,11 @@
   SRv6, BFD), OSPFv2/v3 (areas, NSSA, segment routing), BGP (unicast,
   VPNv4/v6, EVPN, L2VPN, a group of eight CEs) flows routed by the SR
   and raw L2 streams across a VPLS.
+
+Both bind their topology's folder into the clabgen nodes (`.:/clab`), so
+what you change in a running lab is saved in `clab-<lab>/<node>/clabgen.yml`
+and comes back after a restart; the `gen*.yml` files only seed a fresh lab
+([saved config](../docs/configuration.md#saved-config)).
   The topology file lists every VLAN and what runs on it.
 
 ```sh

@@ -2,22 +2,78 @@
 
 An agent's devices and protocols are a **scenario**: built in the web UI,
 changed with `clabgenctl` or the API, or loaded from a YAML file when the
-agent starts. Mount the file into the node and point `CLABGEN_SCENARIO` at
+agent starts, and [kept across lab restarts](#saved-config) (the `.:/clab`
+bind below). Mount the file into the node and point `CLABGEN_SCENARIO` at
 it:
 
 ```yaml
     gen1:
       kind: linux
       image: ghcr.io/ripnet/clabgen
-      binds: [gen1.yml:/etc/clabgen/scenario.yml:ro]
+      binds: [gen1.yml:/etc/clabgen/scenario.yml:ro, .:/clab]
       env: {CLABGEN_SCENARIO: /etc/clabgen/scenario.yml}
 ```
 
-The Scenario tab in the UI (or `clabgenctl scenario get` / `apply`)
-exports and applies the whole thing. Every protocol's full set of options,
+The Scenario tab in the UI (or `clabgenctl scenario get` / `apply` /
+`reset`) exports, applies and resets the whole thing. Every protocol's full set of options,
 with descriptions and defaults, is in its schema: the UI's forms show them,
 and `clabgenctl types <type>` prints them. The sections below show typical
 configs; [`examples/`](../examples) has two complete labs.
+
+## Saved config
+
+With the topology's folder mounted at `/clab` (`binds: [.:/clab]`, as in
+the examples; clabgen v0.5.0 or newer), an agent saves its whole config to
+`clab-<lab>/<node>/clabgen.yml` a moment after every change made in the
+UI, CLI or API, and loads it when the lab starts again. The saved config
+wins over `CLABGEN_SCENARIO`: the scenario file seeds a fresh lab, and
+after that the lab keeps what was built on it.
+
+| Command | Saved config |
+|---|---|
+| `docker restart`, `containerlab destroy` and `deploy`, `containerlab redeploy` | kept |
+| `deploy --reconfigure`, `redeploy --cleanup`, `destroy --cleanup` | deleted with the lab folder: the next start is fresh |
+
+The Scenario tab shows where the config is saved and where this start's
+came from. **Reset** there (or `clabgenctl scenario reset`) deletes the
+saved file and loads the topology's scenario again: also how edits to the
+scenario file take effect on a lab that has a saved config.
+
+The file is plain scenario YAML and yours to edit, but edit it while the
+lab is stopped: a running agent reads it only at start, and saves over it
+on its next change.
+
+**In your own topology**, add the bind to each clabgen node (keeping its
+other binds), then redeploy: mounts are fixed when a container is created.
+
+```yaml
+topology:
+  nodes:
+    traffic:
+      kind: linux
+      image: ghcr.io/ripnet/clabgen
+      binds: [".:/clab"]
+```
+
+containerlab adds binds under `defaults` to every node's own, so a lab of
+only clabgen nodes can say it once (`defaults: {binds: [".:/clab"]}`); in
+a lab with routers, keep it per node, or they get the folder too. Nothing
+else is needed: the scenario file stays optional, and without the bind
+the config simply isn't kept (the Scenario tab says so).
+
+Router kinds containerlab knows (`nokia_srsim`, …) don't need this:
+containerlab creates their node folder and mounts their flash into it.
+For `kind: linux`, the generic container, it does neither.
+
+Why the bind is the topology's folder rather than the lab folder itself:
+containerlab checks that bind sources exist before it creates the lab
+folder, so `clab-<lab>/<node>` can't be mounted on a first deploy. The
+agent finds its own folder through the variables containerlab sets
+(`CLAB_LABEL_CLAB_NODE_LAB_DIR`); it writes nothing else. Other places:
+`CLABGEN_STATE=/path/clabgen.yml` names the file (outside containerlab
+too), `CLABGEN_STATE=off` turns saving off, and `CLABGEN_LAB_MOUNT` moves
+the mount point. A saved file that doesn't parse is renamed
+`clabgen.yml.unreadable` and the scenario used instead.
 
 ## Devices and CFM MEPs
 

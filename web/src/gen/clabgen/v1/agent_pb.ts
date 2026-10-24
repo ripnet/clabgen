@@ -12,7 +12,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file clabgen/v1/agent.proto.
  */
 export const file_clabgen_v1_agent: GenFile = /*@__PURE__*/
-  fileDesc("ChZjbGFiZ2VuL3YxL2FnZW50LnByb3RvEgpjbGFiZ2VuLnYxIhAKDkdldEluZm9SZXF1ZXN0ImQKD0dldEluZm9SZXNwb25zZRIQCghob3N0bmFtZRgBIAEoCRIPCgd2ZXJzaW9uGAIgASgJEi4KCnN0YXJ0X3RpbWUYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIoEBCgxQb3J0Q291bnRlcnMSEQoJcnhfZnJhbWVzGAEgASgEEhAKCHJ4X2J5dGVzGAIgASgEEhEKCXR4X2ZyYW1lcxgDIAEoBBIQCgh0eF9ieXRlcxgEIAEoBBIRCgl0eF9lcnJvcnMYBSABKAQSFAoMcnhfdW5tYXRjaGVkGAYgASgEIowBCgRQb3J0EgwKBG5hbWUYASABKAkSDQoFaW5kZXgYAiABKAUSCwoDbWFjGAMgASgJEhAKCGFkbWluX3VwGAQgASgIEg8KB29wZXJfdXAYBSABKAgSCwoDbXR1GAYgASgFEioKCGNvdW50ZXJzGAcgASgLMhguY2xhYmdlbi52MS5Qb3J0Q291bnRlcnMiEgoQTGlzdFBvcnRzUmVxdWVzdCI0ChFMaXN0UG9ydHNSZXNwb25zZRIfCgVwb3J0cxgBIAMoCzIQLmNsYWJnZW4udjEuUG9ydCIvChNTZXRQb3J0QWRtaW5SZXF1ZXN0EgwKBG5hbWUYASABKAkSCgoCdXAYAiABKAgiNgoUU2V0UG9ydEFkbWluUmVzcG9uc2USHgoEcG9ydBgBIAEoCzIQLmNsYWJnZW4udjEuUG9ydCIxCgdWbGFuVGFnEgwKBHRwaWQYASABKA0SCwoDdmlkGAIgASgNEgsKA3BjcBgDIAEoDSKwAQoGRGV2aWNlEgwKBG5hbWUYASABKAkSDAoEcG9ydBgCIAEoCRILCgNtYWMYAyABKAkSIgoFdmxhbnMYBCADKAsyEy5jbGFiZ2VuLnYxLlZsYW5UYWcSEwoLbWFjX2Rlcml2ZWQYBSABKAgSEQoJYWRkcmVzc2VzGAYgAygJEhAKCGdhdGV3YXk0GAcgASgJEhAKCGdhdGV3YXk2GAggASgJEg0KBWdyb3VwGAkgASgJIhQKEkxpc3REZXZpY2VzUmVxdWVzdCI6ChNMaXN0RGV2aWNlc1Jlc3BvbnNlEiMKB2RldmljZXMYASADKAsyEi5jbGFiZ2VuLnYxLkRldmljZSI5ChNDcmVhdGVEZXZpY2VSZXF1ZXN0EiIKBmRldmljZRgBIAEoCzISLmNsYWJnZW4udjEuRGV2aWNlIjoKFENyZWF0ZURldmljZVJlc3BvbnNlEiIKBmRldmljZRgBIAEoCzISLmNsYWJnZW4udjEuRGV2aWNlIjkKE1VwZGF0ZURldmljZVJlcXVlc3QSIgoGZGV2aWNlGAEgASgLMhIuY2xhYmdlbi52MS5EZXZpY2UiOgoUVXBkYXRlRGV2aWNlUmVzcG9uc2USIgoGZGV2aWNlGAEgASgLMhIuY2xhYmdlbi52MS5EZXZpY2UiIwoTRGVsZXRlRGV2aWNlUmVxdWVzdBIMCgRuYW1lGAEgASgJIhYKFERlbGV0ZURldmljZVJlc3BvbnNlIkIKCE5laWdoYm9yEgoKAmlwGAEgASgJEgsKA21hYxgCIAEoCRINCgVzdGF0ZRgDIAEoCRIOCgZhZ2VfbXMYBCABKAMiIgoSR2V0RGV2aWNlSVBSZXF1ZXN0EgwKBG5hbWUYASABKAki5wEKE0dldERldmljZUlQUmVzcG9uc2USEQoJYWRkcmVzc2VzGAEgAygJEhAKCGdhdGV3YXk0GAIgASgJEhAKCGdhdGV3YXk2GAMgASgJEicKCW5laWdoYm9ycxgEIAMoCzIULmNsYWJnZW4udjEuTmVpZ2hib3ISPwoIY291bnRlcnMYBSADKAsyLS5jbGFiZ2VuLnYxLkdldERldmljZUlQUmVzcG9uc2UuQ291bnRlcnNFbnRyeRovCg1Db3VudGVyc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoBDoCOAEiNAoWUmVzb2x2ZU5laWdoYm9yUmVxdWVzdBIOCgZkZXZpY2UYASABKAkSCgoCaXAYAiABKAkiWAoXUmVzb2x2ZU5laWdoYm9yUmVzcG9uc2USEAoIbmV4dF9ob3AYASABKAkSCwoDbWFjGAIgASgJEg4KBmNhY2hlZBgDIAEoCBIOCgZydHRfdXMYBCABKAMiJwoVQ2xlYXJOZWlnaGJvcnNSZXF1ZXN0Eg4KBmRldmljZRgBIAEoCSIYChZDbGVhck5laWdoYm9yc1Jlc3BvbnNlIkYKDFJlY2VpdmVkRmxvdxIOCgZkZXZpY2UYASABKAkSJgoFc3RhdHMYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IioKGExpc3RSZWNlaXZlZEZsb3dzUmVxdWVzdBIOCgZkZXZpY2UYASABKAkiRAoZTGlzdFJlY2VpdmVkRmxvd3NSZXNwb25zZRInCgVmbG93cxgBIAMoCzIYLmNsYWJnZW4udjEuUmVjZWl2ZWRGbG93IjwKGUNsZWFyUmVjZWl2ZWRGbG93c1JlcXVlc3QSDgoGZGV2aWNlGAEgASgJEg8KB2Zsb3dfaWQYAiABKAkiHAoaQ2xlYXJSZWNlaXZlZEZsb3dzUmVzcG9uc2UiRAoKQWN0aW9uVHlwZRIMCgRuYW1lGAEgASgJEhMKC2Rlc2NyaXB0aW9uGAIgASgJEhMKC2FyZ3Nfc2NoZW1hGAMgASgJIoMBCgxQcm90b2NvbFR5cGUSDAoEbmFtZRgBIAEoCRITCgtkZXNjcmlwdGlvbhgCIAEoCRIVCg1jb25maWdfc2NoZW1hGAMgASgJEicKB2FjdGlvbnMYBCADKAsyFi5jbGFiZ2VuLnYxLkFjdGlvblR5cGUSEAoIY2F0ZWdvcnkYBSABKAkiGgoYTGlzdFByb3RvY29sVHlwZXNSZXF1ZXN0IkQKGUxpc3RQcm90b2NvbFR5cGVzUmVzcG9uc2USJwoFdHlwZXMYASADKAsyGC5jbGFiZ2VuLnYxLlByb3RvY29sVHlwZSLHAQoIUHJvdG9jb2wSDAoEbmFtZRgBIAEoCRIMCgR0eXBlGAIgASgJEg4KBmRldmljZRgDIAEoCRInCgZjb25maWcYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0Eg0KBXN0YXRlGAUgASgJEg0KBWVycm9yGAYgASgJEicKBnN0YXR1cxgHIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSDQoFZ3JvdXAYCCABKAkSEAoIZGlzYWJsZWQYCSABKAgiVAoUTGlzdFByb3RvY29sc1JlcXVlc3QSEwoLd2l0aF9zdGF0dXMYASABKAgSDQoFYnJpZWYYAiABKAgSGAoQbm9fZ3JvdXBfbWVtYmVycxgDIAEoCCJAChVMaXN0UHJvdG9jb2xzUmVzcG9uc2USJwoJcHJvdG9jb2xzGAEgAygLMhQuY2xhYmdlbi52MS5Qcm90b2NvbCIiChJHZXRQcm90b2NvbFJlcXVlc3QSDAoEbmFtZRgBIAEoCSI9ChNHZXRQcm90b2NvbFJlc3BvbnNlEiYKCHByb3RvY29sGAEgASgLMhQuY2xhYmdlbi52MS5Qcm90b2NvbCI/ChVDcmVhdGVQcm90b2NvbFJlcXVlc3QSJgoIcHJvdG9jb2wYASABKAsyFC5jbGFiZ2VuLnYxLlByb3RvY29sIkAKFkNyZWF0ZVByb3RvY29sUmVzcG9uc2USJgoIcHJvdG9jb2wYASABKAsyFC5jbGFiZ2VuLnYxLlByb3RvY29sIk4KFVVwZGF0ZVByb3RvY29sUmVxdWVzdBIMCgRuYW1lGAEgASgJEicKBmNvbmZpZxgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QiQAoWVXBkYXRlUHJvdG9jb2xSZXNwb25zZRImCghwcm90b2NvbBgBIAEoCzIULmNsYWJnZW4udjEuUHJvdG9jb2wiJQoVRGVsZXRlUHJvdG9jb2xSZXF1ZXN0EgwKBG5hbWUYASABKAkiGAoWRGVsZXRlUHJvdG9jb2xSZXNwb25zZSI8ChpTZXRQcm90b2NvbERpc2FibGVkUmVxdWVzdBIMCgRuYW1lGAEgASgJEhAKCGRpc2FibGVkGAIgASgIIkUKG1NldFByb3RvY29sRGlzYWJsZWRSZXNwb25zZRImCghwcm90b2NvbBgBIAEoCzIULmNsYWJnZW4udjEuUHJvdG9jb2wiXwoYUnVuUHJvdG9jb2xBY3Rpb25SZXF1ZXN0EgwKBG5hbWUYASABKAkSDgoGYWN0aW9uGAIgASgJEiUKBGFyZ3MYAyABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IkQKGVJ1blByb3RvY29sQWN0aW9uUmVzcG9uc2USJwoGcmVzdWx0GAEgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCKGAQoWUHJldmlld1Byb3RvY29sUmVxdWVzdBIMCgR0eXBlGAEgASgJEg4KBmRldmljZRgCIAEoCRInCgZjb25maWcYAyABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EiUKBGFyZ3MYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IkIKF1ByZXZpZXdQcm90b2NvbFJlc3BvbnNlEicKBnJlc3VsdBgBIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QieQoLRGV2aWNlR3JvdXASDAoEbmFtZRgBIAEoCRIlCgRzcGVjGAIgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBInCgZzdGF0dXMYAyABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EgwKBHlhbWwYBCABKAkiGQoXTGlzdERldmljZUdyb3Vwc1JlcXVlc3QiQwoYTGlzdERldmljZUdyb3Vwc1Jlc3BvbnNlEicKBmdyb3VwcxgBIAMoCzIXLmNsYWJnZW4udjEuRGV2aWNlR3JvdXAiOwoVR2V0RGV2aWNlR3JvdXBSZXF1ZXN0EgwKBG5hbWUYASABKAkSFAoMc3VtbWFyeV9vbmx5GAIgASgIIkAKFkdldERldmljZUdyb3VwUmVzcG9uc2USJgoFZ3JvdXAYASABKAsyFy5jbGFiZ2VuLnYxLkRldmljZUdyb3VwIkIKGENyZWF0ZURldmljZUdyb3VwUmVxdWVzdBImCgVncm91cBgBIAEoCzIXLmNsYWJnZW4udjEuRGV2aWNlR3JvdXAiQwoZQ3JlYXRlRGV2aWNlR3JvdXBSZXNwb25zZRImCgVncm91cBgBIAEoCzIXLmNsYWJnZW4udjEuRGV2aWNlR3JvdXAiQgoYVXBkYXRlRGV2aWNlR3JvdXBSZXF1ZXN0EiYKBWdyb3VwGAEgASgLMhcuY2xhYmdlbi52MS5EZXZpY2VHcm91cCJDChlVcGRhdGVEZXZpY2VHcm91cFJlc3BvbnNlEiYKBWdyb3VwGAEgASgLMhcuY2xhYmdlbi52MS5EZXZpY2VHcm91cCIoChhEZWxldGVEZXZpY2VHcm91cFJlcXVlc3QSDAoEbmFtZRgBIAEoCSIbChlEZWxldGVEZXZpY2VHcm91cFJlc3BvbnNlIpABChVSdW5Hcm91cEFjdGlvblJlcXVlc3QSDQoFZ3JvdXAYASABKAkSEAoIcHJvdG9jb2wYAiABKAkSDgoGYWN0aW9uGAMgASgJEiUKBGFyZ3MYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0Eg8KB21lbWJlcnMYBSABKAkSDgoGcmFuZG9tGAYgASgNImwKEUdyb3VwQWN0aW9uUmVzdWx0Eg0KBWluZGV4GAEgASgNEhAKCHByb3RvY29sGAIgASgJEg0KBWVycm9yGAMgASgJEicKBnJlc3VsdBgEIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QiSAoWUnVuR3JvdXBBY3Rpb25SZXNwb25zZRIuCgdyZXN1bHRzGAEgAygLMh0uY2xhYmdlbi52MS5Hcm91cEFjdGlvblJlc3VsdCJtChdTZXRHcm91cERpc2FibGVkUmVxdWVzdBINCgVncm91cBgBIAEoCRIQCghwcm90b2NvbBgCIAEoCRIPCgdtZW1iZXJzGAMgASgJEg4KBnJhbmRvbRgEIAEoDRIQCghkaXNhYmxlZBgFIAEoCCJKChhTZXRHcm91cERpc2FibGVkUmVzcG9uc2USLgoHcmVzdWx0cxgBIAMoCzIdLmNsYWJnZW4udjEuR3JvdXBBY3Rpb25SZXN1bHQiJAoSV2F0Y2hFdmVudHNSZXF1ZXN0Eg4KBnJlcGxheRgBIAEoCCKHAQoFRXZlbnQSKAoEdGltZRgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGc291cmNlGAIgASgJEgwKBGtpbmQYAyABKAkSDwoHbWVzc2FnZRgEIAEoCRIlCgRkYXRhGAUgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCKaAQoOQ2FwdHVyZVJlcXVlc3QSDQoFcG9ydHMYASADKAkSDgoGZGV2aWNlGAIgASgJEhEKCWRpcmVjdGlvbhgDIAEoCRISCgpldGhlcnR5cGVzGAQgAygNEg8KB3NuYXBsZW4YBSABKA0SDQoFY291bnQYBiABKA0SDwoHc2Vjb25kcxgHIAEoARIRCglzdW1tYXJpZXMYCCABKAgimgEKDUNhcHR1cmVkRnJhbWUSKAoEdGltZRgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDAoEcG9ydBgCIAEoCRIRCglkaXJlY3Rpb24YAyABKAkSDAoEZGF0YRgEIAEoDBIOCgZsZW5ndGgYBSABKA0SDwoHc3VtbWFyeRgGIAEoCRIPCgdkcm9wcGVkGAcgASgEIiIKEkRlY29kZUZyYW1lUmVxdWVzdBIMCgRkYXRhGAEgASgMIj4KE0RlY29kZUZyYW1lUmVzcG9uc2USJwoGcmVzdWx0GAEgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCIUChJHZXRTY2VuYXJpb1JlcXVlc3QiIwoTR2V0U2NlbmFyaW9SZXNwb25zZRIMCgR5YW1sGAEgASgJIjUKFEFwcGx5U2NlbmFyaW9SZXF1ZXN0EgwKBHlhbWwYASABKAkSDwoHcmVwbGFjZRgCIAEoCCIXChVBcHBseVNjZW5hcmlvUmVzcG9uc2Uy0RYKDEFnZW50U2VydmljZRJCCgdHZXRJbmZvEhouY2xhYmdlbi52MS5HZXRJbmZvUmVxdWVzdBobLmNsYWJnZW4udjEuR2V0SW5mb1Jlc3BvbnNlEkgKCUxpc3RQb3J0cxIcLmNsYWJnZW4udjEuTGlzdFBvcnRzUmVxdWVzdBodLmNsYWJnZW4udjEuTGlzdFBvcnRzUmVzcG9uc2USUQoMU2V0UG9ydEFkbWluEh8uY2xhYmdlbi52MS5TZXRQb3J0QWRtaW5SZXF1ZXN0GiAuY2xhYmdlbi52MS5TZXRQb3J0QWRtaW5SZXNwb25zZRJOCgtMaXN0RGV2aWNlcxIeLmNsYWJnZW4udjEuTGlzdERldmljZXNSZXF1ZXN0Gh8uY2xhYmdlbi52MS5MaXN0RGV2aWNlc1Jlc3BvbnNlElEKDENyZWF0ZURldmljZRIfLmNsYWJnZW4udjEuQ3JlYXRlRGV2aWNlUmVxdWVzdBogLmNsYWJnZW4udjEuQ3JlYXRlRGV2aWNlUmVzcG9uc2USUQoMVXBkYXRlRGV2aWNlEh8uY2xhYmdlbi52MS5VcGRhdGVEZXZpY2VSZXF1ZXN0GiAuY2xhYmdlbi52MS5VcGRhdGVEZXZpY2VSZXNwb25zZRJRCgxEZWxldGVEZXZpY2USHy5jbGFiZ2VuLnYxLkRlbGV0ZURldmljZVJlcXVlc3QaIC5jbGFiZ2VuLnYxLkRlbGV0ZURldmljZVJlc3BvbnNlEk4KC0dldERldmljZUlQEh4uY2xhYmdlbi52MS5HZXREZXZpY2VJUFJlcXVlc3QaHy5jbGFiZ2VuLnYxLkdldERldmljZUlQUmVzcG9uc2USWgoPUmVzb2x2ZU5laWdoYm9yEiIuY2xhYmdlbi52MS5SZXNvbHZlTmVpZ2hib3JSZXF1ZXN0GiMuY2xhYmdlbi52MS5SZXNvbHZlTmVpZ2hib3JSZXNwb25zZRJXCg5DbGVhck5laWdoYm9ycxIhLmNsYWJnZW4udjEuQ2xlYXJOZWlnaGJvcnNSZXF1ZXN0GiIuY2xhYmdlbi52MS5DbGVhck5laWdoYm9yc1Jlc3BvbnNlEmAKEUxpc3RSZWNlaXZlZEZsb3dzEiQuY2xhYmdlbi52MS5MaXN0UmVjZWl2ZWRGbG93c1JlcXVlc3QaJS5jbGFiZ2VuLnYxLkxpc3RSZWNlaXZlZEZsb3dzUmVzcG9uc2USYwoSQ2xlYXJSZWNlaXZlZEZsb3dzEiUuY2xhYmdlbi52MS5DbGVhclJlY2VpdmVkRmxvd3NSZXF1ZXN0GiYuY2xhYmdlbi52MS5DbGVhclJlY2VpdmVkRmxvd3NSZXNwb25zZRJgChFMaXN0UHJvdG9jb2xUeXBlcxIkLmNsYWJnZW4udjEuTGlzdFByb3RvY29sVHlwZXNSZXF1ZXN0GiUuY2xhYmdlbi52MS5MaXN0UHJvdG9jb2xUeXBlc1Jlc3BvbnNlElQKDUxpc3RQcm90b2NvbHMSIC5jbGFiZ2VuLnYxLkxpc3RQcm90b2NvbHNSZXF1ZXN0GiEuY2xhYmdlbi52MS5MaXN0UHJvdG9jb2xzUmVzcG9uc2USTgoLR2V0UHJvdG9jb2wSHi5jbGFiZ2VuLnYxLkdldFByb3RvY29sUmVxdWVzdBofLmNsYWJnZW4udjEuR2V0UHJvdG9jb2xSZXNwb25zZRJXCg5DcmVhdGVQcm90b2NvbBIhLmNsYWJnZW4udjEuQ3JlYXRlUHJvdG9jb2xSZXF1ZXN0GiIuY2xhYmdlbi52MS5DcmVhdGVQcm90b2NvbFJlc3BvbnNlElcKDlVwZGF0ZVByb3RvY29sEiEuY2xhYmdlbi52MS5VcGRhdGVQcm90b2NvbFJlcXVlc3QaIi5jbGFiZ2VuLnYxLlVwZGF0ZVByb3RvY29sUmVzcG9uc2USVwoORGVsZXRlUHJvdG9jb2wSIS5jbGFiZ2VuLnYxLkRlbGV0ZVByb3RvY29sUmVxdWVzdBoiLmNsYWJnZW4udjEuRGVsZXRlUHJvdG9jb2xSZXNwb25zZRJgChFSdW5Qcm90b2NvbEFjdGlvbhIkLmNsYWJnZW4udjEuUnVuUHJvdG9jb2xBY3Rpb25SZXF1ZXN0GiUuY2xhYmdlbi52MS5SdW5Qcm90b2NvbEFjdGlvblJlc3BvbnNlEmYKE1NldFByb3RvY29sRGlzYWJsZWQSJi5jbGFiZ2VuLnYxLlNldFByb3RvY29sRGlzYWJsZWRSZXF1ZXN0GicuY2xhYmdlbi52MS5TZXRQcm90b2NvbERpc2FibGVkUmVzcG9uc2USWgoPUHJldmlld1Byb3RvY29sEiIuY2xhYmdlbi52MS5QcmV2aWV3UHJvdG9jb2xSZXF1ZXN0GiMuY2xhYmdlbi52MS5QcmV2aWV3UHJvdG9jb2xSZXNwb25zZRJdChBMaXN0RGV2aWNlR3JvdXBzEiMuY2xhYmdlbi52MS5MaXN0RGV2aWNlR3JvdXBzUmVxdWVzdBokLmNsYWJnZW4udjEuTGlzdERldmljZUdyb3Vwc1Jlc3BvbnNlElcKDkdldERldmljZUdyb3VwEiEuY2xhYmdlbi52MS5HZXREZXZpY2VHcm91cFJlcXVlc3QaIi5jbGFiZ2VuLnYxLkdldERldmljZUdyb3VwUmVzcG9uc2USYAoRQ3JlYXRlRGV2aWNlR3JvdXASJC5jbGFiZ2VuLnYxLkNyZWF0ZURldmljZUdyb3VwUmVxdWVzdBolLmNsYWJnZW4udjEuQ3JlYXRlRGV2aWNlR3JvdXBSZXNwb25zZRJgChFVcGRhdGVEZXZpY2VHcm91cBIkLmNsYWJnZW4udjEuVXBkYXRlRGV2aWNlR3JvdXBSZXF1ZXN0GiUuY2xhYmdlbi52MS5VcGRhdGVEZXZpY2VHcm91cFJlc3BvbnNlEmAKEURlbGV0ZURldmljZUdyb3VwEiQuY2xhYmdlbi52MS5EZWxldGVEZXZpY2VHcm91cFJlcXVlc3QaJS5jbGFiZ2VuLnYxLkRlbGV0ZURldmljZUdyb3VwUmVzcG9uc2USVwoOUnVuR3JvdXBBY3Rpb24SIS5jbGFiZ2VuLnYxLlJ1bkdyb3VwQWN0aW9uUmVxdWVzdBoiLmNsYWJnZW4udjEuUnVuR3JvdXBBY3Rpb25SZXNwb25zZRJdChBTZXRHcm91cERpc2FibGVkEiMuY2xhYmdlbi52MS5TZXRHcm91cERpc2FibGVkUmVxdWVzdBokLmNsYWJnZW4udjEuU2V0R3JvdXBEaXNhYmxlZFJlc3BvbnNlEkIKC1dhdGNoRXZlbnRzEh4uY2xhYmdlbi52MS5XYXRjaEV2ZW50c1JlcXVlc3QaES5jbGFiZ2VuLnYxLkV2ZW50MAESQgoHQ2FwdHVyZRIaLmNsYWJnZW4udjEuQ2FwdHVyZVJlcXVlc3QaGS5jbGFiZ2VuLnYxLkNhcHR1cmVkRnJhbWUwARJOCgtEZWNvZGVGcmFtZRIeLmNsYWJnZW4udjEuRGVjb2RlRnJhbWVSZXF1ZXN0Gh8uY2xhYmdlbi52MS5EZWNvZGVGcmFtZVJlc3BvbnNlEk4KC0dldFNjZW5hcmlvEh4uY2xhYmdlbi52MS5HZXRTY2VuYXJpb1JlcXVlc3QaHy5jbGFiZ2VuLnYxLkdldFNjZW5hcmlvUmVzcG9uc2USVAoNQXBwbHlTY2VuYXJpbxIgLmNsYWJnZW4udjEuQXBwbHlTY2VuYXJpb1JlcXVlc3QaIS5jbGFiZ2VuLnYxLkFwcGx5U2NlbmFyaW9SZXNwb25zZUI0WjJnaXRodWIuY29tL3JpcG5ldC9jbGFiZ2VuL2dlbi9jbGFiZ2VuL3YxO2NsYWJnZW52MWIGcHJvdG8z", [file_google_protobuf_struct, file_google_protobuf_timestamp]);
+  fileDesc("ChZjbGFiZ2VuL3YxL2FnZW50LnByb3RvEgpjbGFiZ2VuLnYxIhAKDkdldEluZm9SZXF1ZXN0IpEBCg9HZXRJbmZvUmVzcG9uc2USEAoIaG9zdG5hbWUYASABKAkSDwoHdmVyc2lvbhgCIAEoCRIuCgpzdGFydF90aW1lGAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIrCgtwZXJzaXN0ZW5jZRgEIAEoCzIWLmNsYWJnZW4udjEuQ29uZmlnSW5mbyJeCgpDb25maWdJbmZvEgwKBGZpbGUYASABKAkSEQoJbm90X3NhdmVkGAIgASgJEg4KBnNvdXJjZRgDIAEoCRIQCghzY2VuYXJpbxgEIAEoCRINCgVlcnJvchgFIAEoCSKBAQoMUG9ydENvdW50ZXJzEhEKCXJ4X2ZyYW1lcxgBIAEoBBIQCghyeF9ieXRlcxgCIAEoBBIRCgl0eF9mcmFtZXMYAyABKAQSEAoIdHhfYnl0ZXMYBCABKAQSEQoJdHhfZXJyb3JzGAUgASgEEhQKDHJ4X3VubWF0Y2hlZBgGIAEoBCKMAQoEUG9ydBIMCgRuYW1lGAEgASgJEg0KBWluZGV4GAIgASgFEgsKA21hYxgDIAEoCRIQCghhZG1pbl91cBgEIAEoCBIPCgdvcGVyX3VwGAUgASgIEgsKA210dRgGIAEoBRIqCghjb3VudGVycxgHIAEoCzIYLmNsYWJnZW4udjEuUG9ydENvdW50ZXJzIhIKEExpc3RQb3J0c1JlcXVlc3QiNAoRTGlzdFBvcnRzUmVzcG9uc2USHwoFcG9ydHMYASADKAsyEC5jbGFiZ2VuLnYxLlBvcnQiLwoTU2V0UG9ydEFkbWluUmVxdWVzdBIMCgRuYW1lGAEgASgJEgoKAnVwGAIgASgIIjYKFFNldFBvcnRBZG1pblJlc3BvbnNlEh4KBHBvcnQYASABKAsyEC5jbGFiZ2VuLnYxLlBvcnQiMQoHVmxhblRhZxIMCgR0cGlkGAEgASgNEgsKA3ZpZBgCIAEoDRILCgNwY3AYAyABKA0isAEKBkRldmljZRIMCgRuYW1lGAEgASgJEgwKBHBvcnQYAiABKAkSCwoDbWFjGAMgASgJEiIKBXZsYW5zGAQgAygLMhMuY2xhYmdlbi52MS5WbGFuVGFnEhMKC21hY19kZXJpdmVkGAUgASgIEhEKCWFkZHJlc3NlcxgGIAMoCRIQCghnYXRld2F5NBgHIAEoCRIQCghnYXRld2F5NhgIIAEoCRINCgVncm91cBgJIAEoCSIUChJMaXN0RGV2aWNlc1JlcXVlc3QiOgoTTGlzdERldmljZXNSZXNwb25zZRIjCgdkZXZpY2VzGAEgAygLMhIuY2xhYmdlbi52MS5EZXZpY2UiOQoTQ3JlYXRlRGV2aWNlUmVxdWVzdBIiCgZkZXZpY2UYASABKAsyEi5jbGFiZ2VuLnYxLkRldmljZSI6ChRDcmVhdGVEZXZpY2VSZXNwb25zZRIiCgZkZXZpY2UYASABKAsyEi5jbGFiZ2VuLnYxLkRldmljZSI5ChNVcGRhdGVEZXZpY2VSZXF1ZXN0EiIKBmRldmljZRgBIAEoCzISLmNsYWJnZW4udjEuRGV2aWNlIjoKFFVwZGF0ZURldmljZVJlc3BvbnNlEiIKBmRldmljZRgBIAEoCzISLmNsYWJnZW4udjEuRGV2aWNlIiMKE0RlbGV0ZURldmljZVJlcXVlc3QSDAoEbmFtZRgBIAEoCSIWChREZWxldGVEZXZpY2VSZXNwb25zZSJCCghOZWlnaGJvchIKCgJpcBgBIAEoCRILCgNtYWMYAiABKAkSDQoFc3RhdGUYAyABKAkSDgoGYWdlX21zGAQgASgDIiIKEkdldERldmljZUlQUmVxdWVzdBIMCgRuYW1lGAEgASgJIucBChNHZXREZXZpY2VJUFJlc3BvbnNlEhEKCWFkZHJlc3NlcxgBIAMoCRIQCghnYXRld2F5NBgCIAEoCRIQCghnYXRld2F5NhgDIAEoCRInCgluZWlnaGJvcnMYBCADKAsyFC5jbGFiZ2VuLnYxLk5laWdoYm9yEj8KCGNvdW50ZXJzGAUgAygLMi0uY2xhYmdlbi52MS5HZXREZXZpY2VJUFJlc3BvbnNlLkNvdW50ZXJzRW50cnkaLwoNQ291bnRlcnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAQ6AjgBIjQKFlJlc29sdmVOZWlnaGJvclJlcXVlc3QSDgoGZGV2aWNlGAEgASgJEgoKAmlwGAIgASgJIlgKF1Jlc29sdmVOZWlnaGJvclJlc3BvbnNlEhAKCG5leHRfaG9wGAEgASgJEgsKA21hYxgCIAEoCRIOCgZjYWNoZWQYAyABKAgSDgoGcnR0X3VzGAQgASgDIicKFUNsZWFyTmVpZ2hib3JzUmVxdWVzdBIOCgZkZXZpY2UYASABKAkiGAoWQ2xlYXJOZWlnaGJvcnNSZXNwb25zZSJGCgxSZWNlaXZlZEZsb3cSDgoGZGV2aWNlGAEgASgJEiYKBXN0YXRzGAIgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCIqChhMaXN0UmVjZWl2ZWRGbG93c1JlcXVlc3QSDgoGZGV2aWNlGAEgASgJIkQKGUxpc3RSZWNlaXZlZEZsb3dzUmVzcG9uc2USJwoFZmxvd3MYASADKAsyGC5jbGFiZ2VuLnYxLlJlY2VpdmVkRmxvdyI8ChlDbGVhclJlY2VpdmVkRmxvd3NSZXF1ZXN0Eg4KBmRldmljZRgBIAEoCRIPCgdmbG93X2lkGAIgASgJIhwKGkNsZWFyUmVjZWl2ZWRGbG93c1Jlc3BvbnNlIkQKCkFjdGlvblR5cGUSDAoEbmFtZRgBIAEoCRITCgtkZXNjcmlwdGlvbhgCIAEoCRITCgthcmdzX3NjaGVtYRgDIAEoCSKDAQoMUHJvdG9jb2xUeXBlEgwKBG5hbWUYASABKAkSEwoLZGVzY3JpcHRpb24YAiABKAkSFQoNY29uZmlnX3NjaGVtYRgDIAEoCRInCgdhY3Rpb25zGAQgAygLMhYuY2xhYmdlbi52MS5BY3Rpb25UeXBlEhAKCGNhdGVnb3J5GAUgASgJIhoKGExpc3RQcm90b2NvbFR5cGVzUmVxdWVzdCJEChlMaXN0UHJvdG9jb2xUeXBlc1Jlc3BvbnNlEicKBXR5cGVzGAEgAygLMhguY2xhYmdlbi52MS5Qcm90b2NvbFR5cGUixwEKCFByb3RvY29sEgwKBG5hbWUYASABKAkSDAoEdHlwZRgCIAEoCRIOCgZkZXZpY2UYAyABKAkSJwoGY29uZmlnGAQgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBINCgVzdGF0ZRgFIAEoCRINCgVlcnJvchgGIAEoCRInCgZzdGF0dXMYByABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0Eg0KBWdyb3VwGAggASgJEhAKCGRpc2FibGVkGAkgASgIIlQKFExpc3RQcm90b2NvbHNSZXF1ZXN0EhMKC3dpdGhfc3RhdHVzGAEgASgIEg0KBWJyaWVmGAIgASgIEhgKEG5vX2dyb3VwX21lbWJlcnMYAyABKAgiQAoVTGlzdFByb3RvY29sc1Jlc3BvbnNlEicKCXByb3RvY29scxgBIAMoCzIULmNsYWJnZW4udjEuUHJvdG9jb2wiIgoSR2V0UHJvdG9jb2xSZXF1ZXN0EgwKBG5hbWUYASABKAkiPQoTR2V0UHJvdG9jb2xSZXNwb25zZRImCghwcm90b2NvbBgBIAEoCzIULmNsYWJnZW4udjEuUHJvdG9jb2wiPwoVQ3JlYXRlUHJvdG9jb2xSZXF1ZXN0EiYKCHByb3RvY29sGAEgASgLMhQuY2xhYmdlbi52MS5Qcm90b2NvbCJAChZDcmVhdGVQcm90b2NvbFJlc3BvbnNlEiYKCHByb3RvY29sGAEgASgLMhQuY2xhYmdlbi52MS5Qcm90b2NvbCJOChVVcGRhdGVQcm90b2NvbFJlcXVlc3QSDAoEbmFtZRgBIAEoCRInCgZjb25maWcYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IkAKFlVwZGF0ZVByb3RvY29sUmVzcG9uc2USJgoIcHJvdG9jb2wYASABKAsyFC5jbGFiZ2VuLnYxLlByb3RvY29sIiUKFURlbGV0ZVByb3RvY29sUmVxdWVzdBIMCgRuYW1lGAEgASgJIhgKFkRlbGV0ZVByb3RvY29sUmVzcG9uc2UiPAoaU2V0UHJvdG9jb2xEaXNhYmxlZFJlcXVlc3QSDAoEbmFtZRgBIAEoCRIQCghkaXNhYmxlZBgCIAEoCCJFChtTZXRQcm90b2NvbERpc2FibGVkUmVzcG9uc2USJgoIcHJvdG9jb2wYASABKAsyFC5jbGFiZ2VuLnYxLlByb3RvY29sIl8KGFJ1blByb3RvY29sQWN0aW9uUmVxdWVzdBIMCgRuYW1lGAEgASgJEg4KBmFjdGlvbhgCIAEoCRIlCgRhcmdzGAMgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCJEChlSdW5Qcm90b2NvbEFjdGlvblJlc3BvbnNlEicKBnJlc3VsdBgBIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QihgEKFlByZXZpZXdQcm90b2NvbFJlcXVlc3QSDAoEdHlwZRgBIAEoCRIOCgZkZXZpY2UYAiABKAkSJwoGY29uZmlnGAMgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIlCgRhcmdzGAQgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCJCChdQcmV2aWV3UHJvdG9jb2xSZXNwb25zZRInCgZyZXN1bHQYASABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0InkKC0RldmljZUdyb3VwEgwKBG5hbWUYASABKAkSJQoEc3BlYxgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSJwoGc3RhdHVzGAMgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIMCgR5YW1sGAQgASgJIhkKF0xpc3REZXZpY2VHcm91cHNSZXF1ZXN0IkMKGExpc3REZXZpY2VHcm91cHNSZXNwb25zZRInCgZncm91cHMYASADKAsyFy5jbGFiZ2VuLnYxLkRldmljZUdyb3VwIjsKFUdldERldmljZUdyb3VwUmVxdWVzdBIMCgRuYW1lGAEgASgJEhQKDHN1bW1hcnlfb25seRgCIAEoCCJAChZHZXREZXZpY2VHcm91cFJlc3BvbnNlEiYKBWdyb3VwGAEgASgLMhcuY2xhYmdlbi52MS5EZXZpY2VHcm91cCJCChhDcmVhdGVEZXZpY2VHcm91cFJlcXVlc3QSJgoFZ3JvdXAYASABKAsyFy5jbGFiZ2VuLnYxLkRldmljZUdyb3VwIkMKGUNyZWF0ZURldmljZUdyb3VwUmVzcG9uc2USJgoFZ3JvdXAYASABKAsyFy5jbGFiZ2VuLnYxLkRldmljZUdyb3VwIkIKGFVwZGF0ZURldmljZUdyb3VwUmVxdWVzdBImCgVncm91cBgBIAEoCzIXLmNsYWJnZW4udjEuRGV2aWNlR3JvdXAiQwoZVXBkYXRlRGV2aWNlR3JvdXBSZXNwb25zZRImCgVncm91cBgBIAEoCzIXLmNsYWJnZW4udjEuRGV2aWNlR3JvdXAiKAoYRGVsZXRlRGV2aWNlR3JvdXBSZXF1ZXN0EgwKBG5hbWUYASABKAkiGwoZRGVsZXRlRGV2aWNlR3JvdXBSZXNwb25zZSKQAQoVUnVuR3JvdXBBY3Rpb25SZXF1ZXN0Eg0KBWdyb3VwGAEgASgJEhAKCHByb3RvY29sGAIgASgJEg4KBmFjdGlvbhgDIAEoCRIlCgRhcmdzGAQgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIPCgdtZW1iZXJzGAUgASgJEg4KBnJhbmRvbRgGIAEoDSJsChFHcm91cEFjdGlvblJlc3VsdBINCgVpbmRleBgBIAEoDRIQCghwcm90b2NvbBgCIAEoCRINCgVlcnJvchgDIAEoCRInCgZyZXN1bHQYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0IkgKFlJ1bkdyb3VwQWN0aW9uUmVzcG9uc2USLgoHcmVzdWx0cxgBIAMoCzIdLmNsYWJnZW4udjEuR3JvdXBBY3Rpb25SZXN1bHQibQoXU2V0R3JvdXBEaXNhYmxlZFJlcXVlc3QSDQoFZ3JvdXAYASABKAkSEAoIcHJvdG9jb2wYAiABKAkSDwoHbWVtYmVycxgDIAEoCRIOCgZyYW5kb20YBCABKA0SEAoIZGlzYWJsZWQYBSABKAgiSgoYU2V0R3JvdXBEaXNhYmxlZFJlc3BvbnNlEi4KB3Jlc3VsdHMYASADKAsyHS5jbGFiZ2VuLnYxLkdyb3VwQWN0aW9uUmVzdWx0IiQKEldhdGNoRXZlbnRzUmVxdWVzdBIOCgZyZXBsYXkYASABKAgihwEKBUV2ZW50EigKBHRpbWUYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg4KBnNvdXJjZRgCIAEoCRIMCgRraW5kGAMgASgJEg8KB21lc3NhZ2UYBCABKAkSJQoEZGF0YRgFIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QimgEKDkNhcHR1cmVSZXF1ZXN0Eg0KBXBvcnRzGAEgAygJEg4KBmRldmljZRgCIAEoCRIRCglkaXJlY3Rpb24YAyABKAkSEgoKZXRoZXJ0eXBlcxgEIAMoDRIPCgdzbmFwbGVuGAUgASgNEg0KBWNvdW50GAYgASgNEg8KB3NlY29uZHMYByABKAESEQoJc3VtbWFyaWVzGAggASgIIpoBCg1DYXB0dXJlZEZyYW1lEigKBHRpbWUYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgwKBHBvcnQYAiABKAkSEQoJZGlyZWN0aW9uGAMgASgJEgwKBGRhdGEYBCABKAwSDgoGbGVuZ3RoGAUgASgNEg8KB3N1bW1hcnkYBiABKAkSDwoHZHJvcHBlZBgHIAEoBCIiChJEZWNvZGVGcmFtZVJlcXVlc3QSDAoEZGF0YRgBIAEoDCI+ChNEZWNvZGVGcmFtZVJlc3BvbnNlEicKBnJlc3VsdBgBIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QiFAoSR2V0U2NlbmFyaW9SZXF1ZXN0IiMKE0dldFNjZW5hcmlvUmVzcG9uc2USDAoEeWFtbBgBIAEoCSI1ChRBcHBseVNjZW5hcmlvUmVxdWVzdBIMCgR5YW1sGAEgASgJEg8KB3JlcGxhY2UYAiABKAgiFwoVQXBwbHlTY2VuYXJpb1Jlc3BvbnNlIhQKElJlc2V0Q29uZmlnUmVxdWVzdCJCChNSZXNldENvbmZpZ1Jlc3BvbnNlEisKC3BlcnNpc3RlbmNlGAEgASgLMhYuY2xhYmdlbi52MS5Db25maWdJbmZvMqEXCgxBZ2VudFNlcnZpY2USQgoHR2V0SW5mbxIaLmNsYWJnZW4udjEuR2V0SW5mb1JlcXVlc3QaGy5jbGFiZ2VuLnYxLkdldEluZm9SZXNwb25zZRJICglMaXN0UG9ydHMSHC5jbGFiZ2VuLnYxLkxpc3RQb3J0c1JlcXVlc3QaHS5jbGFiZ2VuLnYxLkxpc3RQb3J0c1Jlc3BvbnNlElEKDFNldFBvcnRBZG1pbhIfLmNsYWJnZW4udjEuU2V0UG9ydEFkbWluUmVxdWVzdBogLmNsYWJnZW4udjEuU2V0UG9ydEFkbWluUmVzcG9uc2USTgoLTGlzdERldmljZXMSHi5jbGFiZ2VuLnYxLkxpc3REZXZpY2VzUmVxdWVzdBofLmNsYWJnZW4udjEuTGlzdERldmljZXNSZXNwb25zZRJRCgxDcmVhdGVEZXZpY2USHy5jbGFiZ2VuLnYxLkNyZWF0ZURldmljZVJlcXVlc3QaIC5jbGFiZ2VuLnYxLkNyZWF0ZURldmljZVJlc3BvbnNlElEKDFVwZGF0ZURldmljZRIfLmNsYWJnZW4udjEuVXBkYXRlRGV2aWNlUmVxdWVzdBogLmNsYWJnZW4udjEuVXBkYXRlRGV2aWNlUmVzcG9uc2USUQoMRGVsZXRlRGV2aWNlEh8uY2xhYmdlbi52MS5EZWxldGVEZXZpY2VSZXF1ZXN0GiAuY2xhYmdlbi52MS5EZWxldGVEZXZpY2VSZXNwb25zZRJOCgtHZXREZXZpY2VJUBIeLmNsYWJnZW4udjEuR2V0RGV2aWNlSVBSZXF1ZXN0Gh8uY2xhYmdlbi52MS5HZXREZXZpY2VJUFJlc3BvbnNlEloKD1Jlc29sdmVOZWlnaGJvchIiLmNsYWJnZW4udjEuUmVzb2x2ZU5laWdoYm9yUmVxdWVzdBojLmNsYWJnZW4udjEuUmVzb2x2ZU5laWdoYm9yUmVzcG9uc2USVwoOQ2xlYXJOZWlnaGJvcnMSIS5jbGFiZ2VuLnYxLkNsZWFyTmVpZ2hib3JzUmVxdWVzdBoiLmNsYWJnZW4udjEuQ2xlYXJOZWlnaGJvcnNSZXNwb25zZRJgChFMaXN0UmVjZWl2ZWRGbG93cxIkLmNsYWJnZW4udjEuTGlzdFJlY2VpdmVkRmxvd3NSZXF1ZXN0GiUuY2xhYmdlbi52MS5MaXN0UmVjZWl2ZWRGbG93c1Jlc3BvbnNlEmMKEkNsZWFyUmVjZWl2ZWRGbG93cxIlLmNsYWJnZW4udjEuQ2xlYXJSZWNlaXZlZEZsb3dzUmVxdWVzdBomLmNsYWJnZW4udjEuQ2xlYXJSZWNlaXZlZEZsb3dzUmVzcG9uc2USYAoRTGlzdFByb3RvY29sVHlwZXMSJC5jbGFiZ2VuLnYxLkxpc3RQcm90b2NvbFR5cGVzUmVxdWVzdBolLmNsYWJnZW4udjEuTGlzdFByb3RvY29sVHlwZXNSZXNwb25zZRJUCg1MaXN0UHJvdG9jb2xzEiAuY2xhYmdlbi52MS5MaXN0UHJvdG9jb2xzUmVxdWVzdBohLmNsYWJnZW4udjEuTGlzdFByb3RvY29sc1Jlc3BvbnNlEk4KC0dldFByb3RvY29sEh4uY2xhYmdlbi52MS5HZXRQcm90b2NvbFJlcXVlc3QaHy5jbGFiZ2VuLnYxLkdldFByb3RvY29sUmVzcG9uc2USVwoOQ3JlYXRlUHJvdG9jb2wSIS5jbGFiZ2VuLnYxLkNyZWF0ZVByb3RvY29sUmVxdWVzdBoiLmNsYWJnZW4udjEuQ3JlYXRlUHJvdG9jb2xSZXNwb25zZRJXCg5VcGRhdGVQcm90b2NvbBIhLmNsYWJnZW4udjEuVXBkYXRlUHJvdG9jb2xSZXF1ZXN0GiIuY2xhYmdlbi52MS5VcGRhdGVQcm90b2NvbFJlc3BvbnNlElcKDkRlbGV0ZVByb3RvY29sEiEuY2xhYmdlbi52MS5EZWxldGVQcm90b2NvbFJlcXVlc3QaIi5jbGFiZ2VuLnYxLkRlbGV0ZVByb3RvY29sUmVzcG9uc2USYAoRUnVuUHJvdG9jb2xBY3Rpb24SJC5jbGFiZ2VuLnYxLlJ1blByb3RvY29sQWN0aW9uUmVxdWVzdBolLmNsYWJnZW4udjEuUnVuUHJvdG9jb2xBY3Rpb25SZXNwb25zZRJmChNTZXRQcm90b2NvbERpc2FibGVkEiYuY2xhYmdlbi52MS5TZXRQcm90b2NvbERpc2FibGVkUmVxdWVzdBonLmNsYWJnZW4udjEuU2V0UHJvdG9jb2xEaXNhYmxlZFJlc3BvbnNlEloKD1ByZXZpZXdQcm90b2NvbBIiLmNsYWJnZW4udjEuUHJldmlld1Byb3RvY29sUmVxdWVzdBojLmNsYWJnZW4udjEuUHJldmlld1Byb3RvY29sUmVzcG9uc2USXQoQTGlzdERldmljZUdyb3VwcxIjLmNsYWJnZW4udjEuTGlzdERldmljZUdyb3Vwc1JlcXVlc3QaJC5jbGFiZ2VuLnYxLkxpc3REZXZpY2VHcm91cHNSZXNwb25zZRJXCg5HZXREZXZpY2VHcm91cBIhLmNsYWJnZW4udjEuR2V0RGV2aWNlR3JvdXBSZXF1ZXN0GiIuY2xhYmdlbi52MS5HZXREZXZpY2VHcm91cFJlc3BvbnNlEmAKEUNyZWF0ZURldmljZUdyb3VwEiQuY2xhYmdlbi52MS5DcmVhdGVEZXZpY2VHcm91cFJlcXVlc3QaJS5jbGFiZ2VuLnYxLkNyZWF0ZURldmljZUdyb3VwUmVzcG9uc2USYAoRVXBkYXRlRGV2aWNlR3JvdXASJC5jbGFiZ2VuLnYxLlVwZGF0ZURldmljZUdyb3VwUmVxdWVzdBolLmNsYWJnZW4udjEuVXBkYXRlRGV2aWNlR3JvdXBSZXNwb25zZRJgChFEZWxldGVEZXZpY2VHcm91cBIkLmNsYWJnZW4udjEuRGVsZXRlRGV2aWNlR3JvdXBSZXF1ZXN0GiUuY2xhYmdlbi52MS5EZWxldGVEZXZpY2VHcm91cFJlc3BvbnNlElcKDlJ1bkdyb3VwQWN0aW9uEiEuY2xhYmdlbi52MS5SdW5Hcm91cEFjdGlvblJlcXVlc3QaIi5jbGFiZ2VuLnYxLlJ1bkdyb3VwQWN0aW9uUmVzcG9uc2USXQoQU2V0R3JvdXBEaXNhYmxlZBIjLmNsYWJnZW4udjEuU2V0R3JvdXBEaXNhYmxlZFJlcXVlc3QaJC5jbGFiZ2VuLnYxLlNldEdyb3VwRGlzYWJsZWRSZXNwb25zZRJCCgtXYXRjaEV2ZW50cxIeLmNsYWJnZW4udjEuV2F0Y2hFdmVudHNSZXF1ZXN0GhEuY2xhYmdlbi52MS5FdmVudDABEkIKB0NhcHR1cmUSGi5jbGFiZ2VuLnYxLkNhcHR1cmVSZXF1ZXN0GhkuY2xhYmdlbi52MS5DYXB0dXJlZEZyYW1lMAESTgoLRGVjb2RlRnJhbWUSHi5jbGFiZ2VuLnYxLkRlY29kZUZyYW1lUmVxdWVzdBofLmNsYWJnZW4udjEuRGVjb2RlRnJhbWVSZXNwb25zZRJOCgtHZXRTY2VuYXJpbxIeLmNsYWJnZW4udjEuR2V0U2NlbmFyaW9SZXF1ZXN0Gh8uY2xhYmdlbi52MS5HZXRTY2VuYXJpb1Jlc3BvbnNlElQKDUFwcGx5U2NlbmFyaW8SIC5jbGFiZ2VuLnYxLkFwcGx5U2NlbmFyaW9SZXF1ZXN0GiEuY2xhYmdlbi52MS5BcHBseVNjZW5hcmlvUmVzcG9uc2USTgoLUmVzZXRDb25maWcSHi5jbGFiZ2VuLnYxLlJlc2V0Q29uZmlnUmVxdWVzdBofLmNsYWJnZW4udjEuUmVzZXRDb25maWdSZXNwb25zZUI0WjJnaXRodWIuY29tL3JpcG5ldC9jbGFiZ2VuL2dlbi9jbGFiZ2VuL3YxO2NsYWJnZW52MWIGcHJvdG8z", [file_google_protobuf_struct, file_google_protobuf_timestamp]);
 
 /**
  * @generated from message clabgen.v1.GetInfoRequest
@@ -45,6 +45,11 @@ export type GetInfoResponse = Message<"clabgen.v1.GetInfoResponse"> & {
    * @generated from field: google.protobuf.Timestamp start_time = 3;
    */
   startTime?: Timestamp;
+
+  /**
+   * @generated from field: clabgen.v1.ConfigInfo persistence = 4;
+   */
+  persistence?: ConfigInfo;
 };
 
 /**
@@ -53,6 +58,57 @@ export type GetInfoResponse = Message<"clabgen.v1.GetInfoResponse"> & {
  */
 export const GetInfoResponseSchema: GenMessage<GetInfoResponse> = /*@__PURE__*/
   messageDesc(file_clabgen_v1_agent, 1);
+
+/**
+ * Where the agent keeps its config across lab restarts.
+ *
+ * @generated from message clabgen.v1.ConfigInfo
+ */
+export type ConfigInfo = Message<"clabgen.v1.ConfigInfo"> & {
+  /**
+   * The saved config, as the lab host sees it (in containerlab:
+   * clab-<lab>/<node>/clabgen.yml); empty when not saving.
+   *
+   * @generated from field: string file = 1;
+   */
+  file: string;
+
+  /**
+   * Why not saving, when file is empty.
+   *
+   * @generated from field: string not_saved = 2;
+   */
+  notSaved: string;
+
+  /**
+   * Where the config came from at start or the last reset: "saved",
+   * "scenario" (the topology's, CLABGEN_SCENARIO) or "empty".
+   *
+   * @generated from field: string source = 3;
+   */
+  source: string;
+
+  /**
+   * The topology's scenario file (as the agent sees it), if any.
+   *
+   * @generated from field: string scenario = 4;
+   */
+  scenario: string;
+
+  /**
+   * The last save failure, if the last save failed.
+   *
+   * @generated from field: string error = 5;
+   */
+  error: string;
+};
+
+/**
+ * Describes the message clabgen.v1.ConfigInfo.
+ * Use `create(ConfigInfoSchema)` to create a new message.
+ */
+export const ConfigInfoSchema: GenMessage<ConfigInfo> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 2);
 
 /**
  * @generated from message clabgen.v1.PortCounters
@@ -94,7 +150,7 @@ export type PortCounters = Message<"clabgen.v1.PortCounters"> & {
  * Use `create(PortCountersSchema)` to create a new message.
  */
 export const PortCountersSchema: GenMessage<PortCounters> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 2);
+  messageDesc(file_clabgen_v1_agent, 3);
 
 /**
  * @generated from message clabgen.v1.Port
@@ -141,7 +197,7 @@ export type Port = Message<"clabgen.v1.Port"> & {
  * Use `create(PortSchema)` to create a new message.
  */
 export const PortSchema: GenMessage<Port> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 3);
+  messageDesc(file_clabgen_v1_agent, 4);
 
 /**
  * @generated from message clabgen.v1.ListPortsRequest
@@ -154,7 +210,7 @@ export type ListPortsRequest = Message<"clabgen.v1.ListPortsRequest"> & {
  * Use `create(ListPortsRequestSchema)` to create a new message.
  */
 export const ListPortsRequestSchema: GenMessage<ListPortsRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 4);
+  messageDesc(file_clabgen_v1_agent, 5);
 
 /**
  * @generated from message clabgen.v1.ListPortsResponse
@@ -171,7 +227,7 @@ export type ListPortsResponse = Message<"clabgen.v1.ListPortsResponse"> & {
  * Use `create(ListPortsResponseSchema)` to create a new message.
  */
 export const ListPortsResponseSchema: GenMessage<ListPortsResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 5);
+  messageDesc(file_clabgen_v1_agent, 6);
 
 /**
  * @generated from message clabgen.v1.SetPortAdminRequest
@@ -193,7 +249,7 @@ export type SetPortAdminRequest = Message<"clabgen.v1.SetPortAdminRequest"> & {
  * Use `create(SetPortAdminRequestSchema)` to create a new message.
  */
 export const SetPortAdminRequestSchema: GenMessage<SetPortAdminRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 6);
+  messageDesc(file_clabgen_v1_agent, 7);
 
 /**
  * @generated from message clabgen.v1.SetPortAdminResponse
@@ -210,7 +266,7 @@ export type SetPortAdminResponse = Message<"clabgen.v1.SetPortAdminResponse"> & 
  * Use `create(SetPortAdminResponseSchema)` to create a new message.
  */
 export const SetPortAdminResponseSchema: GenMessage<SetPortAdminResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 7);
+  messageDesc(file_clabgen_v1_agent, 8);
 
 /**
  * @generated from message clabgen.v1.VlanTag
@@ -239,7 +295,7 @@ export type VlanTag = Message<"clabgen.v1.VlanTag"> & {
  * Use `create(VlanTagSchema)` to create a new message.
  */
 export const VlanTagSchema: GenMessage<VlanTag> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 8);
+  messageDesc(file_clabgen_v1_agent, 9);
 
 /**
  * @generated from message clabgen.v1.Device
@@ -307,7 +363,7 @@ export type Device = Message<"clabgen.v1.Device"> & {
  * Use `create(DeviceSchema)` to create a new message.
  */
 export const DeviceSchema: GenMessage<Device> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 9);
+  messageDesc(file_clabgen_v1_agent, 10);
 
 /**
  * @generated from message clabgen.v1.ListDevicesRequest
@@ -320,7 +376,7 @@ export type ListDevicesRequest = Message<"clabgen.v1.ListDevicesRequest"> & {
  * Use `create(ListDevicesRequestSchema)` to create a new message.
  */
 export const ListDevicesRequestSchema: GenMessage<ListDevicesRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 10);
+  messageDesc(file_clabgen_v1_agent, 11);
 
 /**
  * @generated from message clabgen.v1.ListDevicesResponse
@@ -337,7 +393,7 @@ export type ListDevicesResponse = Message<"clabgen.v1.ListDevicesResponse"> & {
  * Use `create(ListDevicesResponseSchema)` to create a new message.
  */
 export const ListDevicesResponseSchema: GenMessage<ListDevicesResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 11);
+  messageDesc(file_clabgen_v1_agent, 12);
 
 /**
  * @generated from message clabgen.v1.CreateDeviceRequest
@@ -354,7 +410,7 @@ export type CreateDeviceRequest = Message<"clabgen.v1.CreateDeviceRequest"> & {
  * Use `create(CreateDeviceRequestSchema)` to create a new message.
  */
 export const CreateDeviceRequestSchema: GenMessage<CreateDeviceRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 12);
+  messageDesc(file_clabgen_v1_agent, 13);
 
 /**
  * @generated from message clabgen.v1.CreateDeviceResponse
@@ -371,7 +427,7 @@ export type CreateDeviceResponse = Message<"clabgen.v1.CreateDeviceResponse"> & 
  * Use `create(CreateDeviceResponseSchema)` to create a new message.
  */
 export const CreateDeviceResponseSchema: GenMessage<CreateDeviceResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 13);
+  messageDesc(file_clabgen_v1_agent, 14);
 
 /**
  * @generated from message clabgen.v1.UpdateDeviceRequest
@@ -388,7 +444,7 @@ export type UpdateDeviceRequest = Message<"clabgen.v1.UpdateDeviceRequest"> & {
  * Use `create(UpdateDeviceRequestSchema)` to create a new message.
  */
 export const UpdateDeviceRequestSchema: GenMessage<UpdateDeviceRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 14);
+  messageDesc(file_clabgen_v1_agent, 15);
 
 /**
  * @generated from message clabgen.v1.UpdateDeviceResponse
@@ -405,7 +461,7 @@ export type UpdateDeviceResponse = Message<"clabgen.v1.UpdateDeviceResponse"> & 
  * Use `create(UpdateDeviceResponseSchema)` to create a new message.
  */
 export const UpdateDeviceResponseSchema: GenMessage<UpdateDeviceResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 15);
+  messageDesc(file_clabgen_v1_agent, 16);
 
 /**
  * @generated from message clabgen.v1.DeleteDeviceRequest
@@ -422,7 +478,7 @@ export type DeleteDeviceRequest = Message<"clabgen.v1.DeleteDeviceRequest"> & {
  * Use `create(DeleteDeviceRequestSchema)` to create a new message.
  */
 export const DeleteDeviceRequestSchema: GenMessage<DeleteDeviceRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 16);
+  messageDesc(file_clabgen_v1_agent, 17);
 
 /**
  * @generated from message clabgen.v1.DeleteDeviceResponse
@@ -435,7 +491,7 @@ export type DeleteDeviceResponse = Message<"clabgen.v1.DeleteDeviceResponse"> & 
  * Use `create(DeleteDeviceResponseSchema)` to create a new message.
  */
 export const DeleteDeviceResponseSchema: GenMessage<DeleteDeviceResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 17);
+  messageDesc(file_clabgen_v1_agent, 18);
 
 /**
  * @generated from message clabgen.v1.Neighbor
@@ -469,7 +525,7 @@ export type Neighbor = Message<"clabgen.v1.Neighbor"> & {
  * Use `create(NeighborSchema)` to create a new message.
  */
 export const NeighborSchema: GenMessage<Neighbor> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 18);
+  messageDesc(file_clabgen_v1_agent, 19);
 
 /**
  * @generated from message clabgen.v1.GetDeviceIPRequest
@@ -486,7 +542,7 @@ export type GetDeviceIPRequest = Message<"clabgen.v1.GetDeviceIPRequest"> & {
  * Use `create(GetDeviceIPRequestSchema)` to create a new message.
  */
 export const GetDeviceIPRequestSchema: GenMessage<GetDeviceIPRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 19);
+  messageDesc(file_clabgen_v1_agent, 20);
 
 /**
  * @generated from message clabgen.v1.GetDeviceIPResponse
@@ -525,7 +581,7 @@ export type GetDeviceIPResponse = Message<"clabgen.v1.GetDeviceIPResponse"> & {
  * Use `create(GetDeviceIPResponseSchema)` to create a new message.
  */
 export const GetDeviceIPResponseSchema: GenMessage<GetDeviceIPResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 20);
+  messageDesc(file_clabgen_v1_agent, 21);
 
 /**
  * @generated from message clabgen.v1.ResolveNeighborRequest
@@ -547,7 +603,7 @@ export type ResolveNeighborRequest = Message<"clabgen.v1.ResolveNeighborRequest"
  * Use `create(ResolveNeighborRequestSchema)` to create a new message.
  */
 export const ResolveNeighborRequestSchema: GenMessage<ResolveNeighborRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 21);
+  messageDesc(file_clabgen_v1_agent, 22);
 
 /**
  * @generated from message clabgen.v1.ResolveNeighborResponse
@@ -583,7 +639,7 @@ export type ResolveNeighborResponse = Message<"clabgen.v1.ResolveNeighborRespons
  * Use `create(ResolveNeighborResponseSchema)` to create a new message.
  */
 export const ResolveNeighborResponseSchema: GenMessage<ResolveNeighborResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 22);
+  messageDesc(file_clabgen_v1_agent, 23);
 
 /**
  * @generated from message clabgen.v1.ClearNeighborsRequest
@@ -600,7 +656,7 @@ export type ClearNeighborsRequest = Message<"clabgen.v1.ClearNeighborsRequest"> 
  * Use `create(ClearNeighborsRequestSchema)` to create a new message.
  */
 export const ClearNeighborsRequestSchema: GenMessage<ClearNeighborsRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 23);
+  messageDesc(file_clabgen_v1_agent, 24);
 
 /**
  * @generated from message clabgen.v1.ClearNeighborsResponse
@@ -613,7 +669,7 @@ export type ClearNeighborsResponse = Message<"clabgen.v1.ClearNeighborsResponse"
  * Use `create(ClearNeighborsResponseSchema)` to create a new message.
  */
 export const ClearNeighborsResponseSchema: GenMessage<ClearNeighborsResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 24);
+  messageDesc(file_clabgen_v1_agent, 25);
 
 /**
  * @generated from message clabgen.v1.ReceivedFlow
@@ -638,7 +694,7 @@ export type ReceivedFlow = Message<"clabgen.v1.ReceivedFlow"> & {
  * Use `create(ReceivedFlowSchema)` to create a new message.
  */
 export const ReceivedFlowSchema: GenMessage<ReceivedFlow> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 25);
+  messageDesc(file_clabgen_v1_agent, 26);
 
 /**
  * @generated from message clabgen.v1.ListReceivedFlowsRequest
@@ -657,7 +713,7 @@ export type ListReceivedFlowsRequest = Message<"clabgen.v1.ListReceivedFlowsRequ
  * Use `create(ListReceivedFlowsRequestSchema)` to create a new message.
  */
 export const ListReceivedFlowsRequestSchema: GenMessage<ListReceivedFlowsRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 26);
+  messageDesc(file_clabgen_v1_agent, 27);
 
 /**
  * @generated from message clabgen.v1.ListReceivedFlowsResponse
@@ -674,7 +730,7 @@ export type ListReceivedFlowsResponse = Message<"clabgen.v1.ListReceivedFlowsRes
  * Use `create(ListReceivedFlowsResponseSchema)` to create a new message.
  */
 export const ListReceivedFlowsResponseSchema: GenMessage<ListReceivedFlowsResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 27);
+  messageDesc(file_clabgen_v1_agent, 28);
 
 /**
  * @generated from message clabgen.v1.ClearReceivedFlowsRequest
@@ -700,7 +756,7 @@ export type ClearReceivedFlowsRequest = Message<"clabgen.v1.ClearReceivedFlowsRe
  * Use `create(ClearReceivedFlowsRequestSchema)` to create a new message.
  */
 export const ClearReceivedFlowsRequestSchema: GenMessage<ClearReceivedFlowsRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 28);
+  messageDesc(file_clabgen_v1_agent, 29);
 
 /**
  * @generated from message clabgen.v1.ClearReceivedFlowsResponse
@@ -713,7 +769,7 @@ export type ClearReceivedFlowsResponse = Message<"clabgen.v1.ClearReceivedFlowsR
  * Use `create(ClearReceivedFlowsResponseSchema)` to create a new message.
  */
 export const ClearReceivedFlowsResponseSchema: GenMessage<ClearReceivedFlowsResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 29);
+  messageDesc(file_clabgen_v1_agent, 30);
 
 /**
  * @generated from message clabgen.v1.ActionType
@@ -742,7 +798,7 @@ export type ActionType = Message<"clabgen.v1.ActionType"> & {
  * Use `create(ActionTypeSchema)` to create a new message.
  */
 export const ActionTypeSchema: GenMessage<ActionType> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 30);
+  messageDesc(file_clabgen_v1_agent, 31);
 
 /**
  * @generated from message clabgen.v1.ProtocolType
@@ -784,7 +840,7 @@ export type ProtocolType = Message<"clabgen.v1.ProtocolType"> & {
  * Use `create(ProtocolTypeSchema)` to create a new message.
  */
 export const ProtocolTypeSchema: GenMessage<ProtocolType> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 31);
+  messageDesc(file_clabgen_v1_agent, 32);
 
 /**
  * @generated from message clabgen.v1.ListProtocolTypesRequest
@@ -797,7 +853,7 @@ export type ListProtocolTypesRequest = Message<"clabgen.v1.ListProtocolTypesRequ
  * Use `create(ListProtocolTypesRequestSchema)` to create a new message.
  */
 export const ListProtocolTypesRequestSchema: GenMessage<ListProtocolTypesRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 32);
+  messageDesc(file_clabgen_v1_agent, 33);
 
 /**
  * @generated from message clabgen.v1.ListProtocolTypesResponse
@@ -814,7 +870,7 @@ export type ListProtocolTypesResponse = Message<"clabgen.v1.ListProtocolTypesRes
  * Use `create(ListProtocolTypesResponseSchema)` to create a new message.
  */
 export const ListProtocolTypesResponseSchema: GenMessage<ListProtocolTypesResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 33);
+  messageDesc(file_clabgen_v1_agent, 34);
 
 /**
  * @generated from message clabgen.v1.Protocol
@@ -877,7 +933,7 @@ export type Protocol = Message<"clabgen.v1.Protocol"> & {
  * Use `create(ProtocolSchema)` to create a new message.
  */
 export const ProtocolSchema: GenMessage<Protocol> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 34);
+  messageDesc(file_clabgen_v1_agent, 35);
 
 /**
  * @generated from message clabgen.v1.ListProtocolsRequest
@@ -911,7 +967,7 @@ export type ListProtocolsRequest = Message<"clabgen.v1.ListProtocolsRequest"> & 
  * Use `create(ListProtocolsRequestSchema)` to create a new message.
  */
 export const ListProtocolsRequestSchema: GenMessage<ListProtocolsRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 35);
+  messageDesc(file_clabgen_v1_agent, 36);
 
 /**
  * @generated from message clabgen.v1.ListProtocolsResponse
@@ -928,7 +984,7 @@ export type ListProtocolsResponse = Message<"clabgen.v1.ListProtocolsResponse"> 
  * Use `create(ListProtocolsResponseSchema)` to create a new message.
  */
 export const ListProtocolsResponseSchema: GenMessage<ListProtocolsResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 36);
+  messageDesc(file_clabgen_v1_agent, 37);
 
 /**
  * @generated from message clabgen.v1.GetProtocolRequest
@@ -945,7 +1001,7 @@ export type GetProtocolRequest = Message<"clabgen.v1.GetProtocolRequest"> & {
  * Use `create(GetProtocolRequestSchema)` to create a new message.
  */
 export const GetProtocolRequestSchema: GenMessage<GetProtocolRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 37);
+  messageDesc(file_clabgen_v1_agent, 38);
 
 /**
  * @generated from message clabgen.v1.GetProtocolResponse
@@ -962,7 +1018,7 @@ export type GetProtocolResponse = Message<"clabgen.v1.GetProtocolResponse"> & {
  * Use `create(GetProtocolResponseSchema)` to create a new message.
  */
 export const GetProtocolResponseSchema: GenMessage<GetProtocolResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 38);
+  messageDesc(file_clabgen_v1_agent, 39);
 
 /**
  * @generated from message clabgen.v1.CreateProtocolRequest
@@ -979,7 +1035,7 @@ export type CreateProtocolRequest = Message<"clabgen.v1.CreateProtocolRequest"> 
  * Use `create(CreateProtocolRequestSchema)` to create a new message.
  */
 export const CreateProtocolRequestSchema: GenMessage<CreateProtocolRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 39);
+  messageDesc(file_clabgen_v1_agent, 40);
 
 /**
  * @generated from message clabgen.v1.CreateProtocolResponse
@@ -996,7 +1052,7 @@ export type CreateProtocolResponse = Message<"clabgen.v1.CreateProtocolResponse"
  * Use `create(CreateProtocolResponseSchema)` to create a new message.
  */
 export const CreateProtocolResponseSchema: GenMessage<CreateProtocolResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 40);
+  messageDesc(file_clabgen_v1_agent, 41);
 
 /**
  * @generated from message clabgen.v1.UpdateProtocolRequest
@@ -1018,7 +1074,7 @@ export type UpdateProtocolRequest = Message<"clabgen.v1.UpdateProtocolRequest"> 
  * Use `create(UpdateProtocolRequestSchema)` to create a new message.
  */
 export const UpdateProtocolRequestSchema: GenMessage<UpdateProtocolRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 41);
+  messageDesc(file_clabgen_v1_agent, 42);
 
 /**
  * @generated from message clabgen.v1.UpdateProtocolResponse
@@ -1035,7 +1091,7 @@ export type UpdateProtocolResponse = Message<"clabgen.v1.UpdateProtocolResponse"
  * Use `create(UpdateProtocolResponseSchema)` to create a new message.
  */
 export const UpdateProtocolResponseSchema: GenMessage<UpdateProtocolResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 42);
+  messageDesc(file_clabgen_v1_agent, 43);
 
 /**
  * @generated from message clabgen.v1.DeleteProtocolRequest
@@ -1052,7 +1108,7 @@ export type DeleteProtocolRequest = Message<"clabgen.v1.DeleteProtocolRequest"> 
  * Use `create(DeleteProtocolRequestSchema)` to create a new message.
  */
 export const DeleteProtocolRequestSchema: GenMessage<DeleteProtocolRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 43);
+  messageDesc(file_clabgen_v1_agent, 44);
 
 /**
  * @generated from message clabgen.v1.DeleteProtocolResponse
@@ -1065,7 +1121,7 @@ export type DeleteProtocolResponse = Message<"clabgen.v1.DeleteProtocolResponse"
  * Use `create(DeleteProtocolResponseSchema)` to create a new message.
  */
 export const DeleteProtocolResponseSchema: GenMessage<DeleteProtocolResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 44);
+  messageDesc(file_clabgen_v1_agent, 45);
 
 /**
  * @generated from message clabgen.v1.SetProtocolDisabledRequest
@@ -1087,7 +1143,7 @@ export type SetProtocolDisabledRequest = Message<"clabgen.v1.SetProtocolDisabled
  * Use `create(SetProtocolDisabledRequestSchema)` to create a new message.
  */
 export const SetProtocolDisabledRequestSchema: GenMessage<SetProtocolDisabledRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 45);
+  messageDesc(file_clabgen_v1_agent, 46);
 
 /**
  * @generated from message clabgen.v1.SetProtocolDisabledResponse
@@ -1104,7 +1160,7 @@ export type SetProtocolDisabledResponse = Message<"clabgen.v1.SetProtocolDisable
  * Use `create(SetProtocolDisabledResponseSchema)` to create a new message.
  */
 export const SetProtocolDisabledResponseSchema: GenMessage<SetProtocolDisabledResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 46);
+  messageDesc(file_clabgen_v1_agent, 47);
 
 /**
  * @generated from message clabgen.v1.RunProtocolActionRequest
@@ -1131,7 +1187,7 @@ export type RunProtocolActionRequest = Message<"clabgen.v1.RunProtocolActionRequ
  * Use `create(RunProtocolActionRequestSchema)` to create a new message.
  */
 export const RunProtocolActionRequestSchema: GenMessage<RunProtocolActionRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 47);
+  messageDesc(file_clabgen_v1_agent, 48);
 
 /**
  * @generated from message clabgen.v1.RunProtocolActionResponse
@@ -1148,7 +1204,7 @@ export type RunProtocolActionResponse = Message<"clabgen.v1.RunProtocolActionRes
  * Use `create(RunProtocolActionResponseSchema)` to create a new message.
  */
 export const RunProtocolActionResponseSchema: GenMessage<RunProtocolActionResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 48);
+  messageDesc(file_clabgen_v1_agent, 49);
 
 /**
  * @generated from message clabgen.v1.PreviewProtocolRequest
@@ -1182,7 +1238,7 @@ export type PreviewProtocolRequest = Message<"clabgen.v1.PreviewProtocolRequest"
  * Use `create(PreviewProtocolRequestSchema)` to create a new message.
  */
 export const PreviewProtocolRequestSchema: GenMessage<PreviewProtocolRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 49);
+  messageDesc(file_clabgen_v1_agent, 50);
 
 /**
  * @generated from message clabgen.v1.PreviewProtocolResponse
@@ -1199,7 +1255,7 @@ export type PreviewProtocolResponse = Message<"clabgen.v1.PreviewProtocolRespons
  * Use `create(PreviewProtocolResponseSchema)` to create a new message.
  */
 export const PreviewProtocolResponseSchema: GenMessage<PreviewProtocolResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 50);
+  messageDesc(file_clabgen_v1_agent, 51);
 
 /**
  * @generated from message clabgen.v1.DeviceGroup
@@ -1240,7 +1296,7 @@ export type DeviceGroup = Message<"clabgen.v1.DeviceGroup"> & {
  * Use `create(DeviceGroupSchema)` to create a new message.
  */
 export const DeviceGroupSchema: GenMessage<DeviceGroup> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 51);
+  messageDesc(file_clabgen_v1_agent, 52);
 
 /**
  * @generated from message clabgen.v1.ListDeviceGroupsRequest
@@ -1253,7 +1309,7 @@ export type ListDeviceGroupsRequest = Message<"clabgen.v1.ListDeviceGroupsReques
  * Use `create(ListDeviceGroupsRequestSchema)` to create a new message.
  */
 export const ListDeviceGroupsRequestSchema: GenMessage<ListDeviceGroupsRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 52);
+  messageDesc(file_clabgen_v1_agent, 53);
 
 /**
  * @generated from message clabgen.v1.ListDeviceGroupsResponse
@@ -1270,7 +1326,7 @@ export type ListDeviceGroupsResponse = Message<"clabgen.v1.ListDeviceGroupsRespo
  * Use `create(ListDeviceGroupsResponseSchema)` to create a new message.
  */
 export const ListDeviceGroupsResponseSchema: GenMessage<ListDeviceGroupsResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 53);
+  messageDesc(file_clabgen_v1_agent, 54);
 
 /**
  * @generated from message clabgen.v1.GetDeviceGroupRequest
@@ -1294,7 +1350,7 @@ export type GetDeviceGroupRequest = Message<"clabgen.v1.GetDeviceGroupRequest"> 
  * Use `create(GetDeviceGroupRequestSchema)` to create a new message.
  */
 export const GetDeviceGroupRequestSchema: GenMessage<GetDeviceGroupRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 54);
+  messageDesc(file_clabgen_v1_agent, 55);
 
 /**
  * @generated from message clabgen.v1.GetDeviceGroupResponse
@@ -1311,7 +1367,7 @@ export type GetDeviceGroupResponse = Message<"clabgen.v1.GetDeviceGroupResponse"
  * Use `create(GetDeviceGroupResponseSchema)` to create a new message.
  */
 export const GetDeviceGroupResponseSchema: GenMessage<GetDeviceGroupResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 55);
+  messageDesc(file_clabgen_v1_agent, 56);
 
 /**
  * @generated from message clabgen.v1.CreateDeviceGroupRequest
@@ -1328,7 +1384,7 @@ export type CreateDeviceGroupRequest = Message<"clabgen.v1.CreateDeviceGroupRequ
  * Use `create(CreateDeviceGroupRequestSchema)` to create a new message.
  */
 export const CreateDeviceGroupRequestSchema: GenMessage<CreateDeviceGroupRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 56);
+  messageDesc(file_clabgen_v1_agent, 57);
 
 /**
  * @generated from message clabgen.v1.CreateDeviceGroupResponse
@@ -1345,7 +1401,7 @@ export type CreateDeviceGroupResponse = Message<"clabgen.v1.CreateDeviceGroupRes
  * Use `create(CreateDeviceGroupResponseSchema)` to create a new message.
  */
 export const CreateDeviceGroupResponseSchema: GenMessage<CreateDeviceGroupResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 57);
+  messageDesc(file_clabgen_v1_agent, 58);
 
 /**
  * @generated from message clabgen.v1.UpdateDeviceGroupRequest
@@ -1362,7 +1418,7 @@ export type UpdateDeviceGroupRequest = Message<"clabgen.v1.UpdateDeviceGroupRequ
  * Use `create(UpdateDeviceGroupRequestSchema)` to create a new message.
  */
 export const UpdateDeviceGroupRequestSchema: GenMessage<UpdateDeviceGroupRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 58);
+  messageDesc(file_clabgen_v1_agent, 59);
 
 /**
  * @generated from message clabgen.v1.UpdateDeviceGroupResponse
@@ -1379,7 +1435,7 @@ export type UpdateDeviceGroupResponse = Message<"clabgen.v1.UpdateDeviceGroupRes
  * Use `create(UpdateDeviceGroupResponseSchema)` to create a new message.
  */
 export const UpdateDeviceGroupResponseSchema: GenMessage<UpdateDeviceGroupResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 59);
+  messageDesc(file_clabgen_v1_agent, 60);
 
 /**
  * @generated from message clabgen.v1.DeleteDeviceGroupRequest
@@ -1396,7 +1452,7 @@ export type DeleteDeviceGroupRequest = Message<"clabgen.v1.DeleteDeviceGroupRequ
  * Use `create(DeleteDeviceGroupRequestSchema)` to create a new message.
  */
 export const DeleteDeviceGroupRequestSchema: GenMessage<DeleteDeviceGroupRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 60);
+  messageDesc(file_clabgen_v1_agent, 61);
 
 /**
  * @generated from message clabgen.v1.DeleteDeviceGroupResponse
@@ -1409,7 +1465,7 @@ export type DeleteDeviceGroupResponse = Message<"clabgen.v1.DeleteDeviceGroupRes
  * Use `create(DeleteDeviceGroupResponseSchema)` to create a new message.
  */
 export const DeleteDeviceGroupResponseSchema: GenMessage<DeleteDeviceGroupResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 61);
+  messageDesc(file_clabgen_v1_agent, 62);
 
 /**
  * @generated from message clabgen.v1.RunGroupActionRequest
@@ -1457,7 +1513,7 @@ export type RunGroupActionRequest = Message<"clabgen.v1.RunGroupActionRequest"> 
  * Use `create(RunGroupActionRequestSchema)` to create a new message.
  */
 export const RunGroupActionRequestSchema: GenMessage<RunGroupActionRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 62);
+  messageDesc(file_clabgen_v1_agent, 63);
 
 /**
  * @generated from message clabgen.v1.GroupActionResult
@@ -1491,7 +1547,7 @@ export type GroupActionResult = Message<"clabgen.v1.GroupActionResult"> & {
  * Use `create(GroupActionResultSchema)` to create a new message.
  */
 export const GroupActionResultSchema: GenMessage<GroupActionResult> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 63);
+  messageDesc(file_clabgen_v1_agent, 64);
 
 /**
  * @generated from message clabgen.v1.RunGroupActionResponse
@@ -1508,7 +1564,7 @@ export type RunGroupActionResponse = Message<"clabgen.v1.RunGroupActionResponse"
  * Use `create(RunGroupActionResponseSchema)` to create a new message.
  */
 export const RunGroupActionResponseSchema: GenMessage<RunGroupActionResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 64);
+  messageDesc(file_clabgen_v1_agent, 65);
 
 /**
  * @generated from message clabgen.v1.SetGroupDisabledRequest
@@ -1551,7 +1607,7 @@ export type SetGroupDisabledRequest = Message<"clabgen.v1.SetGroupDisabledReques
  * Use `create(SetGroupDisabledRequestSchema)` to create a new message.
  */
 export const SetGroupDisabledRequestSchema: GenMessage<SetGroupDisabledRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 65);
+  messageDesc(file_clabgen_v1_agent, 66);
 
 /**
  * One result per member instance changed (result unset).
@@ -1570,7 +1626,7 @@ export type SetGroupDisabledResponse = Message<"clabgen.v1.SetGroupDisabledRespo
  * Use `create(SetGroupDisabledResponseSchema)` to create a new message.
  */
 export const SetGroupDisabledResponseSchema: GenMessage<SetGroupDisabledResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 66);
+  messageDesc(file_clabgen_v1_agent, 67);
 
 /**
  * @generated from message clabgen.v1.WatchEventsRequest
@@ -1589,7 +1645,7 @@ export type WatchEventsRequest = Message<"clabgen.v1.WatchEventsRequest"> & {
  * Use `create(WatchEventsRequestSchema)` to create a new message.
  */
 export const WatchEventsRequestSchema: GenMessage<WatchEventsRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 67);
+  messageDesc(file_clabgen_v1_agent, 68);
 
 /**
  * @generated from message clabgen.v1.Event
@@ -1628,7 +1684,7 @@ export type Event = Message<"clabgen.v1.Event"> & {
  * Use `create(EventSchema)` to create a new message.
  */
 export const EventSchema: GenMessage<Event> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 68);
+  messageDesc(file_clabgen_v1_agent, 69);
 
 /**
  * @generated from message clabgen.v1.CaptureRequest
@@ -1694,7 +1750,7 @@ export type CaptureRequest = Message<"clabgen.v1.CaptureRequest"> & {
  * Use `create(CaptureRequestSchema)` to create a new message.
  */
 export const CaptureRequestSchema: GenMessage<CaptureRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 69);
+  messageDesc(file_clabgen_v1_agent, 70);
 
 /**
  * @generated from message clabgen.v1.CapturedFrame
@@ -1747,7 +1803,7 @@ export type CapturedFrame = Message<"clabgen.v1.CapturedFrame"> & {
  * Use `create(CapturedFrameSchema)` to create a new message.
  */
 export const CapturedFrameSchema: GenMessage<CapturedFrame> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 70);
+  messageDesc(file_clabgen_v1_agent, 71);
 
 /**
  * @generated from message clabgen.v1.DecodeFrameRequest
@@ -1764,7 +1820,7 @@ export type DecodeFrameRequest = Message<"clabgen.v1.DecodeFrameRequest"> & {
  * Use `create(DecodeFrameRequestSchema)` to create a new message.
  */
 export const DecodeFrameRequestSchema: GenMessage<DecodeFrameRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 71);
+  messageDesc(file_clabgen_v1_agent, 72);
 
 /**
  * hex, length, summary, layers (title, offset, length, fields) and decoded
@@ -1784,7 +1840,7 @@ export type DecodeFrameResponse = Message<"clabgen.v1.DecodeFrameResponse"> & {
  * Use `create(DecodeFrameResponseSchema)` to create a new message.
  */
 export const DecodeFrameResponseSchema: GenMessage<DecodeFrameResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 72);
+  messageDesc(file_clabgen_v1_agent, 73);
 
 /**
  * @generated from message clabgen.v1.GetScenarioRequest
@@ -1797,7 +1853,7 @@ export type GetScenarioRequest = Message<"clabgen.v1.GetScenarioRequest"> & {
  * Use `create(GetScenarioRequestSchema)` to create a new message.
  */
 export const GetScenarioRequestSchema: GenMessage<GetScenarioRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 73);
+  messageDesc(file_clabgen_v1_agent, 74);
 
 /**
  * @generated from message clabgen.v1.GetScenarioResponse
@@ -1814,7 +1870,7 @@ export type GetScenarioResponse = Message<"clabgen.v1.GetScenarioResponse"> & {
  * Use `create(GetScenarioResponseSchema)` to create a new message.
  */
 export const GetScenarioResponseSchema: GenMessage<GetScenarioResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 74);
+  messageDesc(file_clabgen_v1_agent, 75);
 
 /**
  * @generated from message clabgen.v1.ApplyScenarioRequest
@@ -1838,7 +1894,7 @@ export type ApplyScenarioRequest = Message<"clabgen.v1.ApplyScenarioRequest"> & 
  * Use `create(ApplyScenarioRequestSchema)` to create a new message.
  */
 export const ApplyScenarioRequestSchema: GenMessage<ApplyScenarioRequest> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 75);
+  messageDesc(file_clabgen_v1_agent, 76);
 
 /**
  * @generated from message clabgen.v1.ApplyScenarioResponse
@@ -1851,7 +1907,37 @@ export type ApplyScenarioResponse = Message<"clabgen.v1.ApplyScenarioResponse"> 
  * Use `create(ApplyScenarioResponseSchema)` to create a new message.
  */
 export const ApplyScenarioResponseSchema: GenMessage<ApplyScenarioResponse> = /*@__PURE__*/
-  messageDesc(file_clabgen_v1_agent, 76);
+  messageDesc(file_clabgen_v1_agent, 77);
+
+/**
+ * @generated from message clabgen.v1.ResetConfigRequest
+ */
+export type ResetConfigRequest = Message<"clabgen.v1.ResetConfigRequest"> & {
+};
+
+/**
+ * Describes the message clabgen.v1.ResetConfigRequest.
+ * Use `create(ResetConfigRequestSchema)` to create a new message.
+ */
+export const ResetConfigRequestSchema: GenMessage<ResetConfigRequest> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 78);
+
+/**
+ * @generated from message clabgen.v1.ResetConfigResponse
+ */
+export type ResetConfigResponse = Message<"clabgen.v1.ResetConfigResponse"> & {
+  /**
+   * @generated from field: clabgen.v1.ConfigInfo persistence = 1;
+   */
+  persistence?: ConfigInfo;
+};
+
+/**
+ * Describes the message clabgen.v1.ResetConfigResponse.
+ * Use `create(ResetConfigResponseSchema)` to create a new message.
+ */
+export const ResetConfigResponseSchema: GenMessage<ResetConfigResponse> = /*@__PURE__*/
+  messageDesc(file_clabgen_v1_agent, 79);
 
 /**
  * AgentService is exposed by every clabgen-agent. It is served over
@@ -2170,6 +2256,17 @@ export const AgentService: GenService<{
     methodKind: "unary";
     input: typeof ApplyScenarioRequestSchema;
     output: typeof ApplyScenarioResponseSchema;
+  },
+  /**
+   * Forget the saved config: the topology's scenario (or nothing) replaces
+   * the agent's config and becomes the saved one.
+   *
+   * @generated from rpc clabgen.v1.AgentService.ResetConfig
+   */
+  resetConfig: {
+    methodKind: "unary";
+    input: typeof ResetConfigRequestSchema;
+    output: typeof ResetConfigResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_clabgen_v1_agent, 0);

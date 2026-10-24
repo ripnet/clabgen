@@ -26,6 +26,7 @@ import (
 	"github.com/ripnet/clabgen/internal/events"
 	"github.com/ripnet/clabgen/internal/port"
 	"github.com/ripnet/clabgen/internal/server"
+	"github.com/ripnet/clabgen/internal/state"
 	"github.com/ripnet/clabgen/internal/version"
 	"github.com/ripnet/clabgen/internal/webui"
 
@@ -77,23 +78,19 @@ func main() {
 		func(e port.Event) { eng.PublishPortEvent(e.Port, e.Kind, e.Message) })
 	eng = core.New(pm, bus, log)
 
-	if *scenario != "" {
-		b, err := os.ReadFile(*scenario)
-		if err != nil {
-			log.Error("read scenario", "err", err)
-			os.Exit(1)
-		}
-		sc, err := core.ParseScenario(b)
-		if err != nil {
-			log.Error("parse scenario", "err", err)
-			os.Exit(1)
-		}
-		if err := eng.Apply(sc, false); err != nil {
-			log.Error("scenario applied with errors", "err", err)
-		} else {
-			log.Info("scenario applied", "file", *scenario)
-		}
+	// The config survives lab restarts: a saved one (clab-<lab>/<node>/
+	// clabgen.yml) wins over the topology's scenario, which seeds a fresh lab.
+	spath, shost, why := state.Locate(os.Getenv)
+	if spath == "" {
+		log.Info("config not saved across restarts", "why", why)
 	}
+	store := state.New(eng, log, spath, shost, why, *scenario)
+	store.Load()
+	saved := make(chan struct{})
+	go func() {
+		store.Run(ctx, 2*time.Second) // saves once more when stopping
+		close(saved)
+	}()
 
 	go func() {
 		if err := pm.Run(ctx); err != nil {
@@ -104,6 +101,7 @@ func main() {
 
 	api := http.NewServeMux()
 	srv := server.New(eng, pm)
+	srv.SetState(store)
 	path, h := clabgenv1connect.NewAgentServiceHandler(srv)
 	api.Handle(path, h)
 	api.Handle("/capture.pcapng", srv.CaptureHandler())
@@ -137,6 +135,7 @@ func main() {
 		log.Error("http server", "err", err)
 		os.Exit(1)
 	}
+	<-saved // the last changes are on disk before the container stops
 }
 
 func envOr(k, def string) string {

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { client, usePoll } from "../api";
+import type { ConfigInfo } from "../gen/clabgen/v1/agent_pb";
 import { agentLabel, useAgents } from "../agents";
 import { ErrorBox, useBusy } from "../ui";
 
 export function ScenarioTab({ agentId }: { agentId: string }) {
   const c = client(agentId);
   const sc = usePoll(() => c.getScenario({}), [agentId]);
+  const agentInfo = usePoll(() => c.getInfo({}), [agentId], 5000);
+  const cfg = agentInfo.data?.persistence;
   const [text, setText] = useState("");
   const [dirty, setDirty] = useState(false);
   const { busy, run } = useBusy();
@@ -73,6 +76,7 @@ export function ScenarioTab({ agentId }: { agentId: string }) {
         The agent's whole configuration as YAML: the same format that <code>CLABGEN_SCENARIO</code> loads at boot. Merge adds to what's
         there and reports conflicts; replace starts clean.
       </p>
+      {cfg && <SavedConfig cfg={cfg} busy={busy} reset={() => run(() => c.resetConfig({}), "Config reset").then((r) => r && (setDirty(false), sc.refresh(), agentInfo.refresh()))} />}
       <ErrorBox error={sc.error} />
       <textarea
         className="input mono code scenario"
@@ -84,6 +88,39 @@ export function ScenarioTab({ agentId }: { agentId: string }) {
         }}
       />
       {dirty && <div className="hint">Edited, not applied yet.</div>}
+    </div>
+  );
+}
+
+// SavedConfig says where the agent keeps its config across lab restarts,
+// and resets it to the topology's scenario.
+function SavedConfig({ cfg, busy, reset }: { cfg: ConfigInfo; busy: boolean; reset: () => void }) {
+  if (!cfg.file)
+    return (
+      <div className="muted small-note saved-config">
+        Not saved across lab restarts: {cfg.notSaved || "no file"}. See <a href="https://clabgen.dev/configuration/#saved-config" target="_blank" rel="noreferrer">saved config</a>.
+      </div>
+    );
+  const from =
+    cfg.source === "saved" ? "restored from it" : cfg.source === "scenario" ? <>started from the topology's scenario (<code>{cfg.scenario}</code>)</> : "started empty";
+  const to = cfg.scenario ? "the topology's scenario" : "an empty config";
+  return (
+    <div className="saved-config card-lite">
+      <div>
+        Saved to <code>{cfg.file}</code> after every change, and restored when the lab restarts (this start: {from}).
+        {cfg.source === "saved" && cfg.scenario && <span className="muted"> Edits to the scenario file apply after a reset.</span>}
+      </div>
+      {cfg.error && <div className="error-box">Saving failed: {cfg.error}</div>}
+      <div className="btn-row end">
+        <button
+          className="btn"
+          disabled={busy}
+          onClick={() => confirm(`Reset replaces everything on this agent with ${to}, and saves that instead. Continue?`) && reset()}
+          title={`Delete the saved file and load ${to}`}
+        >
+          Reset to {to}
+        </button>
+      </div>
     </div>
   );
 }

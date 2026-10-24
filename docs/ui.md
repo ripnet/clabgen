@@ -59,7 +59,9 @@ address.
 - A lab overview: every protocol on every agent, worst first.
 - Per agent: ports, devices (with IP neighbors and a ping shortcut), device
   groups, protocols (with on/off switches and enable/disable all),
-  traffic flows, live events, and the scenario as YAML.
+  traffic flows, live events, and the scenario as YAML (with where the
+  config is saved across lab restarts, and a reset to the topology's
+  scenario).
 - A protocol page: live status, the actions with their forms (loopback,
   flap, fault injection, graceful restart, …), recent events, and the
   config editor: sections per part of the config, field search, the

@@ -129,6 +129,9 @@ const (
 	// AgentServiceApplyScenarioProcedure is the fully-qualified name of the AgentService's
 	// ApplyScenario RPC.
 	AgentServiceApplyScenarioProcedure = "/clabgen.v1.AgentService/ApplyScenario"
+	// AgentServiceResetConfigProcedure is the fully-qualified name of the AgentService's ResetConfig
+	// RPC.
+	AgentServiceResetConfigProcedure = "/clabgen.v1.AgentService/ResetConfig"
 )
 
 // AgentServiceClient is a client for the clabgen.v1.AgentService service.
@@ -195,6 +198,9 @@ type AgentServiceClient interface {
 	// Scenarios are the whole agent config as YAML.
 	GetScenario(context.Context, *connect.Request[v1.GetScenarioRequest]) (*connect.Response[v1.GetScenarioResponse], error)
 	ApplyScenario(context.Context, *connect.Request[v1.ApplyScenarioRequest]) (*connect.Response[v1.ApplyScenarioResponse], error)
+	// Forget the saved config: the topology's scenario (or nothing) replaces
+	// the agent's config and becomes the saved one.
+	ResetConfig(context.Context, *connect.Request[v1.ResetConfigRequest]) (*connect.Response[v1.ResetConfigResponse], error)
 }
 
 // NewAgentServiceClient constructs a client for the clabgen.v1.AgentService service. By default, it
@@ -406,6 +412,12 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(agentServiceMethods.ByName("ApplyScenario")),
 			connect.WithClientOptions(opts...),
 		),
+		resetConfig: connect.NewClient[v1.ResetConfigRequest, v1.ResetConfigResponse](
+			httpClient,
+			baseURL+AgentServiceResetConfigProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("ResetConfig")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -444,6 +456,7 @@ type agentServiceClient struct {
 	decodeFrame         *connect.Client[v1.DecodeFrameRequest, v1.DecodeFrameResponse]
 	getScenario         *connect.Client[v1.GetScenarioRequest, v1.GetScenarioResponse]
 	applyScenario       *connect.Client[v1.ApplyScenarioRequest, v1.ApplyScenarioResponse]
+	resetConfig         *connect.Client[v1.ResetConfigRequest, v1.ResetConfigResponse]
 }
 
 // GetInfo calls clabgen.v1.AgentService.GetInfo.
@@ -611,6 +624,11 @@ func (c *agentServiceClient) ApplyScenario(ctx context.Context, req *connect.Req
 	return c.applyScenario.CallUnary(ctx, req)
 }
 
+// ResetConfig calls clabgen.v1.AgentService.ResetConfig.
+func (c *agentServiceClient) ResetConfig(ctx context.Context, req *connect.Request[v1.ResetConfigRequest]) (*connect.Response[v1.ResetConfigResponse], error) {
+	return c.resetConfig.CallUnary(ctx, req)
+}
+
 // AgentServiceHandler is an implementation of the clabgen.v1.AgentService service.
 type AgentServiceHandler interface {
 	GetInfo(context.Context, *connect.Request[v1.GetInfoRequest]) (*connect.Response[v1.GetInfoResponse], error)
@@ -675,6 +693,9 @@ type AgentServiceHandler interface {
 	// Scenarios are the whole agent config as YAML.
 	GetScenario(context.Context, *connect.Request[v1.GetScenarioRequest]) (*connect.Response[v1.GetScenarioResponse], error)
 	ApplyScenario(context.Context, *connect.Request[v1.ApplyScenarioRequest]) (*connect.Response[v1.ApplyScenarioResponse], error)
+	// Forget the saved config: the topology's scenario (or nothing) replaces
+	// the agent's config and becomes the saved one.
+	ResetConfig(context.Context, *connect.Request[v1.ResetConfigRequest]) (*connect.Response[v1.ResetConfigResponse], error)
 }
 
 // NewAgentServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -882,6 +903,12 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(agentServiceMethods.ByName("ApplyScenario")),
 		connect.WithHandlerOptions(opts...),
 	)
+	agentServiceResetConfigHandler := connect.NewUnaryHandler(
+		AgentServiceResetConfigProcedure,
+		svc.ResetConfig,
+		connect.WithSchema(agentServiceMethods.ByName("ResetConfig")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/clabgen.v1.AgentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AgentServiceGetInfoProcedure:
@@ -950,6 +977,8 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 			agentServiceGetScenarioHandler.ServeHTTP(w, r)
 		case AgentServiceApplyScenarioProcedure:
 			agentServiceApplyScenarioHandler.ServeHTTP(w, r)
+		case AgentServiceResetConfigProcedure:
+			agentServiceResetConfigHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1089,4 +1118,8 @@ func (UnimplementedAgentServiceHandler) GetScenario(context.Context, *connect.Re
 
 func (UnimplementedAgentServiceHandler) ApplyScenario(context.Context, *connect.Request[v1.ApplyScenarioRequest]) (*connect.Response[v1.ApplyScenarioResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.ApplyScenario is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) ResetConfig(context.Context, *connect.Request[v1.ResetConfigRequest]) (*connect.Response[v1.ResetConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.ResetConfig is not implemented"))
 }

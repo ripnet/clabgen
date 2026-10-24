@@ -81,6 +81,9 @@ service AgentService {
   // Scenarios are the whole agent config as YAML.
   rpc GetScenario(GetScenarioRequest) returns (GetScenarioResponse);
   rpc ApplyScenario(ApplyScenarioRequest) returns (ApplyScenarioResponse);
+  // Forget the saved config: the topology's scenario (or nothing) replaces
+  // the agent's config and becomes the saved one.
+  rpc ResetConfig(ResetConfigRequest) returns (ResetConfigResponse);
 }
 
 message GetInfoRequest {}
@@ -88,6 +91,23 @@ message GetInfoResponse {
   string hostname = 1;
   string version = 2;
   google.protobuf.Timestamp start_time = 3;
+  ConfigInfo persistence = 4;
+}
+
+// Where the agent keeps its config across lab restarts.
+message ConfigInfo {
+  // The saved config, as the lab host sees it (in containerlab:
+  // clab-<lab>/<node>/clabgen.yml); empty when not saving.
+  string file = 1;
+  // Why not saving, when file is empty.
+  string not_saved = 2;
+  // Where the config came from at start or the last reset: "saved",
+  // "scenario" (the topology's, CLABGEN_SCENARIO) or "empty".
+  string source = 3;
+  // The topology's scenario file (as the agent sees it), if any.
+  string scenario = 4;
+  // The last save failure, if the last save failed.
+  string error = 5;
 }
 
 message PortCounters {
@@ -402,3 +422,5 @@ message ApplyScenarioRequest {
   bool replace = 2;
 }
 message ApplyScenarioResponse {}
+message ResetConfigRequest {}
+message ResetConfigResponse { ConfigInfo persistence = 1; }

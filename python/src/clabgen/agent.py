@@ -352,6 +352,12 @@ class Agent:
             scenario = scenario.read_text()
         self.call("ApplyScenario", {"yaml": scenario, "replace": replace}, timeout=60)
 
+    def reset_config(self) -> dict:
+        """Forget the saved config (clab-<lab>/<node>/clabgen.yml): the
+        topology's scenario, or nothing, replaces the agent's config. Returns
+        the persistence info (file, source, scenario); info()["persistence"] has it too."""
+        return self.call("ResetConfig").get("persistence", {})
+
     def events(self, replay: bool = False, timeout: float | None = None) -> Iterator[dict]:
         """Stream events (time, source, kind, message, data) as they happen;
         replay=True starts with the buffered recent ones. timeout bounds each

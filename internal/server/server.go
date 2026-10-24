@@ -24,6 +24,7 @@ import (
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/port"
 	"github.com/ripnet/clabgen/internal/protocol"
+	"github.com/ripnet/clabgen/internal/state"
 	"github.com/ripnet/clabgen/internal/version"
 
 	v1 "github.com/ripnet/clabgen/gen/clabgen/v1"
@@ -42,6 +43,28 @@ type Server struct {
 	eng   *core.Engine
 	ports Ports
 	start time.Time
+	state *state.Store // nil: the config isn't kept
+}
+
+// SetState makes the server report and reset the saved config.
+func (s *Server) SetState(st *state.Store) { s.state = st }
+
+func (s *Server) configInfo() *v1.ConfigInfo {
+	if s.state == nil {
+		return nil
+	}
+	i := s.state.Info()
+	return &v1.ConfigInfo{File: i.File, NotSaved: i.Why, Source: i.Source, Scenario: i.Scenario, Error: i.Error}
+}
+
+func (s *Server) ResetConfig(ctx context.Context, _ *connect.Request[v1.ResetConfigRequest]) (*connect.Response[v1.ResetConfigResponse], error) {
+	if s.state == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("this agent keeps no saved config"))
+	}
+	if err := s.state.Reset(); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&v1.ResetConfigResponse{Persistence: s.configInfo()}), nil
 }
 
 func New(eng *core.Engine, ports Ports) *Server {
@@ -101,7 +124,7 @@ func portPB(i port.Info) *v1.Port {
 
 func (s *Server) GetInfo(ctx context.Context, _ *connect.Request[v1.GetInfoRequest]) (*connect.Response[v1.GetInfoResponse], error) {
 	h, _ := os.Hostname()
-	return connect.NewResponse(&v1.GetInfoResponse{Hostname: h, Version: version.Version, StartTime: timestamppb.New(s.start)}), nil
+	return connect.NewResponse(&v1.GetInfoResponse{Hostname: h, Version: version.Version, StartTime: timestamppb.New(s.start), Persistence: s.configInfo()}), nil
 }
 
 func (s *Server) ListPorts(ctx context.Context, _ *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error) {

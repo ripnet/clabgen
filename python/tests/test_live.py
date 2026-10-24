@@ -164,3 +164,12 @@ def test_capture(clean, tmp_path):
         clean.capture_to_file(path, ["nope"], count=1)
     with pytest.raises(ClabgenError):
         next(clean.capture(["nope"]))
+
+
+def test_saved_config(clean):
+    # The test container is no containerlab node: nothing saved, and why.
+    cfg = clean.info()["persistence"]
+    assert cfg.get("file", "") == "" and "not a containerlab node" in cfg["not_saved"]
+    clean.add_device("r", clean.test_port, vlans=[5])
+    # Reset with no scenario: back to empty.
+    assert clean.reset_config()["source"] == "empty" and clean.devices() == []

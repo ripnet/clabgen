@@ -114,6 +114,10 @@ gen1.capture_to_file("v100.pcapng", device="v100", seconds=10)
 gen1.decode(frame_bytes)["layers"]
 ```
 
+`gen1.info()["persistence"]` says where the agent saves its config (see
+[saved config](configuration.md#saved-config)); `gen1.reset_config()`
+goes back to the topology's scenario.
+
 Errors from an agent raise `ClabgenError` with Connect's `code`
 (`not_found`, `invalid_argument`, `already_exists`, `unavailable`, …).
 `agent.call("Method", {...})` reaches any API method directly.

@@ -1326,7 +1326,38 @@ func eventsCmd() *cobra.Command {
 }
 
 func scenarioCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "scenario", Short: "Export or apply the agent's whole config"}
+	cmd := &cobra.Command{Use: "scenario", Short: "Export, apply or reset the agent's whole config"}
+	var yes bool
+	reset := &cobra.Command{
+		Use: "reset", Short: "Forget the saved config: back to the topology's scenario (or empty)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, cancel := ctx()
+			defer cancel()
+			cl := client()
+			if !yes {
+				i, err := cl.GetInfo(c, connect.NewRequest(&v1.GetInfoRequest{}))
+				if err != nil {
+					return err
+				}
+				what := "an empty config"
+				if cf := i.Msg.Persistence; cf != nil && cf.Scenario != "" {
+					what = "the topology's scenario (" + cf.Scenario + ")"
+				}
+				fmt.Fprintf(os.Stderr, "This replaces everything on %s with %s. Continue? [y/N] ", i.Msg.Hostname, what)
+				var a string
+				fmt.Scanln(&a)
+				if a != "y" && a != "Y" && a != "yes" {
+					return errors.New("not reset")
+				}
+			}
+			r, err := cl.ResetConfig(c, connect.NewRequest(&v1.ResetConfigRequest{}))
+			if err != nil {
+				return err
+			}
+			return printMsg(r.Msg.Persistence)
+		}}
+	reset.Flags().BoolVarP(&yes, "yes", "y", false, "don't ask")
+	cmd.AddCommand(reset)
 	cmd.AddCommand(&cobra.Command{
 		Use: "get", Short: "Print the current scenario YAML",
 		RunE: func(cmd *cobra.Command, args []string) error {
