@@ -96,6 +96,8 @@ keep it on lab networks, away from production ones.
 
 ## Documentation
 
+Also at **https://clabgen.dev/**.
+
 - [Web UI](docs/ui.md): the lab-wide UI and its options
 - [Configuration](docs/configuration.md): scenario files, each protocol,
   device groups

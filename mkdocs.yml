@@ -1,0 +1,60 @@
+# The documentation site (GitHub Pages, .github/workflows/docs.yml), built
+# from docs/ with the README as its home page.
+site_name: clabgen
+site_description: >-
+  Protocol emulator and traffic generator for containerlab: BGP, IS-IS, OSPF,
+  BFD, CFM/Y.1731, LLDP, traffic flows and a packet builder, with a web UI,
+  CLI, API and Python/pytest helpers.
+site_url: https://clabgen.dev/
+repo_url: https://github.com/ripnet/clabgen
+repo_name: ripnet/clabgen
+edit_uri: edit/dev/docs/
+copyright: Copyright &copy; 2026 Tom Young and the clabgen contributors (BSD-3-Clause)
+
+nav:
+  - Home: index.md
+  - Web UI: ui.md
+  - Configuration: configuration.md
+  - CLI: cli.md
+  - Python and pytest: python.md
+  - API: api.md
+  - Writing a protocol: writing-a-protocol.md
+  - Development: development.md
+
+theme:
+  name: material
+  logo: images/logo.svg
+  favicon: images/logo.svg
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle: {icon: material/brightness-auto, name: Light mode}
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      toggle: {icon: material/brightness-7, name: Dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      toggle: {icon: material/brightness-4, name: Automatic mode}
+  features:
+    - content.code.copy
+    - navigation.footer
+    - search.highlight
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+hooks:
+  - .github/docs/hooks.py
+
+validation:
+  links:
+    absolute_links: relative_to_docs
+    unrecognized_links: warn
+    anchors: warn

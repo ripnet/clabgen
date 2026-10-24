@@ -48,6 +48,19 @@ is a docker network of its own, so they need docker; they're skipped
 without it.
 `PLAYWRIGHT_CHROMIUM=<path>` makes Playwright use a Chromium of your own.
 
+## Documentation site
+
+`docs/` is also the site at https://clabgen.dev/ (MkDocs with
+the Material theme; the README is its home page). Preview it with:
+
+```sh
+pip install -r .github/docs/requirements.txt
+mkdocs serve        # http://127.0.0.1:8000, rebuilt as you edit
+```
+
+CI builds it strictly (a broken link or anchor fails); release tags
+publish it.
+
 ## Branches, images and releases
 
 - `dev` is where work happens; `main` only receives stable merges.

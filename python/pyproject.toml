@@ -11,9 +11,16 @@ license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 authors = [{ name = "Tom Young", email = "ripnet@gmail.com" }]
 requires-python = ">=3.9"
+keywords = ["containerlab", "network-testing", "network-emulation", "traffic-generator", "packet-generator",
+            "bgp", "isis", "ospf", "bfd", "ethernet-oam", "cfm", "y1731", "evpn", "pytest", "netdevops"]
 dependencies = []
 classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "Intended Audience :: Telecommunications Industry",
   "Framework :: Pytest",
+  "Topic :: Software Development :: Testing",
   "Topic :: System :: Networking",
   "Programming Language :: Python :: 3",
 ]
@@ -23,6 +30,9 @@ test = ["pytest>=7"]
 
 [project.urls]
 Homepage = "https://github.com/ripnet/clabgen"
+Documentation = "https://clabgen.dev/python/"
+Changelog = "https://github.com/ripnet/clabgen/releases"
+Issues = "https://github.com/ripnet/clabgen/issues"
 
 [project.entry-points.pytest11]
 clabgen = "clabgen.pytest_plugin"

@@ -1,9 +1,10 @@
 # Tests: Go (vet, gofmt, unit tests and the UI schema fixture under -race;
 # the internal/core engine tests, which mostly wait on protocol timers, in
 # parallel shards), the Python package (unit tests, and live tests against
-# the agent in a container) and the web UI (typecheck, build, Playwright
-# against a mocked agent). Runs on pull requests and pushes to main; images.yml runs it
-# before publishing from dev or a release tag.
+# the agent in a container), the web UI (typecheck, build, Playwright
+# against a mocked agent) and the documentation site (a strict build).
+# Runs on pull requests and pushes to main; images.yml runs it before
+# publishing from dev or a release tag.
 name: CI
 
 on:
@@ -71,6 +72,18 @@ jobs:
       - name: package builds
         if: matrix.python == '3.13'
         run: pip install build && python -m build python
+
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r .github/docs/requirements.txt
+      - name: mkdocs build (strict, so broken links fail)
+        run: mkdocs build --strict -d site
 
   web:
     runs-on: ubuntu-24.04 # Playwright 1.57 has no Chromium for newer Ubuntu
