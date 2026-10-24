@@ -80,7 +80,8 @@ SR-SIM image and license).
   streams for testing circuits without an IP stack, one way or echoed.
 - **Packet capture**: every frame the ports send and receive, live in the
   UI (decoded, filtered, saved as pcapng, or rebuilt as a packet flow), in
-  `clabgenctl capture`, or streamed straight into Wireshark.
+  `clabgenctl capture`, or straight in Wireshark: a plugin lists every
+  agent's ports as capture interfaces.
 - **Packet builder**: frames of any layers (Ethernet, VLAN, MPLS, ARP,
   IPv4/6, UDP, TCP, ICMP, VXLAN, raw bytes) with every field settable,
   fields changed per packet (increment, random, lists), and pcap replay;

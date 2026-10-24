@@ -32,6 +32,7 @@ import (
 	v1 "github.com/ripnet/clabgen/gen/clabgen/v1"
 	"github.com/ripnet/clabgen/gen/clabgen/v1/clabgenv1connect"
 	"github.com/ripnet/clabgen/internal/pcapng"
+	"github.com/ripnet/clabgen/internal/version"
 )
 
 var (
@@ -385,9 +386,14 @@ func parseVLAN(s string) (*v1.VlanTag, error) {
 }
 
 func main() {
+	// Wireshark runs us as an extcap program (clabgenctl wireshark install).
+	if isExtcap(os.Args[1:]) {
+		os.Exit(runExtcap(os.Args[1:]))
+	}
 	root := &cobra.Command{
 		Use:           "clabgenctl",
 		Short:         "Control clabgen agents",
+		Version:       version.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -412,7 +418,7 @@ func main() {
 			return printMsg(r.Msg)
 		}})
 
-	root.AddCommand(nodesCmd(), captureCmd(), portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), previewCmd(), groupsCmd(), groupCmd(), eventsCmd(), scenarioCmd(),
+	root.AddCommand(nodesCmd(), captureCmd(), wiresharkCmd(), portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), previewCmd(), groupsCmd(), groupCmd(), eventsCmd(), scenarioCmd(),
 		flowCmd("start"), flowCmd("stop"), pingCmd(), receivedCmd())
 
 	if err := root.Execute(); err != nil {

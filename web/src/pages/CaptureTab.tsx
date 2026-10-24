@@ -222,7 +222,7 @@ export function CaptureTab({ agentId }: { agentId: string }) {
       </div>
       <div className="capture-ws muted small-note">
         Live in Wireshark:{" "}
-        <code className="mono">{wireshark}</code>{" "}
+        <code className="mono ws-cmd">{wireshark}</code>{" "}
         <button
           className="link small"
           onClick={() =>
@@ -234,6 +234,13 @@ export function CaptureTab({ agentId }: { agentId: string }) {
         >
           copy
         </button>
+      </div>
+      <div className="capture-ws muted small-note">
+        Or in Wireshark itself, once: <code className="mono">clabgenctl wireshark install --ui {new URL(".", window.location.href).href.replace(/\/$/, "")}</code>, then pick a "clabgen …" interface (
+        <a href="https://clabgen.dev/cli/#wireshark" target="_blank" rel="noreferrer">
+          how
+        </a>
+        ).
       </div>
       {error && <div className="error-box">{error}</div>}
       <div className="capture-bar">

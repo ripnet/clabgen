@@ -5,12 +5,59 @@ UI does, with tables for lists and YAML or JSON (`-o json`) for details.
 
 ## Getting it
 
-- Inside every agent container: `docker exec clab-<lab>-<node> clabgenctl …`
-  (it talks to the agent on localhost).
-- On a host or a Mac: download `clabgenctl-<os>-<arch>` from the
-  [releases](https://github.com/ripnet/clabgen/releases) and point it at
-  an agent's management address or containerlab name with `-s` (or
-  `CLABGEN_SERVER`):
+Inside every agent container it's already there, and talks to the agent
+on localhost: `docker exec clab-<lab>-<node> clabgenctl …`.
+
+On your own machine (to drive agents from a laptop, and for the
+[Wireshark plugin](#wireshark)), download it from the
+[releases](https://github.com/ripnet/clabgen/releases): one file, no
+dependencies. `releases/latest/download/` always points at the newest
+release.
+
+**macOS** (`arm64` for Apple silicon, `amd64` for Intel):
+
+```sh
+f=clabgenctl-darwin-arm64
+curl -fLO https://github.com/ripnet/clabgen/releases/latest/download/$f
+curl -fLO https://github.com/ripnet/clabgen/releases/latest/download/SHA256SUMS
+grep " $f\$" SHA256SUMS | shasum -a 256 -c        # prints "OK"
+chmod +x $f && sudo mv $f /usr/local/bin/clabgenctl
+clabgenctl --version
+```
+
+Download it with `curl` as above. A browser marks the file as downloaded
+from the internet, and macOS then refuses to run it ("cannot be opened
+because the developer cannot be verified"); clear that with
+`xattr -d com.apple.quarantine /usr/local/bin/clabgenctl`.
+
+**Linux** (`amd64` or `arm64`):
+
+```sh
+f=clabgenctl-linux-amd64
+curl -fLO https://github.com/ripnet/clabgen/releases/latest/download/$f
+curl -fLO https://github.com/ripnet/clabgen/releases/latest/download/SHA256SUMS
+grep " $f\$" SHA256SUMS | sha256sum -c             # prints "OK"
+chmod +x $f && sudo mv $f /usr/local/bin/clabgenctl   # or ~/.local/bin, without sudo
+clabgenctl --version
+```
+
+**Windows** (PowerShell; `amd64`, or `arm64` on ARM machines):
+
+```powershell
+$f = "clabgenctl-windows-amd64.exe"
+Invoke-WebRequest "https://github.com/ripnet/clabgen/releases/latest/download/$f" -OutFile clabgenctl.exe
+(Get-FileHash clabgenctl.exe).Hash      # compare with the $f line of SHA256SUMS on the release page
+New-Item -ItemType Directory -Force "$env:USERPROFILE\bin" | Out-Null
+Move-Item clabgenctl.exe "$env:USERPROFILE\bin\" -Force
+[Environment]::SetEnvironmentVariable("Path", "$env:Path;$env:USERPROFILE\bin", "User")   # then open a new terminal
+clabgenctl --version
+```
+
+**With Go** (1.23 or newer): `go install github.com/ripnet/clabgen/cmd/clabgenctl@latest`
+puts it in `$(go env GOPATH)/bin`.
+
+Then point it at an agent's management address or containerlab name with
+`-s` (or `CLABGEN_SERVER`):
 
 ```sh
 clabgenctl -s clab-b2b-gen1 protocols
@@ -101,6 +148,29 @@ clabgenctl capture eth1 -w - | wireshark -k -i -   # live in Wireshark
 
 A capture that can't keep up drops frames (never the agent's traffic)
 and says how many.
+
+## Wireshark
+
+`clabgenctl` is also a Wireshark plugin (extcap): installed once, every
+clabgen agent's ports appear in Wireshark's list of capture interfaces
+("clabgen b2b/gen1: eth1", and "all ports" per agent). The interface's
+options (the gear next to it) filter by device, direction and ethertype.
+
+```sh
+clabgenctl wireshark install --ui http://labhost:8090   # the agents a clabgen-ui knows
+clabgenctl wireshark install --lab b2b                  # or a containerlab lab on this machine
+clabgenctl wireshark install --agent 172.20.20.2        # or agents by address (repeatable)
+clabgenctl wireshark status                             # what Wireshark will list
+clabgenctl wireshark uninstall
+```
+
+`install` links `clabgenctl` into Wireshark's personal extcap folder
+(`~/.local/lib/wireshark/extcap`; `%APPDATA%\Wireshark\extcap` on
+Windows; Help → About Wireshark → Folders shows yours, and `--dir` picks
+another) and saves where the agents are in
+`~/.config/clabgen/wireshark.json`. Restart Wireshark, or Capture →
+Refresh Interfaces, to see new agents. Capture filters (BPF) don't apply;
+use the options, or a display filter.
 
 Device groups (see [configuration](configuration.md#device-groups)):
 

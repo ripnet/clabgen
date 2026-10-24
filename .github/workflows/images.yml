@@ -3,8 +3,9 @@
 # pass.
 #   push to dev       → :dev (and :sha-<commit>)
 #   tag vX.Y.Z (main) → :X.Y.Z, :X.Y and :latest, plus a GitHub release with
-#                       clabgenctl binaries, and the Python package X.Y.Z on
-#                       PyPI (trusted publishing: no token in the repo)
+#                       clabgenctl binaries (Linux, macOS, Windows), and the
+#                       Python package X.Y.Z on PyPI (trusted publishing:
+#                       no token in the repo)
 # :latest only ever moves on a release tag, so it never carries work in
 # progress.
 name: Images
@@ -93,11 +94,12 @@ jobs:
       - name: clabgenctl binaries
         run: |
           mkdir -p dist
-          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
-            os=${t%/*} arch=${t#*/}
+          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            os=${t%/*} arch=${t#*/} ext=
+            [ "$os" = windows ] && ext=.exe
             CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
               -ldflags "-s -w -X github.com/ripnet/clabgen/internal/version.Version=$GITHUB_REF_NAME" \
-              -o "dist/clabgenctl-$os-$arch" ./cmd/clabgenctl
+              -o "dist/clabgenctl-$os-$arch$ext" ./cmd/clabgenctl
           done
           (cd dist && sha256sum * > SHA256SUMS)
       - name: GitHub release

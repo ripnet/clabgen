@@ -76,7 +76,8 @@ address.
   Click a frame for its layers and bytes, "Build a flow from it" to send
   it again from the packet builder, "Download .pcapng" for Wireshark, or
   copy the `curl … | wireshark -k -i -` line to watch the same capture
-  live in Wireshark.
+  live in Wireshark. With the [Wireshark plugin](cli.md#wireshark)
+  installed, the agents' ports are capture interfaces in Wireshark itself.
 - The packet editor (packet flows): the layers as cards to add, reorder,
   edit and remove, or a template to start from, and a live preview from
   the device: the frame as hex, coloured by layer, with each field's

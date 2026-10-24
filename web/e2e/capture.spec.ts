@@ -56,7 +56,8 @@ test("capture: live frames, decode, download, rebuild as a flow", async ({ page 
   await page.goto("./#/a/a1/capture");
   await page.getByText("eth2").click(); // pick a port
   await page.getByLabel("direction").selectOption("tx");
-  await expect(page.locator(".capture-ws code")).toContainText("capture.pcapng?port=eth2&direction=tx");
+  await expect(page.locator(".capture-ws code.ws-cmd")).toContainText("capture.pcapng?port=eth2&direction=tx");
+  await expect(page.locator(".capture-ws").nth(1)).toContainText("clabgenctl wireshark install --ui");
   await page.getByRole("button", { name: /Start/ }).click();
   const rows = page.locator(".capture-row");
   await expect(rows).toHaveCount(2);
