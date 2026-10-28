@@ -1,6 +1,7 @@
 // Package bgp is an emulated BGP speaker (RFC 4271) on a device: peers
 // over the device's TCP (gVisor netstack, see ipstack), IPv4/IPv6 unicast
-// (RFC 4760) and the VPN families (vpn.go: VPNv4/v6, EVPN, L2VPN), 4-byte
+// (RFC 4760) and the VPN families (vpn.go: VPNv4/v6, EVPN, L2VPN; srpolicy.go:
+// SR Policy), 4-byte
 // AS numbers, route refresh, End-of-RIB; route
 // injection at scale with communities; received routes per peer; actions
 // to advertise/withdraw, reset, flap, send NOTIFICATIONs and route
@@ -33,7 +34,7 @@ type bgpType struct{}
 
 func (bgpType) Name() string { return TypeName }
 func (bgpType) Description() string {
-	return "BGP speaker: IPv4/IPv6 unicast, VPNv4/v6, EVPN and L2VPN (VPLS/VPWS) over the device's TCP, route injection, received routes, reset/flap/notification actions"
+	return "BGP speaker: IPv4/IPv6 unicast, VPNv4/v6, EVPN, L2VPN (VPLS/VPWS) and SR Policy over the device's TCP, route injection, received routes, reset/flap/notification actions"
 }
 func (bgpType) NewConfig() any       { return defaultConfig() }
 func (bgpType) EtherTypes() []uint16 { return nil } // TCP arrives through the device's IP stack
@@ -99,6 +100,11 @@ func (bgpType) Start(env protocol.Env, c any) (protocol.Session, error) {
 	}
 	for _, l := range cfg.L2VPN {
 		if x, err := l.expand(); err == nil {
+			s.addXLocked([]*xroute{x})
+		}
+	}
+	for _, p := range cfg.SRPolicies {
+		if x, err := p.expand(); err == nil {
 			s.addXLocked([]*xroute{x})
 		}
 	}
@@ -413,6 +419,11 @@ func (s *session) changeRoutes(add bool, a *RouteArgs) (any, error) {
 	}
 	for _, l := range a.L2VPN {
 		if x, err := l.expand(); err == nil {
+			xs = append(xs, x)
+		}
+	}
+	for _, p := range a.SRPolicies {
+		if x, err := p.expand(); err == nil {
 			xs = append(xs, x)
 		}
 	}

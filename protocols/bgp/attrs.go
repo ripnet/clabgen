@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 	"sort"
+	"strconv"
 	"strings"
 
 	gb "github.com/osrg/gobgp/v3/pkg/packet/bgp"
@@ -60,9 +61,18 @@ func (r Route) attrs() (*tmpl, error) {
 	}
 	for _, c := range r.ExtCommunities {
 		kind, val, ok := strings.Cut(c, ":")
+		if kind == "color" {
+			// Color (RFC 9012 4.3), CO bits 00: steers into SR policies of that color.
+			v, err := strconv.ParseUint(val, 10, 32)
+			if err != nil || !ok {
+				return nil, fmt.Errorf("route %s: extended community %q: color:N with N a 32-bit number", r.Prefix, c)
+			}
+			t.ext = append(t.ext, gb.NewColorExtended(uint32(v)))
+			continue
+		}
 		sub := map[string]gb.ExtendedCommunityAttrSubType{"rt": gb.EC_SUBTYPE_ROUTE_TARGET, "soo": gb.EC_SUBTYPE_ROUTE_ORIGIN}[kind]
 		if !ok || sub == 0 {
-			return nil, fmt.Errorf("route %s: extended community %q: want rt:… or soo:…", r.Prefix, c)
+			return nil, fmt.Errorf("route %s: extended community %q: want rt:…, soo:… or color:…", r.Prefix, c)
 		}
 		e, err := gb.ParseExtendedCommunity(sub, val)
 		if err != nil {

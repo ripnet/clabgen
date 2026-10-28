@@ -388,7 +388,8 @@ peer from loopbacks too):
 message="maintenance"`, `… route-refresh` and `… rib peer=10.0.50.1 prefix=…`.
 There is no TCP MD5 authentication (the netstack has none).
 
-VPN families (peer `families`: `ipv4-vpn`, `ipv6-vpn`, `evpn`, `l2vpn`):
+VPN families (peer `families`: `ipv4-vpn`, `ipv6-vpn`, `evpn`, `l2vpn`;
+SR policies below):
 a route with an `rd` is VPNv4/VPNv6 (`label`, `route_targets`; the VPNv6
 next hop is IPv4-mapped over IPv4, as 6VPE); `evpn` entries are MAC/IP
 (counting MACs and IPs up), inclusive multicast (PMSI tunnel, ingress
@@ -411,6 +412,48 @@ Over eBGP, SR OS drops VPN routes under its RFC 8212 default reject
 (`vpn-apply-import` is off, so the group's import policy doesn't apply to
 them): set `ebgp-default-reject-policy import false export false` on the
 group, or use iBGP.
+
+### SR policies
+
+clabgen can be the controller that hands SR policies to headends: family
+`ipv4-srpolicy` / `ipv6-srpolicy` (BGP SR Policy, RFC 9830), one route per
+candidate path. A headend installs the candidate path with the highest
+preference among the valid ones and steers traffic into it: traffic to
+the binding SID, and BGP routes with the policy's color.
+
+```yaml
+             peers: [{address: 192.0.2.100, remote_as: 65100, families: [ipv4-unicast, ipv4-srpolicy]}],
+             sr_policies:
+               - {endpoint: 192.0.2.50, color: 100, headend: 192.0.2.100, preference: 200,
+                  binding_sid: 32050, segment_lists: [{labels: [20050]}]}
+               - {endpoint: 192.0.2.50, color: 100, headend: 192.0.2.100, distinguisher: 2, preference: 100,
+                  segment_lists: [{labels: [20003, 20050], weight: 1}, {labels: [20004, 20050], weight: 2}]}
+             routes: [{prefix: 198.51.100.0/24, ext_communities: ["color:100"]}]   # steered into color 100
+```
+
+- `endpoint` and `color` name the policy; `distinguisher` tells its
+  candidate paths apart (default 1: give each candidate path of a policy
+  its own).
+- `headend`: the BGP identifier of the router that should install it (a
+  route target `<headend>:0`). Without it the route carries NO_ADVERTISE,
+  for when the headend is the BGP peer itself.
+- Each candidate path has a `preference` (default 100), segment lists of
+  SR-MPLS labels outermost first (with optional `weight`s to split
+  traffic), an optional `binding_sid`, and, among the advanced options,
+  the S and I binding-SID flags, `priority`, `explicit_null`, and policy
+  and candidate path names.
+- `color:N` in a route's `ext_communities` steers that route into the
+  policies of color N.
+- `advertise` and `withdraw` take `sr_policies` too, to change candidate
+  paths while traffic runs (e.g. withdraw the preferred one and measure
+  the failover).
+
+SR OS takes them with `bgp sr-policy-import true`, `family sr-policy-ipv4`
+on the group and `segment-routing sr-policies admin-state enable` (plus a
+`reserved-label-block` for binding SIDs); `show router segment-routing
+sr-policies bgp` shows what it installed. Send traffic to a binding SID
+over an interface that forwards MPLS (an IS-IS or OSPF segment-routing
+link): a plain IES interface drops labelled packets.
 
 ## OSPFv2 and OSPFv3
 

@@ -209,3 +209,51 @@ func TestBGPVPN(t *testing.T) {
 		return received(p, "ipv4-vpn") == 50 && received(p, "evpn") == 1 && received(p, "l2vpn") == 0
 	})
 }
+
+// SR Policy (SAFI 73) over iBGP: candidate paths from a reach b with their
+// route target or NO_ADVERTISE and the tunnel encapsulation attribute, a
+// colored unicast route carries its color, and a withdrawal removes one.
+func TestBGPSRPolicy(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	fams := `"families":["ipv4-unicast","ipv4-srpolicy","ipv6-srpolicy"]`
+	mk := func(e *core.Engine, cfg string) {
+		t.Helper()
+		if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "bgp", Type: "bgp", Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(a, `{"local_as":65000,"hold_time":9,"peers":[{"address":"10.0.0.2","remote_as":65000,`+fams+`,"connect_retry":1}],
+		"routes":[{"prefix":"198.51.100.0/24","ext_communities":["color:100"]}],
+		"sr_policies":[
+			{"endpoint":"10.0.0.5","color":100,"segment_lists":[{"labels":[40002,40005]}]},
+			{"endpoint":"10.0.0.5","color":100,"distinguisher":2,"preference":200,"headend":"10.0.0.2","binding_sid":100000,
+			 "segment_lists":[{"labels":[40003,40005],"weight":1},{"labels":[40004,40005],"weight":2}]},
+			{"endpoint":"2001:db8::5","color":200,"segment_lists":[{"labels":[40005]}]}]}`)
+	mk(b, `{"local_as":65000,"router_id":"10.0.0.2","hold_time":9,"peers":[{"address":"10.0.0.1","remote_as":65000,`+fams+`,"connect_retry":1}]}`)
+	eventuallyLong(t, "policies received", func() bool {
+		p := bgpPeer(t, b, "10.0.0.1")
+		return p["state"] == "established" && received(p, "ipv4-srpolicy") == 2 && received(p, "ipv6-srpolicy") == 1 && received(p, "ipv4-unicast") == 1
+	})
+	rib := func(fam, sub string) map[string]any {
+		rs := bgpRun(t, b, "rib", `{"peer":"10.0.0.1","family":"`+fam+`","prefix":"`+sub+`"}`)["routes"].([]any)
+		if len(rs) == 0 {
+			t.Fatalf("no %s route matching %q", fam, sub)
+		}
+		return rs[0].(map[string]any)
+	}
+	if r := rib("ipv4-srpolicy", "(distinguisher 1)"); !strings.Contains(fmt.Sprint(r["prefix"]), "color 100 endpoint 10.0.0.5") ||
+		!strings.Contains(fmt.Sprint(r["communities"]), "no-advertise") || !strings.Contains(fmt.Sprint(r["other_attributes"]), "TUNNEL_ENCAP") {
+		t.Fatalf("policy without headend %v", r)
+	}
+	if r := rib("ipv4-srpolicy", "(distinguisher 2)"); !strings.Contains(fmt.Sprint(r["ext_communities"]), "10.0.0.2:0") {
+		t.Fatalf("policy for headend 10.0.0.2 %v", r)
+	}
+	if r := rib("ipv6-srpolicy", "2001:db8::5"); !strings.Contains(fmt.Sprint(r["prefix"]), "color 200") {
+		t.Fatalf("IPv6 policy %v", r)
+	}
+	if r := rib("ipv4-unicast", "198.51.100.0/24"); !strings.Contains(strings.ToLower(fmt.Sprint(r["ext_communities"])), "100") {
+		t.Fatalf("colored route %v", r)
+	}
+	bgpRun(t, a, "withdraw", `{"sr_policies":[{"endpoint":"10.0.0.5","color":100,"distinguisher":2,"segment_lists":[{"labels":[16]}]}]}`)
+	eventuallyLong(t, "withdrawn", func() bool { return received(bgpPeer(t, b, "10.0.0.1"), "ipv4-srpolicy") == 1 })
+}

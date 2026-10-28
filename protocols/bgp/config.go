@@ -20,6 +20,8 @@ type Config struct {
 	Routes []Route      `json:"routes,omitempty" jsonschema:"description=Routes to advertise (route injection); with an rd: VPNv4 / VPNv6" jsonschema_extras:"x-summary={prefix}[ ×{count}][ rd {rd}][ label {label}][ nh {next_hop}]"`
 	EVPN   []EVPNRoute  `json:"evpn,omitempty" jsonschema:"description=EVPN routes (family evpn)" jsonschema_extras:"x-summary={type} {rd}[ {mac}][ {prefix}][ ×{count}][ label {label}]"`
 	L2VPN  []L2VPNRoute `json:"l2vpn,omitempty" jsonschema:"description=BGP VPLS / VPWS label blocks (family l2vpn)" jsonschema_extras:"x-summary=[{kind} ]{rd} ve {ve_id} labels from {label_base}"`
+	// SR policy candidate paths (family ipv4-srpolicy / ipv6-srpolicy).
+	SRPolicies []SRPolicy `json:"sr_policies,omitempty" jsonschema:"description=SR policy candidate paths for headends (families ipv4-srpolicy and ipv6-srpolicy)" jsonschema_extras:"x-summary=color {color} → {endpoint}[ pref {preference}][ bsid {binding_sid}][ for {headend}]"`
 }
 
 type Peer struct {
@@ -27,7 +29,7 @@ type Peer struct {
 	RemoteAS     uint32   `json:"remote_as" jsonschema:"required,minimum=1" jsonschema_extras:"x-group=Session"`
 	LocalAddress string   `json:"local_address,omitempty" jsonschema:"description=Our source address. Default: the device address toward the peer" jsonschema_extras:"x-group=Session"`
 	Passive      bool     `json:"passive,omitempty" jsonschema:"description=Only accept the peer's connection; don't dial" jsonschema_extras:"x-group=Transport,x-advanced=true"`
-	Families     []string `json:"families,omitempty" jsonschema:"enum=ipv4-unicast,enum=ipv6-unicast,enum=ipv4-vpn,enum=ipv6-vpn,enum=evpn,enum=l2vpn,description=Address families. Default: the peer address's unicast family" jsonschema_extras:"x-group=Session"`
+	Families     []string `json:"families,omitempty" jsonschema:"enum=ipv4-unicast,enum=ipv6-unicast,enum=ipv4-vpn,enum=ipv6-vpn,enum=evpn,enum=l2vpn,enum=ipv4-srpolicy,enum=ipv6-srpolicy,description=Address families. Default: the peer address's unicast family" jsonschema_extras:"x-group=Session"`
 	HoldTime     int      `json:"hold_time,omitempty" jsonschema:"description=Default: the speaker's" jsonschema_extras:"x-group=Timers"`
 	TTL          int      `json:"ttl,omitempty" jsonschema:"minimum=0,maximum=255,description=TTL of our packets (eBGP multihop / GTSM 255). Default 64 (eBGP 1)" jsonschema_extras:"x-group=Transport,x-advanced=true"`
 	Description  string   `json:"description,omitempty" jsonschema_extras:"x-group=Session"`
@@ -46,7 +48,7 @@ type Route struct {
 	LocalPref        *uint32  `json:"local_pref,omitempty" jsonschema:"description=iBGP only. Default 100" jsonschema_extras:"x-group=Path attributes"`
 	Communities      []string `json:"communities,omitempty" jsonschema_description:"Standard communities: 65000:100, no-export, no-advertise, no-export-subconfed, blackhole" jsonschema_extras:"x-group=Path attributes"`
 	LargeCommunities []string `json:"large_communities,omitempty" jsonschema:"description=Large communities global:local1:local2" jsonschema_extras:"x-group=Path attributes"`
-	ExtCommunities   []string `json:"ext_communities,omitempty" jsonschema_description:"Extended communities: rt:65000:100, soo:65000:1, rt:192.0.2.1:7" jsonschema_extras:"x-group=Path attributes"`
+	ExtCommunities   []string `json:"ext_communities,omitempty" jsonschema_description:"Extended communities: rt:65000:100, soo:65000:1, rt:192.0.2.1:7, color:100 (steers into SR policies of that color)" jsonschema_extras:"x-group=Path attributes"`
 	AtomicAggregate  bool     `json:"atomic_aggregate,omitempty" jsonschema_extras:"x-group=Path attributes"`
 	Peers            []string `json:"peers,omitempty" jsonschema:"description=Only to these peers (addresses). Default: all" jsonschema_extras:"x-group=Advanced,x-advanced=true"`
 	// VPN (RFC 4364 / 4659): a route distinguisher makes the route VPNv4/v6.
@@ -59,7 +61,8 @@ func defaultConfig() *Config {
 	return &Config{LocalAS: 65000, HoldTime: 90}
 }
 
-var families = map[string]bool{"ipv4-unicast": true, "ipv6-unicast": true, "ipv4-vpn": true, "ipv6-vpn": true, "evpn": true, "l2vpn": true}
+var families = map[string]bool{"ipv4-unicast": true, "ipv6-unicast": true, "ipv4-vpn": true, "ipv6-vpn": true, "evpn": true, "l2vpn": true,
+	"ipv4-srpolicy": true, "ipv6-srpolicy": true}
 
 func (c *Config) Validate() error {
 	if c.LocalAS == 0 {
@@ -93,7 +96,7 @@ func (c *Config) Validate() error {
 		}
 		for _, f := range p.Families {
 			if !families[f] {
-				return fmt.Errorf("peer %s: unknown family %q (ipv4-unicast, ipv6-unicast, ipv4-vpn, ipv6-vpn, evpn, l2vpn)", a, f)
+				return fmt.Errorf("peer %s: unknown family %q (ipv4-unicast, ipv6-unicast, ipv4-vpn, ipv6-vpn, evpn, l2vpn, ipv4-srpolicy, ipv6-srpolicy)", a, f)
 			}
 		}
 		if p.HoldTime != 0 && (p.HoldTime < 3 || p.HoldTime > 65535) {
@@ -122,6 +125,17 @@ func (c *Config) Validate() error {
 		if _, err := l.expand(); err != nil {
 			return err
 		}
+	}
+	keys := map[string]bool{}
+	for _, p := range c.SRPolicies {
+		x, err := p.expand()
+		if err != nil {
+			return err
+		}
+		if keys[x.key] {
+			return fmt.Errorf("%s: another candidate path has distinguisher %d (one route per distinguisher, color and endpoint)", p.name(), max(p.Distinguisher, 1))
+		}
+		keys[x.key] = true
 	}
 	return nil
 }
@@ -227,9 +241,10 @@ func parseLarge(s string) ([3]uint32, error) {
 
 // Action args.
 type RouteArgs struct {
-	Routes []Route      `json:"routes,omitempty"`
-	EVPN   []EVPNRoute  `json:"evpn,omitempty"`
-	L2VPN  []L2VPNRoute `json:"l2vpn,omitempty"`
+	Routes     []Route      `json:"routes,omitempty"`
+	EVPN       []EVPNRoute  `json:"evpn,omitempty"`
+	L2VPN      []L2VPNRoute `json:"l2vpn,omitempty"`
+	SRPolicies []SRPolicy   `json:"sr_policies,omitempty"`
 }
 
 type PeerArgs struct {
@@ -257,7 +272,7 @@ func (a *FlapArgs) Validate() error {
 }
 
 func (a *RouteArgs) Validate() error {
-	if len(a.Routes)+len(a.EVPN)+len(a.L2VPN) == 0 {
+	if len(a.Routes)+len(a.EVPN)+len(a.L2VPN)+len(a.SRPolicies) == 0 {
 		return errors.New("at least one route")
 	}
 	for _, r := range a.Routes {
@@ -275,12 +290,17 @@ func (a *RouteArgs) Validate() error {
 			return err
 		}
 	}
+	for _, p := range a.SRPolicies {
+		if err := p.check(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 type RIBArgs struct {
 	Peer   string `json:"peer" jsonschema:"description=Peer address"`
-	Family string `json:"family,omitempty" jsonschema:"enum=ipv4-unicast,enum=ipv6-unicast,enum=ipv4-vpn,enum=ipv6-vpn,enum=evpn,enum=l2vpn,description=Default: all"`
+	Family string `json:"family,omitempty" jsonschema:"enum=ipv4-unicast,enum=ipv6-unicast,enum=ipv4-vpn,enum=ipv6-vpn,enum=evpn,enum=l2vpn,enum=ipv4-srpolicy,enum=ipv6-srpolicy,description=Default: all"`
 	Prefix string `json:"prefix,omitempty" jsonschema:"description=Unicast: only prefixes within this one; other families: routes whose text contains it"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"description=At most this many routes. Default 1000"`
 }

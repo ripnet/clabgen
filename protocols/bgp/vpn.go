@@ -26,7 +26,7 @@ var (
 	famEVPN  = family{gb.RF_EVPN, "evpn", false}
 	famL2VPN = family{gb.RF_VPLS, "l2vpn", false}
 
-	xfamilies = []family{famVPNv4, famVPNv6, famEVPN, famL2VPN}
+	xfamilies = []family{famVPNv4, famVPNv6, famEVPN, famL2VPN, famSRPv4, famSRPv6}
 )
 
 // xroute is one advertised route of a VPN family.
@@ -530,6 +530,10 @@ func rxText(n gb.AddrPrefixInterface, vxlan bool) string {
 		case *gb.EVPNEthernetSegmentRoute:
 			s += " esi " + r.ESI.String()
 		}
+	case *gb.SRPolicyIPv4:
+		s = fmt.Sprintf("color %d endpoint %s (distinguisher %d)", x.Color, netip.AddrFrom4([4]byte(x.Endpoint)), x.Distinguisher)
+	case *gb.SRPolicyIPv6:
+		s = fmt.Sprintf("color %d endpoint %s (distinguisher %d)", x.Color, netip.AddrFrom16([16]byte(x.Endpoint)), x.Distinguisher)
 	case *gb.VPLSNLRI:
 		s = fmt.Sprintf("%s:%d:%d (block %d, labels from %d)", x.RD(), x.VEID, x.VEBlockOffset, x.VEBlockSize, x.LabelBlockBase)
 	}

@@ -14,7 +14,7 @@ devices:
   # IS-IS peer of the SR (eth3 VLAN 500, point-to-point).
   - {name: i500, port: eth3, vlans: [{vid: 500}], addresses: [10.0.50.2/30, 2001:db8:50::2/64], gateway4: 10.0.50.1, gateway6: "2001:db8:50::1"}
   # Its second interface toward the SR (eth3 VLAN 502, point-to-point).
-  - {name: i502, port: eth3, vlans: [{vid: 502}], addresses: [10.0.52.2/30, 2001:db8:52::2/64]}
+  - {name: i502, port: eth3, vlans: [{vid: 502}], addresses: [10.0.52.2/30, 2001:db8:52::2/64], gateway4: 10.0.52.1}   # the SR: next hop of bsid-test
   # A level-1 link inside gen1 (VLAN 503, which the SR doesn't carry):
   # isis (L1L2) and the level-1 router isis-l1.
   - {name: i503, port: eth3, vlans: [{vid: 503}], addresses: [10.0.53.1/30]}
@@ -70,6 +70,15 @@ protocols:
              rate: 100, frame_size: 512, auto_start: true, checks: {max_loss_pct: 1, max_outage_ms: 1500}}
   # Traffic: continuous pings to the SR interface, and a TTL=1 flow through
   # the SR (expects ICMP time exceeded back).
+  # Into the SR policy's binding SID over an SR-MPLS link (VLAN 502): the SR pushes the
+  # policy's segments and the packets come back to our loopback, counted at i500.
+  - name: bsid-test
+    type: packet
+    device: i502
+    config:
+      layers: [{mpls: {label: 32050}}, {ipv4: {dst: 192.0.2.50}}, {udp: {dst_port: 7050}}, {payload: {size: 64}}]
+      rate: 20
+      auto_start: true
   - name: ping-sr
     type: icmp
     device: v400
@@ -199,7 +208,14 @@ protocols:
     config: {local_as: 65050, router_id: 192.0.2.50, hold_time: 30,
              peers: [{address: 10.0.50.1, remote_as: 65100, families: [ipv4-unicast, ipv6-unicast], description: sr1 link},
                      {address: 192.0.2.100, remote_as: 65100, local_address: 192.0.2.50, ttl: 64,
-                      families: [ipv4-unicast, ipv6-unicast, ipv4-vpn, ipv6-vpn, evpn, l2vpn], description: sr1 loopback}],
+                      families: [ipv4-unicast, ipv6-unicast, ipv4-vpn, ipv6-vpn, evpn, l2vpn, ipv4-srpolicy], description: sr1 loopback}],
+             # SR policy color 100 to our loopback for the SR (headend 192.0.2.100): the preferred
+             # candidate path straight to our node SID (20050), binding SID 32050 (srpol block).
+             # The backup starts with the SR's own SID, which SR OS marks invalid at the headend.
+             sr_policies: [{endpoint: 192.0.2.50, color: 100, headend: 192.0.2.100, preference: 200, binding_sid: 32050,
+                            segment_lists: [{labels: [20050]}], name: to-clabgen, path_name: direct},
+                           {endpoint: 192.0.2.50, color: 100, headend: 192.0.2.100, distinguisher: 2, preference: 100,
+                            binding_sid: 32050, segment_lists: [{labels: [20100, 20050]}], name: to-clabgen, path_name: via-sr}],
              routes: [{prefix: 100.64.0.0/24, count: 10000, communities: ["65050:1"], large_communities: ["65050:1:1"]},
                       {prefix: "2001:db8:abc::/48", count: 1000, med: 50},
                       {prefix: 203.0.113.0/24, as_path: [64512, 64513], communities: [no-export], peers: [10.0.50.1]},

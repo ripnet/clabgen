@@ -203,6 +203,11 @@
 /configure router "Base" bgp group "clabgen" family vpn-ipv6 true
 /configure router "Base" bgp group "clabgen" family evpn true
 /configure router "Base" bgp group "clabgen" family l2-vpn true
+/configure router "Base" bgp sr-policy-import true
+/configure router "Base" bgp group "clabgen" family sr-policy-ipv4 true
+/configure router "Base" mpls-labels reserved-label-block "srpol" start-label 32000 end-label 32999
+/configure router "Base" segment-routing sr-policies admin-state enable
+/configure router "Base" segment-routing sr-policies reserved-label-block "srpol"
 /configure service vprn "vprn500" admin-state enable
 /configure service vprn "vprn500" service-id 500
 /configure service vprn "vprn500" customer "1"

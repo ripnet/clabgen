@@ -120,7 +120,7 @@ func TestConfigValidate(t *testing.T) {
 		{LocalAS: 1, Routes: []Route{{Prefix: "10.0.0.0/24", NextHop: "2001:db8::1"}}},
 		{LocalAS: 1, Routes: []Route{{Prefix: "255.255.255.0/24", Count: 2}}},
 		{LocalAS: 1, Routes: []Route{{Prefix: "10.0.0.0/24", Peers: []string{"10.9.9.9"}}}},
-		{LocalAS: 1, Routes: []Route{{Prefix: "10.0.0.0/24", ExtCommunities: []string{"color:1"}}}},
+		{LocalAS: 1, Routes: []Route{{Prefix: "10.0.0.0/24", ExtCommunities: []string{"encap:1"}}}},
 	} {
 		if bad.Validate() == nil {
 			t.Errorf("accepted %+v", bad)

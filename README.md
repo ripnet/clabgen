@@ -76,7 +76,9 @@ SR-SIM image and license).
   SRv6 and flex-algo, keychain authentication, BFD, graceful restart.
 - **OSPFv2 / OSPFv3**: areas (stub, NSSA, virtual links), segment routing,
   BFD, graceful restart.
-- **BGP**: IPv4/IPv6 unicast, VPNv4/v6, EVPN and L2VPN.
+- **BGP**: IPv4/IPv6 unicast, VPNv4/v6, EVPN, L2VPN, and SR policies
+  (clabgen as the controller: candidate paths, binding SIDs, color
+  steering).
 - **Emulated topologies** behind IS-IS and OSPF routers (grids, rings,
   custom graphs) with link and node failures.
 - **LLDP**.
