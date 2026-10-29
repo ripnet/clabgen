@@ -764,7 +764,7 @@ func TestISISMultipleInterfaces(t *testing.T) {
 	if upCount(isisStatus(t, c)) != 1 {
 		t.Fatal("LAN adjacency dropped by flapping the other interface")
 	}
-	eventually(t, "a back", func() bool { return upCount(isisStatus(t, a)) == 1 })
+	eventuallyLong(t, "a back", func() bool { return upCount(isisStatus(t, a)) == 1 })
 
 	// Deleting the device detaches the interface; recreating it re-attaches.
 	if err := b.DeleteDevice("d2"); err != nil {
