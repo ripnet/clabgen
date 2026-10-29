@@ -53,11 +53,8 @@ func Locate(getenv func(string) string) (path, host, why string) {
 	if topo == "" || nodeDir == "" {
 		return "", "", "not a containerlab node (set CLABGEN_STATE to a file to save to)"
 	}
-	mount := getenv("CLABGEN_LAB_MOUNT")
-	if mount == "" {
-		mount = "/clab"
-	}
-	if fi, err := os.Stat(mount); err != nil || !fi.IsDir() {
+	mount, ok := labMount(getenv)
+	if !ok {
 		return "", "", fmt.Sprintf("the topology's folder isn't mounted at %s (add binds: [.:%s] to the node)", mount, mount)
 	}
 	rel, err := filepath.Rel(filepath.Dir(topo), nodeDir)
@@ -67,6 +64,36 @@ func Locate(getenv func(string) string) (path, host, why string) {
 	return filepath.Join(mount, rel, fileName), filepath.Join(nodeDir, fileName), ""
 }
 
+// labMount is where the topology's folder is mounted (CLABGEN_LAB_MOUNT,
+// default /clab), and whether it is.
+func labMount(getenv func(string) string) (string, bool) {
+	mount := getenv("CLABGEN_LAB_MOUNT")
+	if mount == "" {
+		mount = "/clab"
+	}
+	fi, err := os.Stat(mount)
+	return mount, err == nil && fi.IsDir()
+}
+
+// Scenario resolves CLABGEN_SCENARIO: a relative path is relative to the
+// topology's folder, like containerlab's own bind sources, when that is
+// mounted (else to the working directory). host is the same file as the lab
+// host sees it, for display.
+func Scenario(p string, getenv func(string) string) (path, host string) {
+	if p == "" || filepath.IsAbs(p) {
+		return p, p
+	}
+	mount, ok := labMount(getenv)
+	if !ok {
+		return p, p
+	}
+	host = p
+	if topo := getenv("CLAB_LABEL_CLAB_TOPO_FILE"); topo != "" {
+		host = filepath.Join(filepath.Dir(topo), p)
+	}
+	return filepath.Join(mount, p), host
+}
+
 // Store loads and saves one agent's config.
 type Store struct {
 	eng      *core.Engine
@@ -74,7 +101,8 @@ type Store struct {
 	path     string // "" when not saving
 	host     string
 	why      string
-	scenario string // CLABGEN_SCENARIO
+	scenario string // CLABGEN_SCENARIO, resolved (Scenario)
+	scenHost string // as the lab host sees it
 
 	mu      sync.Mutex
 	source  string
@@ -82,8 +110,8 @@ type Store struct {
 	lastErr string
 }
 
-func New(eng *core.Engine, log *slog.Logger, path, host, why, scenario string) *Store {
-	return &Store{eng: eng, log: log, path: path, host: host, why: why, scenario: scenario, source: FromEmpty}
+func New(eng *core.Engine, log *slog.Logger, path, host, why, scenario, scenarioHost string) *Store {
+	return &Store{eng: eng, log: log, path: path, host: host, why: why, scenario: scenario, scenHost: scenarioHost, source: FromEmpty}
 }
 
 // Info is what the agent reports: the saved file (as the lab host sees it;
@@ -96,7 +124,7 @@ type Info struct {
 func (s *Store) Info() Info {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return Info{File: s.host, Why: s.why, Source: s.source, Scenario: s.scenario, Error: s.lastErr}
+	return Info{File: s.host, Why: s.why, Source: s.source, Scenario: s.scenHost, Error: s.lastErr}
 }
 
 func (s *Store) apply(file string, replace bool) error {
@@ -151,9 +179,9 @@ func (s *Store) loadScenario(replace bool) {
 	switch {
 	case s.scenario != "":
 		if err := s.apply(s.scenario, replace); err != nil {
-			s.log.Error("scenario applied with errors", "file", s.scenario, "err", err)
+			s.log.Error("scenario applied with errors", "file", s.scenHost, "err", err)
 		} else {
-			s.log.Info("scenario applied", "file", s.scenario)
+			s.log.Info("scenario applied", "file", s.scenHost)
 		}
 		source = FromScenario
 	case replace:

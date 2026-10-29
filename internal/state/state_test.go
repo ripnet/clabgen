@@ -49,6 +49,23 @@ func TestLocate(t *testing.T) {
 	}
 }
 
+func TestScenario(t *testing.T) {
+	mount := t.TempDir()
+	clab := env(map[string]string{"CLABGEN_LAB_MOUNT": mount, "CLAB_LABEL_CLAB_TOPO_FILE": "/home/u/lab/b2b.clab.yml"})
+	if p, host := Scenario("gen1.yml", clab); p != filepath.Join(mount, "gen1.yml") || host != "/home/u/lab/gen1.yml" {
+		t.Errorf("relative, in containerlab: %q %q", p, host)
+	}
+	if p, host := Scenario("/etc/clabgen/scenario.yml", clab); p != "/etc/clabgen/scenario.yml" || host != p {
+		t.Errorf("absolute: %q %q", p, host)
+	}
+	if p, host := Scenario("gen1.yml", env(map[string]string{"CLABGEN_LAB_MOUNT": "/nonexistent"})); p != "gen1.yml" || host != p {
+		t.Errorf("relative, nothing mounted: %q %q", p, host)
+	}
+	if p, _ := Scenario("", clab); p != "" {
+		t.Errorf("none: %q", p)
+	}
+}
+
 func TestLoadSaveReset(t *testing.T) {
 	dir := t.TempDir()
 	scen := filepath.Join(dir, "gen1.yml")
@@ -58,7 +75,7 @@ func TestLoadSaveReset(t *testing.T) {
 
 	// A fresh lab: the scenario, saved at once.
 	e := engine()
-	s := New(e, log, file, file, "", scen)
+	s := New(e, log, file, file, "", scen, scen)
 	s.Load()
 	if s.Info().Source != FromScenario {
 		t.Fatalf("source %q", s.Info().Source)
@@ -80,7 +97,7 @@ func TestLoadSaveReset(t *testing.T) {
 
 	// The lab restarts: the saved config wins over the scenario.
 	e2 := engine()
-	s2 := New(e2, log, file, file, "", scen)
+	s2 := New(e2, log, file, file, "", scen, scen)
 	s2.Load()
 	if s2.Info().Source != FromSaved || len(e2.Devices()) != 2 {
 		t.Fatalf("restored %q with %d devices", s2.Info().Source, len(e2.Devices()))
@@ -100,7 +117,7 @@ func TestLoadSaveReset(t *testing.T) {
 	// A saved file that doesn't parse is kept aside, not overwritten.
 	os.WriteFile(file, []byte("devices: [nope"), 0o644)
 	e3 := engine()
-	s3 := New(e3, log, file, file, "", scen)
+	s3 := New(e3, log, file, file, "", scen, scen)
 	s3.Load()
 	if s3.Info().Source != FromScenario || len(e3.Devices()) != 1 {
 		t.Errorf("unreadable: %q", s3.Info().Source)
@@ -111,7 +128,7 @@ func TestLoadSaveReset(t *testing.T) {
 
 	// Not saving: Load still applies the scenario.
 	e4 := engine()
-	s4 := New(e4, log, "", "", "not a containerlab node", scen)
+	s4 := New(e4, log, "", "", "not a containerlab node", scen, scen)
 	s4.Load()
 	if s4.Info().Source != FromScenario || len(e4.Devices()) != 1 || s4.Save() != nil {
 		t.Errorf("no file: %+v", s4.Info())

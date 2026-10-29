@@ -8,11 +8,11 @@ topology:
     image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
   nodes:
     gen1:
-      binds: [gen1.yml:/etc/clabgen/scenario.yml:ro, .:/clab]   # .:/clab keeps the config in clab-<lab>/gen1/
-      env: {CLABGEN_SCENARIO: /etc/clabgen/scenario.yml}
+      binds: [.:/clab]   # the topology folder: the scenario, and the saved config in clab-<lab>/gen1/
+      env: {CLABGEN_SCENARIO: gen1.yml}
     gen2:
-      binds: [gen2.yml:/etc/clabgen/scenario.yml:ro, .:/clab]   # .:/clab keeps the config in clab-<lab>/gen2/
-      env: {CLABGEN_SCENARIO: /etc/clabgen/scenario.yml}
+      binds: [.:/clab]   # the topology folder: the scenario, and the saved config in clab-<lab>/gen2/
+      env: {CLABGEN_SCENARIO: gen2.yml}
   links:
     - endpoints: [gen1:eth1, gen2:eth1]
     - endpoints: [gen1:eth2, gen2:eth2]

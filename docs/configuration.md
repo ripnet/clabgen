@@ -3,16 +3,22 @@
 An agent's devices and protocols are a **scenario**: built in the web UI,
 changed with `clabgenctl` or the API, or loaded from a YAML file when the
 agent starts, and [kept across lab restarts](#saved-config) (the `.:/clab`
-bind below). Mount the file into the node and point `CLABGEN_SCENARIO` at
-it:
+bind below). Put the file next to the topology and name it in
+`CLABGEN_SCENARIO`:
 
 ```yaml
     gen1:
       kind: linux
       image: ghcr.io/ripnet/clabgen
-      binds: [gen1.yml:/etc/clabgen/scenario.yml:ro, .:/clab]
-      env: {CLABGEN_SCENARIO: /etc/clabgen/scenario.yml}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: gen1.yml}
 ```
+
+A relative `CLABGEN_SCENARIO` is relative to the topology's folder, like
+containerlab's own bind sources (`scenarios/gen1.yml` works too). An
+absolute one is a path inside the node: without the `.:/clab` bind, mount
+the file yourself (`binds: [gen1.yml:/etc/clabgen/scenario.yml:ro]`,
+`CLABGEN_SCENARIO: /etc/clabgen/scenario.yml`).
 
 The Scenario tab in the UI (or `clabgenctl scenario get` / `apply` /
 `reset`) exports, applies and resets the whole thing. Every protocol's full set of options,

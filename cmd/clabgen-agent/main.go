@@ -46,7 +46,7 @@ import (
 func main() {
 	listen := flag.String("listen", ":8080", "API listen address")
 	portsRE := flag.String("ports", `^eth[1-9][0-9]*$`, "regexp of interfaces to adopt as data ports")
-	scenario := flag.String("scenario", envOr("CLABGEN_SCENARIO", ""), "YAML scenario to apply at startup (env CLABGEN_SCENARIO)")
+	scenario := flag.String("scenario", envOr("CLABGEN_SCENARIO", ""), "YAML scenario to apply at startup (env CLABGEN_SCENARIO); a relative path is relative to the topology's folder in containerlab")
 	logLevel := flag.String("log-level", "info", "debug, info, warn or error")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	profile := flag.Bool("pprof", envOr("CLABGEN_PPROF", "") != "", "serve Go profiling at /debug/pprof/ on the API port (env CLABGEN_PPROF)")
@@ -84,7 +84,8 @@ func main() {
 	if spath == "" {
 		log.Info("config not saved across restarts", "why", why)
 	}
-	store := state.New(eng, log, spath, shost, why, *scenario)
+	scen, scenHost := state.Scenario(*scenario, os.Getenv)
+	store := state.New(eng, log, spath, shost, why, scen, scenHost)
 	store.Load()
 	saved := make(chan struct{})
 	go func() {
