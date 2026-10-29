@@ -10,8 +10,8 @@ bind below). Put the file next to the topology and name it in
     gen1:
       kind: linux
       image: ghcr.io/ripnet/clabgen
-      binds: [.:/clab]
-      env: {CLABGEN_SCENARIO: gen1.yml}
+      binds: [.:/clab]                   # needed to save config across lab restarts
+      env: {CLABGEN_SCENARIO: gen1.yml}  # optional: a scenario to start a fresh lab with
 ```
 
 A relative `CLABGEN_SCENARIO` is relative to the topology's folder, like

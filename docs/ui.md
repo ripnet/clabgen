@@ -38,7 +38,8 @@ The header shows the version serving the UI. A release build of
 else is sent) and, when there is a newer one, links to it next to the
 version; `-update-check=false` turns that off, for labs without internet
 or that shouldn't call out. To update, `docker pull
-ghcr.io/ripnet/clabgen-ui` and recreate the container.
+ghcr.io/ripnet/clabgen-ui` and recreate the container (see
+[Upgrading](upgrading.md)).
 
 Agents can run a different version than the UI (a lab deployed before an
 update). An agent on an older release gets an **update** marker in the

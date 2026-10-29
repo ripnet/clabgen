@@ -18,6 +18,7 @@ nav:
   - CLI: cli.md
   - Python and pytest: python.md
   - API: api.md
+  - Upgrading: upgrading.md
   - Writing a protocol: writing-a-protocol.md
   - Development: development.md
 

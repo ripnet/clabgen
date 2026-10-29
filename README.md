@@ -114,6 +114,7 @@ Also at **https://clabgen.dev/**.
 - [CLI](docs/cli.md): `clabgenctl`
 - [API](docs/api.md)
 - [Python and pytest](docs/python.md): the `clabgen` package
+- [Upgrading](docs/upgrading.md): the UI, agents, `clabgenctl` and Python
 - [Development](docs/development.md): building, tests, images and releases
 - [Writing a protocol](docs/writing-a-protocol.md)
 
