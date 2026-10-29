@@ -22,7 +22,6 @@ import (
 	gb "github.com/osrg/gobgp/v3/pkg/packet/bgp"
 
 	"github.com/ripnet/clabgen/internal/ipstack"
-	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/protocol"
 )
 
@@ -47,6 +46,7 @@ func (bgpType) Actions() []protocol.Action {
 		{Name: "notify", Description: "Send a NOTIFICATION with any code/subcode (closes the session)", NewArgs: func() any { return &NotifyArgs{Code: 6, Subcode: 2} }},
 		{Name: "route-refresh", Description: "Ask peers to resend their routes", NewArgs: func() any { return &PeerArgs{} }},
 		{Name: "rib", Description: "Show routes received from a peer", NewArgs: func() any { return &RIBArgs{Limit: 1000} }},
+		{Name: "bfd-fail", Description: "Silence our BFD sessions for a while (the peers see BFD fail)", NewArgs: func() any { return &BFDArgs{Seconds: 10} }},
 		{Name: "clear", Description: "Reset counters"},
 	}
 }
@@ -64,6 +64,7 @@ type session struct {
 	tmpls    map[*tmpl]bool         // templates in use
 	nextTmpl int
 	counters map[string]uint64
+	ipID     uint16 // BFD packets (bfd.go)
 
 	listeners []net.Listener
 	stop      chan struct{}
@@ -129,6 +130,10 @@ func (bgpType) Start(env protocol.Env, c any) (protocol.Session, error) {
 		s.wg.Add(1)
 		go p.manage()
 	}
+	if usesBFD(cfg) {
+		s.wg.Add(1)
+		go s.bfdLoop()
+	}
 	return s, nil
 }
 
@@ -176,8 +181,6 @@ func (s *session) Stop() {
 	}
 	s.wg.Wait()
 }
-
-func (s *session) HandleRx(*pkt.Frame) {}
 
 func (s *session) event(kind, msg string) { s.env.Emit(kind, msg, nil) }
 
@@ -391,6 +394,25 @@ func (s *session) Action(_ context.Context, name string, args any) (any, error) 
 		return map[string]any{"down_until": till.Format(time.RFC3339), "sessions": len(down)}, nil
 	case "rib":
 		return s.rib(args.(*RIBArgs))
+	case "bfd-fail":
+		a := args.(*BFDArgs)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		ps, err := s.peersNamed(a.Peer)
+		if err != nil {
+			return nil, err
+		}
+		till, n := time.Now().Add(time.Duration(a.Seconds)*time.Second), 0
+		for _, p := range ps {
+			if p.bfd != nil {
+				p.bfdSilentTill = till
+				n++
+			}
+		}
+		if n == 0 {
+			return nil, fmt.Errorf("no BFD sessions")
+		}
+		return map[string]any{"silent_until": till.Format(time.RFC3339), "sessions": n}, nil
 	case "clear":
 		s.mu.Lock()
 		s.counters = map[string]uint64{}
@@ -586,6 +608,9 @@ func shutdownData(msg string) []byte {
 // notifyText names a NOTIFICATION.
 func notifyText(code, sub uint8, data []byte) string {
 	t := gb.NewNotificationErrorCode(code, sub).String()
+	if code == gb.BGP_ERROR_CEASE && sub == ceaseBFDDown {
+		t = "code 6(cease) subcode 10(BFD down)" // RFC 9384; GoBGP doesn't name it
+	}
 	if code == gb.BGP_ERROR_CEASE && (sub == gb.BGP_ERROR_SUB_ADMINISTRATIVE_SHUTDOWN || sub == gb.BGP_ERROR_SUB_ADMINISTRATIVE_RESET) && len(data) > 0 && int(data[0]) <= len(data)-1 && data[0] > 0 {
 		t += fmt.Sprintf(" (%q)", data[1:1+data[0]])
 	}

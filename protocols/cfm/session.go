@@ -42,6 +42,7 @@ type SessionStatus struct {
 type session struct {
 	cfg  Session
 	m    *mep
+	quit chan struct{} // closed when a config change replaces the session
 	dst  pkt.MAC
 	err  string
 	test uint32
@@ -61,7 +62,7 @@ type session struct {
 }
 
 func (m *mep) startSessions() {
-	for _, c := range m.cfg.Sessions {
+	for _, c := range m.c().Sessions {
 		if c.IntervalMS == 0 {
 			c.IntervalMS = 1000
 		}
@@ -71,12 +72,14 @@ func (m *mep) startSessions() {
 		if c.Bins == 0 {
 			c.Bins = 10
 		}
-		x := &session{cfg: c, m: m, test: c.TestID, history: []Bin{}, dm: make(chan dmReply, 64), dmKeys: map[uint64]time.Time{},
+		x := &session{cfg: c, m: m, quit: make(chan struct{}), test: c.TestID, history: []Bin{}, dm: make(chan dmReply, 64), dmKeys: map[uint64]time.Time{},
 			sl: make(chan *slm, 64), lm: make(chan lmReply, 64)}
 		if x.test == 0 {
 			x.test = rand.Uint32()
 		}
+		m.mu.Lock()
 		m.sessions = append(m.sessions, x)
+		m.mu.Unlock()
 		go x.run()
 	}
 }
@@ -93,6 +96,8 @@ func (x *session) run() {
 	for {
 		select {
 		case <-m.stop:
+			return
+		case <-x.quit:
 			return
 		case r := <-x.dm:
 			d := max(r.rxb.Sub(r.txf), 0)
@@ -169,7 +174,7 @@ func (x *session) tick(now time.Time) {
 	var op uint8
 	switch x.cfg.Type {
 	case "delay":
-		pdu, op = encodeDMM(m.cfg.Level, now), OpDMM
+		pdu, op = encodeDMM(m.c().Level, now), OpDMM
 		key := binary.BigEndian.Uint64(pdu[4:12])
 		m.dmWait[key] = x.dm
 		x.dmKeys[key] = now
@@ -182,7 +187,7 @@ func (x *session) tick(now time.Time) {
 	case "synthetic-loss":
 		m.slWait[x.test] = x.sl
 		x.bin.FarEndTx++ // SLMs sent in the bin
-		pdu, op = (&slm{Level: m.cfg.Level, Opcode: OpSLM, SrcMEP: m.cfg.MEPID, TestID: x.test, TxFCf: x.bin.FarEndTx}).encode(), OpSLM
+		pdu, op = (&slm{Level: m.c().Level, Opcode: OpSLM, SrcMEP: m.c().MEPID, TestID: x.test, TxFCf: x.bin.FarEndTx}).encode(), OpSLM
 	case "loss":
 		if w := m.lmWait[dst]; w != nil && w != x.lm {
 			x.err = "another loss measurement toward the target is running"
@@ -198,7 +203,7 @@ func (x *session) tick(now time.Time) {
 			m.mu.Unlock()
 			return
 		}
-		pdu, op = (&lm{Level: m.cfg.Level, Opcode: OpLMM, TxFCf: tx}).encode(), OpLMM
+		pdu, op = (&lm{Level: m.c().Level, Opcode: OpLMM, TxFCf: tx}).encode(), OpLMM
 	}
 	x.bin.Sent++
 	m.mu.Unlock()

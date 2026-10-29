@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ripnet/clabgen/internal/pkt"
@@ -133,7 +134,7 @@ type event struct {
 
 type mep struct {
 	env    protocol.Env
-	cfg    Config
+	live   atomic.Pointer[liveCfg] // the config; swapped whole by Reconfigure
 	maid   MAID
 	ivCode uint8
 	iv     time.Duration
@@ -184,9 +185,6 @@ type mep struct {
 	tstSeq                    uint32
 	sessions                  []*session
 
-	ccmTLVs    []byte // Sender ID, Organization-Specific, padding
-	senderTLVs []byte // Sender ID for LBM / LTM
-
 	stop chan struct{}
 	done chan struct{}
 }
@@ -199,7 +197,7 @@ func (mepType) Start(env protocol.Env, c any) (protocol.Session, error) {
 	}
 	code, iv, _ := intervalByName(cfg.CCMInterval)
 	now := time.Now()
-	m := &mep{env: env, cfg: cfg, maid: maid, ivCode: code, iv: iv,
+	m := &mep{env: env, maid: maid, ivCode: code, iv: iv,
 		seq: 1, rmeps: map[uint16]*rmep{}, txCnt: map[uint8]uint64{}, rxCnt: map[uint8]uint64{},
 		ccmEnabled: cfg.CCMEnabled, portStatus: PortUp, intfStatus: 1, levelOverride: -1,
 		transID: rand.Uint32(),
@@ -207,13 +205,7 @@ func (mepType) Start(env protocol.Env, c any) (protocol.Session, error) {
 		slWait: map[uint32]chan *slm{}, slrTx: map[slKey]uint32{}, lmWait: map[pkt.MAC]chan lmReply{},
 		owds: map[pkt.MAC]*owd{}, tsts: map[pkt.MAC]*tstRx{},
 		stop: make(chan struct{}), done: make(chan struct{})}
-	m.senderTLVs = senderIDTLV(cfg.SenderID)
-	m.ccmTLVs = append([]byte{}, m.senderTLVs...)
-	if cfg.OrgTLV != nil {
-		o, _ := cfg.OrgTLV.encode()
-		m.ccmTLVs = append(m.ccmTLVs, o...)
-	}
-	m.ccmTLVs = append(m.ccmTLVs, dataTLV(cfg.CCMPadding)...)
+	m.live.Store(newLive(cfg))
 	for _, id := range cfg.RemoteMEPs {
 		m.rmeps[id] = &rmep{id: id, configured: true, state: rmepStart, since: now}
 	}
@@ -221,6 +213,29 @@ func (mepType) Start(env protocol.Env, c any) (protocol.Session, error) {
 	m.startSessions()
 	return m, nil
 }
+
+// liveCfg is a MEP's config with the TLVs it adds to CCMs and LBM/LTM.
+// The receive path reads it without the lock, so a change replaces it
+// whole.
+type liveCfg struct {
+	Config
+	ccmTLVs    []byte // Sender ID, Organization-Specific, padding
+	senderTLVs []byte // Sender ID for LBM / LTM
+}
+
+func newLive(cfg Config) *liveCfg {
+	l := &liveCfg{Config: cfg, senderTLVs: senderIDTLV(cfg.SenderID)}
+	l.ccmTLVs = append([]byte{}, l.senderTLVs...)
+	if cfg.OrgTLV != nil {
+		o, _ := cfg.OrgTLV.encode()
+		l.ccmTLVs = append(l.ccmTLVs, o...)
+	}
+	l.ccmTLVs = append(l.ccmTLVs, dataTLV(cfg.CCMPadding)...)
+	return l
+}
+
+// c is the MEP's current config.
+func (m *mep) c() *liveCfg { return m.live.Load() }
 
 func (m *mep) timeout() time.Duration { return m.iv * 7 / 2 }
 
@@ -284,11 +299,11 @@ func (m *mep) sendCCM() {
 		m.mu.Unlock()
 		return
 	}
-	level := m.cfg.Level
+	level := m.c().Level
 	if m.levelOverride >= 0 {
 		level = uint8(m.levelOverride)
 	}
-	c := &ccm{Level: level, Interval: m.ivCode, Seq: m.seq, MEPID: m.cfg.MEPID, MAID: m.maid,
+	c := &ccm{Level: level, Interval: m.ivCode, Seq: m.seq, MEPID: m.c().MEPID, MAID: m.maid,
 		RDI: m.presentRDI()}
 	m.seq += 1 + m.skipSeq
 	m.skipSeq = 0
@@ -298,15 +313,15 @@ func (m *mep) sendCCM() {
 	if m.maidOverride != nil {
 		c.MAID = *m.maidOverride
 	}
-	if m.cfg.PortStatusTLV {
+	if m.c().PortStatusTLV {
 		c.PortStatus = m.portStatus
 	}
-	if m.cfg.InterfaceStatusTLV {
+	if m.c().InterfaceStatusTLV {
 		c.IntfStatus = m.intfStatus
 	}
 	m.txCnt[OpCCM]++
 	m.mu.Unlock()
-	if err := m.send(ccmGroup(level), withTLVs(c.encode(), m.ccmTLVs), m.cfg.CCMPriority); err != nil {
+	if err := m.send(ccmGroup(level), withTLVs(c.encode(), m.c().ccmTLVs), m.c().CCMPriority); err != nil {
 		m.mu.Lock()
 		m.txCnt[OpCCM]--
 		m.mu.Unlock()
@@ -402,7 +417,7 @@ func (m *mep) setXcon(now time.Time, reason string) {
 
 func (m *mep) siblingAtLevel(level uint8) bool {
 	for _, s := range m.env.Siblings() {
-		if o, ok := s.(*mep); ok && o.cfg.Level == level {
+		if o, ok := s.(*mep); ok && o.c().Level == level {
 			return true
 		}
 	}
@@ -419,13 +434,13 @@ func (m *mep) HandleRx(f *pkt.Frame) {
 		m.mu.Unlock()
 		return
 	}
-	if h.Opcode == OpCCM && f.Local && m.cfg.IgnoreLocalMEPs {
+	if h.Opcode == OpCCM && f.Local && m.c().IgnoreLocalMEPs {
 		return // another MEP on this agent's port (ignore_local_meps)
 	}
-	if h.Level > m.cfg.Level {
+	if h.Level > m.c().Level {
 		return // passes transparently through a MEP of a lower level
 	}
-	if h.Level < m.cfg.Level {
+	if h.Level < m.c().Level {
 		if h.Opcode == OpCCM && !m.siblingAtLevel(h.Level) {
 			m.mu.Lock()
 			m.rxCnt[OpCCM]++
@@ -449,12 +464,12 @@ func (m *mep) HandleRx(f *pkt.Frame) {
 	case OpCCM:
 		m.rxCCM(h, f)
 	case OpLBM:
-		if m.cfg.DisableLBR || !m.forMe(f.Dst, ccmGroup(m.cfg.Level)) {
+		if m.c().DisableLBR || !m.forMe(f.Dst, ccmGroup(m.c().Level)) {
 			return
 		}
 		r := append([]byte(nil), b...)
 		r[1] = OpLBR
-		if m.send(f.Src, r, rxPCP(f, m.cfg.CCMPriority)) == nil {
+		if m.send(f.Src, r, rxPCP(f, m.c().CCMPriority)) == nil {
 			m.count(OpLBR)
 		}
 	case OpLBR:
@@ -471,14 +486,14 @@ func (m *mep) HandleRx(f *pkt.Frame) {
 		}
 	case OpLTM:
 		l, err := parseLTM(h, b)
-		if err != nil || m.cfg.DisableLTR || l.Target != m.env.Device().MAC() || l.TTL == 0 {
+		if err != nil || m.c().DisableLTR || l.Target != m.env.Device().MAC() || l.TTL == 0 {
 			return
 		}
 		mac := m.env.Device().MAC()
-		r := &ltr{Level: m.cfg.Level, Flags: l.Flags&flagUseFDBOnly | flagTerminalMEP, TransID: l.TransID,
+		r := &ltr{Level: m.c().Level, Flags: l.Flags&flagUseFDBOnly | flagTerminalMEP, TransID: l.TransID,
 			ReplyTTL: l.TTL - 1, RelayAction: RlyHit, LastEgress: l.EgressID,
 			NextEgress: append([]byte{0, 0}, mac[:]...), IngressAct: 1, IngressMAC: mac}
-		if m.send(l.Orig, r.encode(), rxPCP(f, m.cfg.CCMPriority)) == nil {
+		if m.send(l.Orig, r.encode(), rxPCP(f, m.c().CCMPriority)) == nil {
 			m.count(OpLTR)
 		}
 	case OpLTR:
@@ -496,14 +511,14 @@ func (m *mep) HandleRx(f *pkt.Frame) {
 			}
 		}
 	case OpDMM:
-		if m.cfg.DisableDMR || len(b) < 4+dmTLVOffset || !m.forMe(f.Dst, ccmGroup(m.cfg.Level)) {
+		if m.c().DisableDMR || len(b) < 4+dmTLVOffset || !m.forMe(f.Dst, ccmGroup(m.c().Level)) {
 			return
 		}
 		r := append([]byte(nil), b...)
 		r[1] = OpDMR
 		putTimestamp(r[12:], f.RxTime)
 		putTimestamp(r[20:], time.Now())
-		if m.send(f.Src, r, rxPCP(f, m.cfg.CCMPriority)) == nil {
+		if m.send(f.Src, r, rxPCP(f, m.c().CCMPriority)) == nil {
 			m.count(OpDMR)
 		}
 	case OpDMR:
@@ -522,7 +537,7 @@ func (m *mep) HandleRx(f *pkt.Frame) {
 		}
 	case OpSLM:
 		s, err := parseSL(h, b)
-		if err != nil || m.cfg.DisableSLR || !m.forMe(f.Dst, ccmGroup(m.cfg.Level)) {
+		if err != nil || m.c().DisableSLR || !m.forMe(f.Dst, ccmGroup(m.c().Level)) {
 			return
 		}
 		m.mu.Lock()
@@ -530,8 +545,8 @@ func (m *mep) HandleRx(f *pkt.Frame) {
 		m.slrTx[k]++
 		s.TxFCb = m.slrTx[k]
 		m.mu.Unlock()
-		s.Opcode, s.RespMEP, s.Level = OpSLR, m.cfg.MEPID, m.cfg.Level
-		if m.send(f.Src, s.encode(), rxPCP(f, m.cfg.CCMPriority)) == nil {
+		s.Opcode, s.RespMEP, s.Level = OpSLR, m.c().MEPID, m.c().Level
+		if m.send(f.Src, s.encode(), rxPCP(f, m.c().CCMPriority)) == nil {
 			m.count(OpSLR)
 		}
 	case OpSLR:
@@ -549,15 +564,15 @@ func (m *mep) HandleRx(f *pkt.Frame) {
 			}
 		}
 	case Op1DM:
-		if m.forMe(f.Dst, ccmGroup(m.cfg.Level)) {
+		if m.forMe(f.Dst, ccmGroup(m.c().Level)) {
 			m.rx1DM(f, b)
 		}
 	case OpTST:
-		if m.forMe(f.Dst, ccmGroup(m.cfg.Level)) {
+		if m.forMe(f.Dst, ccmGroup(m.c().Level)) {
 			m.rxTST(h, f)
 		}
 	case OpCSF:
-		if m.forMe(f.Dst, ccmGroup(m.cfg.Level)) {
+		if m.forMe(f.Dst, ccmGroup(m.c().Level)) {
 			m.rxCSF(h, f)
 		}
 	case OpLMM:
@@ -617,14 +632,14 @@ func (m *mep) rxCCM(h header, f *pkt.Frame) {
 		m.setXcon(now, fmt.Sprintf("MAID mismatch from %s: %s", f.Src, c.MAID))
 		return
 	}
-	if c.MEPID == m.cfg.MEPID {
+	if c.MEPID == m.c().MEPID {
 		m.setError(now, fmt.Sprintf("CCM with our own MEPID %d from %s", c.MEPID, f.Src))
 		return
 	}
 	r := m.rmeps[c.MEPID]
 	if r == nil {
-		if len(m.cfg.RemoteMEPs) > 0 {
-			if !m.cfg.IgnoreUnknownMEPs {
+		if len(m.c().RemoteMEPs) > 0 {
+			if !m.c().IgnoreUnknownMEPs {
 				m.setError(now, fmt.Sprintf("unexpected MEPID %d from %s", c.MEPID, f.Src))
 			}
 			return
@@ -635,7 +650,7 @@ func (m *mep) rxCCM(h header, f *pkt.Frame) {
 			map[string]any{"rmep": c.MEPID, "mac": f.Src.String()}})
 	}
 	if c.Interval != m.ivCode {
-		m.setError(now, fmt.Sprintf("interval mismatch from MEP %d: %s, expected %s", c.MEPID, intervalName(c.Interval), m.cfg.CCMInterval))
+		m.setError(now, fmt.Sprintf("interval mismatch from MEP %d: %s, expected %s", c.MEPID, intervalName(c.Interval), m.c().CCMInterval))
 	}
 	if r.haveSeq && c.Seq != 0 && c.Seq != r.lastSeq+1 {
 		r.seqErrors++
@@ -704,8 +719,8 @@ func (m *mep) Status() any {
 	now := time.Now()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := Status{MAC: m.env.Device().MAC().String(), Level: m.cfg.Level, MEPID: m.cfg.MEPID, MAID: m.maid.String(),
-		CCMInterval: m.cfg.CCMInterval, CCMEnabled: m.ccmEnabled, PresentRDI: m.presentRDI(),
+	s := Status{MAC: m.env.Device().MAC().String(), Level: m.c().Level, MEPID: m.c().MEPID, MAID: m.maid.String(),
+		CCMInterval: m.c().CCMInterval, CCMEnabled: m.ccmEnabled, PresentRDI: m.presentRDI(),
 		Defects: m.cur.list(), HighestDefect: m.cur.highest(),
 		AISReceived: now.Before(m.aisUntil), LCKReceived: now.Before(m.lckUntil),
 		Tx: map[string]uint64{}, Rx: map[string]uint64{}, RxErrors: m.rxErrors, RemoteMEPs: []RMEPStatus{}}
@@ -812,7 +827,7 @@ func (m *mep) resolve(t Target, allowGroup bool) (pkt.MAC, error) {
 		}
 		return r.mac, nil
 	case allowGroup:
-		return ccmGroup(m.cfg.Level), nil
+		return ccmGroup(m.c().Level), nil
 	}
 	return pkt.MAC{}, errors.New("target_mac or target_mep_id is required")
 }
@@ -821,7 +836,7 @@ func (m *mep) prio(t Target) uint8 {
 	if t.Priority != nil {
 		return *t.Priority
 	}
-	return m.cfg.CCMPriority
+	return m.c().CCMPriority
 }
 
 func (m *mep) nextTransID() uint32 {
@@ -911,7 +926,7 @@ func (m *mep) loopback(ctx context.Context, a *LoopbackArgs) (any, error) {
 		m.lbWait[id] = ch
 		m.mu.Unlock()
 		start := time.Now()
-		if err := m.send(dst, withTLVs(encodeLBM(m.cfg.Level, id, a.DataSize), m.senderTLVs), m.prio(a.Target)); err != nil {
+		if err := m.send(dst, withTLVs(encodeLBM(m.c().Level, id, a.DataSize), m.c().senderTLVs), m.prio(a.Target)); err != nil {
 			m.mu.Lock()
 			delete(m.lbWait, id)
 			m.mu.Unlock()
@@ -1014,9 +1029,9 @@ func (m *mep) linktrace(ctx context.Context, a *LinktraceArgs) (any, error) {
 		delete(m.ltWait, id)
 		m.mu.Unlock()
 	}()
-	l := &ltm{Level: m.cfg.Level, Flags: flagUseFDBOnly, TransID: id, TTL: a.TTL, Orig: mac, Target: dst,
+	l := &ltm{Level: m.c().Level, Flags: flagUseFDBOnly, TransID: id, TTL: a.TTL, Orig: mac, Target: dst,
 		EgressID: append([]byte{0, 0}, mac[:]...)}
-	if err := m.send(ltmGroup(m.cfg.Level), withTLVs(l.encode(), m.senderTLVs), m.prio(a.Target)); err != nil {
+	if err := m.send(ltmGroup(m.c().Level), withTLVs(l.encode(), m.c().senderTLVs), m.prio(a.Target)); err != nil {
 		return nil, fmt.Errorf("send LTM: %w", err)
 	}
 	m.count(OpLTM)
@@ -1080,7 +1095,7 @@ func (m *mep) delay(ctx context.Context, a *DelayArgs) (any, error) {
 	interval := time.Duration(a.IntervalMS) * time.Millisecond
 	for i := 1; i <= a.Count; i++ {
 		start := time.Now()
-		pdu := encodeDMM(m.cfg.Level, start)
+		pdu := encodeDMM(m.c().Level, start)
 		key := binary.BigEndian.Uint64(pdu[4:12])
 		ch := make(chan dmReply, 1)
 		m.mu.Lock()
@@ -1189,7 +1204,7 @@ func (m *mep) syntheticLoss(ctx context.Context, a *SyntheticLossArgs) (any, err
 	defer tick.Stop()
 send:
 	for i := 1; i <= a.Count; i++ {
-		p := &slm{Level: m.cfg.Level, Opcode: OpSLM, SrcMEP: m.cfg.MEPID, TestID: test, TxFCf: uint32(i)}
+		p := &slm{Level: m.c().Level, Opcode: OpSLM, SrcMEP: m.c().MEPID, TestID: test, TxFCf: uint32(i)}
 		if err := m.send(dst, p.encode(), m.prio(a.Target)); err != nil {
 			return res, fmt.Errorf("send SLM: %w", err)
 		}
@@ -1242,7 +1257,7 @@ drain:
 func (m *mep) fault(a *FaultArgs) (any, error) {
 	var override *MAID
 	if a.MAIDOverride != nil && *a.MAIDOverride != "" {
-		v, err := encodeMAID(m.cfg.MDFormat, m.cfg.MDName, m.cfg.MAFormat, *a.MAIDOverride)
+		v, err := encodeMAID(m.c().MDFormat, m.c().MDName, m.c().MAFormat, *a.MAIDOverride)
 		if err != nil {
 			return nil, err
 		}

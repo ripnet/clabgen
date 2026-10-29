@@ -341,3 +341,42 @@ func TestBGPReconfigure(t *testing.T) {
 		t.Fatalf("after a new AS: %+v", v)
 	}
 }
+
+// BFD runs with an Established session; when it fails, the BGP session
+// goes down (Cease, BFD Down) and comes back once BFD can.
+func TestBGPBFD(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	mk := func(e *core.Engine, cfg string) {
+		t.Helper()
+		if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "bgp", Type: "bgp", Device: "d", Config: json.RawMessage(cfg)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bfdCfg := `"bfd":{"enabled":true,"min_tx_ms":100,"min_rx_ms":100,"multiplier":3}`
+	mk(a, `{"local_as":65001,"hold_time":30,`+bfdCfg+`,"peers":[{"address":"10.0.0.2","remote_as":65002,"connect_retry":1}]}`)
+	mk(b, `{"local_as":65002,"router_id":"10.0.0.2","hold_time":30,`+bfdCfg+`,"peers":[{"address":"10.0.0.1","remote_as":65001,"connect_retry":1}]}`)
+	bfdState := func(e *core.Engine, addr string) string {
+		p := bgpPeer(t, e, addr)
+		if s, ok := p["bfd"].(map[string]any); ok {
+			return fmt.Sprint(s["state"])
+		}
+		return "none"
+	}
+	eventuallyLong(t, "BGP and BFD up", func() bool {
+		return bgpPeer(t, a, "10.0.0.2")["state"] == "established" && bfdState(a, "10.0.0.2") == "up" && bfdState(b, "10.0.0.1") == "up"
+	})
+	// b goes silent: a's BFD fails and takes the session down (hold time 30 s
+	// would take far longer).
+	bgpRun(t, b, "bfd-fail", `{"seconds":2}`)
+	eventuallyLong(t, "a's session down by BFD", func() bool {
+		p := bgpPeer(t, a, "10.0.0.2")
+		return num(p, "downs") >= 1 && strings.Contains(fmt.Sprint(p["last_down"]), "BFD")
+	})
+	eventuallyLong(t, "back up with BFD", func() bool {
+		p := bgpPeer(t, a, "10.0.0.2")
+		return p["state"] == "established" && num(p, "ups") >= 2 && bfdState(a, "10.0.0.2") == "up"
+	})
+	if p := bgpPeer(t, a, "10.0.0.2"); p["bfd"].(map[string]any)["state"] != "up" {
+		t.Fatalf("bfd %v", p["bfd"])
+	}
+}

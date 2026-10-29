@@ -15,6 +15,7 @@ import (
 
 	gb "github.com/osrg/gobgp/v3/pkg/packet/bgp"
 
+	"github.com/ripnet/clabgen/internal/bfd"
 	"github.com/ripnet/clabgen/internal/ipstack"
 )
 
@@ -59,6 +60,9 @@ type peer struct {
 	adjX     map[gb.RouteFamily]map[string]*rxRoute // VPN families
 	eorIn    map[gb.RouteFamily]bool
 	counters map[string]uint64
+
+	bfd           *bfdPeer // while Established, with BFD on (bfd.go)
+	bfdSilentTill time.Time
 }
 
 func newPeer(s *session, c Peer) *peer {
@@ -382,7 +386,7 @@ func (c *conn) run() {
 	delete(p.conns, c)
 	wasUp := p.est == c
 	if wasUp {
-		p.est = nil
+		p.est, p.bfd = nil, nil
 		p.downs++
 		p.lastDown, p.downAt = reason, time.Now()
 		p.resetRIBLocked()
@@ -459,6 +463,7 @@ func (c *conn) handshake() string {
 			lost := p.est != nil
 			if !lost {
 				p.est, c.state = c, stEstablished
+				s.startBFDLocked(p, c)
 				p.ups++
 				p.lastErr = ""
 				p.setStateLocked(stEstablished)
@@ -1021,6 +1026,7 @@ type PeerStatus struct {
 	LastDown      string            `json:"last_down,omitempty"` // why the last session ended
 	LastDownAt    string            `json:"last_down_at,omitempty"`
 	LastMalformed string            `json:"last_malformed,omitempty"` // hex, first 512 bytes
+	BFD           *bfd.Status       `json:"bfd,omitempty"`
 	Ups           int               `json:"ups"`
 	Downs         int               `json:"downs"`
 	Flapping      bool              `json:"flapping,omitempty"`
@@ -1055,6 +1061,10 @@ func (p *peer) statusLocked(now time.Time) PeerStatus {
 	}
 	if st.Families == nil {
 		st.Families = []string{}
+	}
+	if p.bfd != nil {
+		b := p.bfd.sess.Status()
+		st.BFD = &b
 	}
 	for k, v := range p.counters {
 		st.Counters[k] = v

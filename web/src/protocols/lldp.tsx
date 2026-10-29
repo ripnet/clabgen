@@ -1,5 +1,5 @@
 import type { JsonObject } from "@bufbuild/protobuf";
-import { registerView, type Health } from "./registry";
+import { registerView, restartNote, type Health } from "./registry";
 
 type Info = {
   chassis_id_subtype: string;
@@ -144,4 +144,10 @@ function Status({ status }: { status: JsonObject }) {
   );
 }
 
-registerView("lldp", { summary, Status });
+// Only a new destination or mode restarts (protocols/lldp/lldp.go).
+registerView("lldp", {
+  summary,
+  Status,
+  applyNote: (was, now) =>
+    was.dest === now.dest && was.mode === now.mode ? { restart: false, text: "Applies in place: the next LLDPDU, sent at once, carries it; neighbors keep us." } : restartNote,
+});

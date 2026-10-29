@@ -1055,7 +1055,7 @@ func protoCmd() *cobra.Command {
 
 	var setJSON, setPcap string
 	set := &cobra.Command{
-		Use: "set NAME key=value...", Short: "Change config (merged onto current config; restarts the instance, except BGP edits that apply in place)", Args: cobra.MinimumNArgs(1),
+		Use: "set NAME key=value...", Short: "Change config (merged onto current config; applied in place where it can be, e.g. new routes, else the instance restarts)", Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, cancel := ctx()
 			defer cancel()

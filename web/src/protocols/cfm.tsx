@@ -1,5 +1,5 @@
 import type { JsonObject } from "@bufbuild/protobuf";
-import { registerView, type Health } from "./registry";
+import { registerView, restartNote, type Health } from "./registry";
 import { ago } from "../components/ValueView";
 
 type RMEP = {
@@ -385,4 +385,9 @@ registerView("cfm-mep", {
     };
   },
   Status: CFMStatus,
+  // Only a new identity restarts the MEP (protocols/cfm/reconfig.go).
+  applyNote: (was, now) =>
+    ["level", "mep_id", "md_format", "md_name", "ma_format", "ma_name", "ccm_interval"].every((k) => was[k] === now[k])
+      ? { restart: false, text: "Applies in place: the MEP keeps its remote MEPs, counters and sessions (a changed session list restarts the sessions)." }
+      : restartNote,
 });

@@ -237,26 +237,11 @@ func (isisType) Start(env protocol.Env, c any) (protocol.Session, error) {
 			s.mts = append(s.mts, mtIDs[t])
 		}
 	}
-	if k := cfg.Topology.Kind; k != "" && k != "none" {
-		t, err := buildTopology(cfg.Topology, &s.sys)
-		if err != nil {
-			return nil, fmt.Errorf("topology: %w", err)
-		}
-		s.topo = t
-		if b := cfg.SRv6.TopologyLocatorBase; b != "" {
-			loc := netip.MustParsePrefix(b).Masked()
-			t.locators = map[string]netip.Prefix{}
-			for i, n := range t.nodes {
-				if i > 0 {
-					var ok bool
-					if loc, ok = nextPrefix(loc); !ok {
-						return nil, errors.New("srv6: topology_locator_base runs out of locators")
-					}
-				}
-				t.locators[n.name] = loc
-			}
-		}
+	t, err := newTopology(cfg, &s.sys)
+	if err != nil {
+		return nil, err
 	}
+	s.topo = t
 	first := Interface{Circuit: cfg.Circuit, Metric: cfg.Metric, Passive: cfg.Passive, TEMetric: cfg.TEMetric, DelayUS: cfg.DelayUS, AdminGroups: cfg.AdminGroups}
 	s.circs = []*circuit{s.newCircuit(0, env.Device().Name(), first)}
 	s.circs[0].mac = env.Device().MAC()
@@ -276,6 +261,32 @@ func (isisType) Start(env protocol.Env, c any) (protocol.Session, error) {
 	}
 	go s.run()
 	return s, nil
+}
+
+// newTopology builds the simulated routers behind us (nil: none), with
+// their SRv6 locators.
+func newTopology(cfg Config, sys *SysID) (*topology, error) {
+	if k := cfg.Topology.Kind; k == "" || k == "none" {
+		return nil, nil
+	}
+	t, err := buildTopology(cfg.Topology, sys)
+	if err != nil {
+		return nil, fmt.Errorf("topology: %w", err)
+	}
+	if b := cfg.SRv6.TopologyLocatorBase; b != "" {
+		loc := netip.MustParsePrefix(b).Masked()
+		t.locators = map[string]netip.Prefix{}
+		for i, n := range t.nodes {
+			if i > 0 {
+				var ok bool
+				if loc, ok = nextPrefix(loc); !ok {
+					return nil, errors.New("srv6: topology_locator_base runs out of locators")
+				}
+			}
+			t.locators[n.name] = loc
+		}
+	}
+	return t, nil
 }
 
 func (s *session) Stop() {

@@ -13,6 +13,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ripnet/clabgen/internal/pkt"
@@ -58,7 +59,7 @@ type neighbor struct {
 
 type session struct {
 	env protocol.Env
-	cfg Config
+	cfg atomic.Pointer[Config] // swapped whole by Reconfigure (read unlocked)
 	dst pkt.MAC
 
 	mu        sync.Mutex
@@ -75,8 +76,9 @@ type session struct {
 
 func (lldpType) Start(env protocol.Env, c any) (protocol.Session, error) {
 	cfg := *c.(*Config)
-	s := &session{env: env, cfg: cfg, neighbors: map[string]*neighbor{}, counters: map[string]uint64{},
+	s := &session{env: env, neighbors: map[string]*neighbor{}, counters: map[string]uint64{},
 		fast: cfg.FastCount, stop: make(chan struct{}), done: make(chan struct{})}
+	s.cfg.Store(&cfg)
 	switch cfg.Dest {
 	case "nearest-nontpmr":
 		s.dst = NearestNonTPMR
@@ -92,17 +94,20 @@ func (lldpType) Start(env protocol.Env, c any) (protocol.Session, error) {
 	return s, nil
 }
 
-func (s *session) tx() bool { return s.cfg.Mode == "tx-rx" || s.cfg.Mode == "tx-only" }
-func (s *session) rx() bool { return s.cfg.Mode == "tx-rx" || s.cfg.Mode == "rx-only" }
+// c is the session's current config.
+func (s *session) c() *Config { return s.cfg.Load() }
+
+func (s *session) tx() bool { return s.c().Mode == "tx-rx" || s.c().Mode == "tx-only" }
+func (s *session) rx() bool { return s.c().Mode == "tx-rx" || s.c().Mode == "rx-only" }
 
 // ttl is txTTL (802.1AB 9.2.5.22).
 func (s *session) ttl() uint16 {
-	return uint16(min(65535, s.cfg.TxInterval*s.cfg.TxHold+1))
+	return uint16(min(65535, s.c().TxInterval*s.c().TxHold+1))
 }
 
 func (s *session) systemName() string {
-	if s.cfg.SystemName != "" {
-		return s.cfg.SystemName
+	if s.c().SystemName != "" {
+		return s.c().SystemName
 	}
 	if h, err := os.Hostname(); err == nil && h != "" {
 		return h
@@ -113,7 +118,7 @@ func (s *session) systemName() string {
 // build encodes our LLDPDU with the given TTL (0: shutdown, mandatory
 // TLVs only).
 func (s *session) build(ttl uint16) ([]byte, error) {
-	c := s.cfg
+	c := s.c()
 	dev := s.env.Device()
 	var w tlvWriter
 	cs := chassisSubtypes[c.ChassisIDSubtype]
@@ -219,7 +224,7 @@ func (s *session) build(ttl uint16) ([]byte, error) {
 // mgmtAddrs are the management addresses to advertise.
 func (s *session) mgmtAddrs() []netip.Addr {
 	var out []netip.Addr
-	if len(s.cfg.MgmtAddresses) == 0 || len(s.cfg.MgmtAddresses) == 1 && s.cfg.MgmtAddresses[0] == "auto" {
+	if len(s.c().MgmtAddresses) == 0 || len(s.c().MgmtAddresses) == 1 && s.c().MgmtAddresses[0] == "auto" {
 		if ip := s.env.IP(); ip != nil {
 			for _, p := range ip.Addresses() {
 				if !p.Addr().IsLinkLocalUnicast() {
@@ -229,7 +234,7 @@ func (s *session) mgmtAddrs() []netip.Addr {
 		}
 		return out
 	}
-	for _, a := range s.cfg.MgmtAddresses {
+	for _, a := range s.c().MgmtAddresses {
 		if x, err := netip.ParseAddr(a); err == nil {
 			out = append(out, x)
 		}
@@ -278,7 +283,7 @@ func (s *session) tick(now time.Time) {
 	}
 	due := s.tx() && !s.shut && !now.Before(s.pauseTill) && !now.Before(s.nextTx)
 	if due {
-		iv := time.Duration(s.cfg.TxInterval) * time.Second
+		iv := time.Duration(s.c().TxInterval) * time.Second
 		if s.fast > 0 {
 			s.fast--
 			iv = fastInterval
@@ -333,7 +338,7 @@ func (s *session) HandleRx(f *pkt.Frame) {
 		s.counters["inserts"]++
 		// A new neighbor: tell it about us quickly (802.1AB 9.2.7.7.4).
 		if s.tx() && !s.shut && s.fast == 0 {
-			s.fast, s.nextTx = s.cfg.FastCount, now
+			s.fast, s.nextTx = s.c().FastCount, now
 		}
 		go s.env.Emit("neighbor-added", fmt.Sprintf("neighbor %s port %s (from %s)", orName(in), in.PortID, f.Src), nil)
 	} else if !bytes.Equal(n.raw, raw) {
@@ -390,7 +395,7 @@ type Status struct {
 
 func (s *session) Status() any {
 	now := time.Now()
-	st := Status{Mode: s.cfg.Mode, Dest: s.cfg.Dest, Neighbors: []NeighborStatus{}, Counters: map[string]uint64{}}
+	st := Status{Mode: s.c().Mode, Dest: s.c().Dest, Neighbors: []NeighborStatus{}, Counters: map[string]uint64{}}
 	if b, err := s.build(s.ttl()); err == nil {
 		st.Local, _ = Decode(b)
 	}
@@ -431,7 +436,7 @@ func (s *session) Action(_ context.Context, name string, args any) (any, error) 
 	switch name {
 	case "send":
 		if !s.tx() {
-			return nil, fmt.Errorf("mode %s does not transmit", s.cfg.Mode)
+			return nil, fmt.Errorf("mode %s does not transmit", s.c().Mode)
 		}
 		s.send(s.ttl())
 		return map[string]any{"sent": true}, nil
@@ -453,7 +458,7 @@ func (s *session) Action(_ context.Context, name string, args any) (any, error) 
 		return map[string]any{"transmit": "shut down"}, nil
 	case "resume":
 		s.mu.Lock()
-		s.shut, s.pauseTill, s.nextTx, s.fast = false, time.Time{}, now, s.cfg.FastCount
+		s.shut, s.pauseTill, s.nextTx, s.fast = false, time.Time{}, now, s.c().FastCount
 		s.mu.Unlock()
 		return map[string]any{"transmit": "on"}, nil
 	case "clear":
@@ -477,4 +482,23 @@ func (s *session) Health() string {
 	default:
 		return fmt.Sprintf("%d neighbors", n)
 	}
+}
+
+// Reconfigure applies a new config in place: the next LLDPDU (sent at
+// once) carries it, and neighbors keep us. A new destination address or
+// mode restarts the session, which tells the old neighbors we're gone.
+func (s *session) Reconfigure(c any) bool {
+	nc := *c.(*Config)
+	oc := s.c()
+	if nc.Dest != oc.Dest || nc.Mode != oc.Mode {
+		return false
+	}
+	s.cfg.Store(&nc)
+	s.mu.Lock()
+	if !s.shut {
+		s.nextTx = time.Now()
+	}
+	s.mu.Unlock()
+	s.env.Emit("config-changed", "LLDP config applied: the next LLDPDU carries it", nil)
+	return true
 }

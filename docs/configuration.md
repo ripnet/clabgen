@@ -81,6 +81,22 @@ too), `CLABGEN_STATE=off` turns saving off, and `CLABGEN_LAB_MOUNT` moves
 the mount point. A saved file that doesn't parse is renamed
 `clabgen.yml.unreadable` and the scenario used instead.
 
+## Editing a running protocol
+
+A config edit (the UI's Edit config, `clabgenctl proto set`, the API, a
+device group change) applies in place when it only changes what a protocol
+advertises, so adjacencies and sessions stay up; the UI says before Apply
+which it will be. Anything else restarts the instance with the new config.
+
+| Protocol | Applied in place | Restarts the instance |
+|---|---|---|
+| BGP | routes, SR policies, EVPN/L2VPN, peers added or removed (a peer whose session settings change resets alone) | `local_as`, `router_id`, speaker-wide `bfd` |
+| IS-IS | hostname, overload, metrics and TE attributes, prefixes, loopbacks, simulated topology, segment routing, flex-algo, SRv6, summaries, LSP timers | system ID, areas, levels, circuits, hellos, authentication, BFD, graceful restart, topologies, interfaces added or removed |
+| OSPFv2 / OSPFv3 | costs and TE attributes, prefixes, loopbacks, max-metric, simulated topology (not its area), segment routing, flex-algo, LSA refresh | router ID (or the first loopback when it is the router ID), areas, interfaces, network types, timers, authentication, BFD, graceful restart, virtual links |
+| CFM MEP | CCM on/off, priority and TLVs, `remote_meps`, AIS, responders, sessions (restarted on their own) | level, MEP ID, MD, MA, CCM interval |
+| LLDP | everything else (the next LLDPDU goes out at once) | `dest`, `mode` |
+| Traffic flows and others | | every edit |
+
 ## Link state
 
 Taking a port down (`ports: {eth1: {admin: down}}`, `clabgenctl port down
@@ -434,14 +450,28 @@ peer from loopbacks too):
 message="maintenance"`, `… route-refresh` and `… rib peer=10.0.50.1 prefix=…`.
 There is no TCP MD5 authentication (the netstack has none).
 
-Config edits (the UI's Edit config, `proto set`, the API, a group change)
-apply without dropping sessions: added, changed and removed routes and SR
-policies go out as UPDATEs and withdrawals, and peers are added or removed
-on their own. A peer's session resets only when its `remote_as`,
-`local_address`, `families`, `hold_time` (its own or the speaker's default)
-or `ttl` changes; a new `local_as` or `router_id` restarts the speaker.
-Routes added with `advertise` survive edits, unless an edit advertises or
-withdraws the same prefixes. Other protocols restart on a config edit.
+BFD (RFC 5882) runs with each Established session: single hop (RFC 5881)
+toward a peer on a connected subnet, multihop (RFC 5883, UDP 4784) toward
+any other, such as a loopback. A BFD session that fails after being up
+takes the BGP session down (Cease, BFD Down) much sooner than the hold
+timer; the peer turning BFD off (AdminDown) doesn't. A peer's `bfd`
+overrides the speaker's `enabled`, and `… bfd-fail peer=… seconds=5`
+silences our side to test the router's reaction:
+
+```yaml
+    config: {local_as: 65050, hold_time: 30,
+             bfd: {enabled: true, min_tx_ms: 100, min_rx_ms: 100, multiplier: 3},
+             peers: [{address: 10.0.50.1, remote_as: 65100}]}
+```
+
+Config edits apply without dropping sessions where they can (see
+[editing a running protocol](#editing-a-running-protocol)): added, changed
+and removed routes and SR policies go out as UPDATEs and withdrawals, and
+peers are added or removed on their own. A peer's session resets only when
+its `remote_as`, `local_address`, `families`, `hold_time` (its own or the
+speaker's default), `ttl` or `bfd` changes; a new `local_as`, `router_id`
+or speaker-wide `bfd` restarts the speaker. Routes added with `advertise`
+survive edits, unless an edit advertises or withdraws the same prefixes.
 
 VPN families (peer `families`: `ipv4-vpn`, `ipv6-vpn`, `evpn`, `l2vpn`;
 SR policies below):

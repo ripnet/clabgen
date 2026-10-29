@@ -14,6 +14,8 @@ type Config struct {
 	LocalAS  uint32 `json:"local_as" jsonschema:"required,minimum=1,maximum=4294967295,description=Our AS (4-byte AS numbers are fine)"`
 	RouterID string `json:"router_id,omitempty" jsonschema:"description=BGP identifier. Default: the device's first IPv4 address"`
 	HoldTime int    `json:"hold_time" jsonschema:"minimum=0,maximum=65535,description=Seconds (0: no keepalives; else at least 3)"`
+	// BFD for the peers (bfd.go); a peer's bfd overrides enabled.
+	BFD BFDConfig `json:"bfd" jsonschema_description:"BFD (RFC 5882) for peers: single hop toward a connected peer, multihop toward any other; a failure takes the BGP session down"`
 	// Peers we talk to; each is dialled (unless passive) and accepted.
 	Peers []Peer `json:"peers,omitempty" jsonschema_extras:"x-summary={address} AS {remote_as}[ · {description}][ · {families}]"`
 	// Routes we advertise to every peer of a matching family.
@@ -34,6 +36,7 @@ type Peer struct {
 	TTL          int      `json:"ttl,omitempty" jsonschema:"minimum=0,maximum=255,description=TTL of our packets (eBGP multihop / GTSM 255). Default 64 (eBGP 1)" jsonschema_extras:"x-group=Transport,x-advanced=true"`
 	Description  string   `json:"description,omitempty" jsonschema_extras:"x-group=Session"`
 	ConnectRetry int      `json:"connect_retry,omitempty" jsonschema:"description=Seconds between connection attempts. Default 5" jsonschema_extras:"x-group=Timers"`
+	BFD          *bool    `json:"bfd,omitempty" jsonschema:"description=BFD with this peer. Default: the speaker's bfd.enabled" jsonschema_extras:"x-group=Timers"`
 }
 
 // Route is a route (or count consecutive prefixes) with its attributes.
@@ -75,6 +78,9 @@ func (c *Config) Validate() error {
 	}
 	if c.HoldTime != 0 && (c.HoldTime < 3 || c.HoldTime > 65535) {
 		return errors.New("hold_time must be 0 or 3-65535")
+	}
+	if err := c.BFD.validate(); err != nil {
+		return err
 	}
 	seen := map[netip.Addr]bool{}
 	for _, p := range c.Peers {

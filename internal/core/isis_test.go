@@ -891,3 +891,73 @@ func TestISISSRExtensions(t *testing.T) {
 		}
 	}
 }
+
+// Config edits that only change what a router advertises apply in place:
+// the neighbor sees new LSPs while the adjacency stays up; a new hello
+// interval restarts the instance (the adjacency re-forms).
+func TestISISReconfigure(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	base := `"system_id":"0000.0000.000a","hostname":"ra","hello_interval":1,"csnp_interval":1`
+	if _, err := a.CreateProtocol(core.ProtocolSpec{Name: "isis", Type: "isis", Device: "d", Config: json.RawMessage(`{` + base + `,
+		"prefixes":[{"prefix":"198.51.100.0/24"}],
+		"topology":{"kind":"grid","rows":3,"cols":3,"loopback_base":"10.255.0.1/32"}}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CreateProtocol(core.ProtocolSpec{Name: "isis", Type: "isis", Device: "d", Config: json.RawMessage(`{"system_id":"0000.0000.000b","hello_interval":1,"csnp_interval":1}`)}); err != nil {
+		t.Fatal(err)
+	}
+	sim := func(i int) string { return fmt.Sprintf("0000.1000.%04x", i) }
+	adj := func(e *core.Engine) map[string]any {
+		l, _ := isisStatus(t, e)["adjacencies"].([]any)
+		if len(l) == 0 {
+			return map[string]any{}
+		}
+		return l[0].(map[string]any)
+	}
+	eventuallyLong(t, "up with a's LSPs at b", func() bool {
+		st := isisStatus(t, b)
+		return upCount(st) == 1 && prefixes(lspOf(st, "0000.0000.000a"))["198.51.100.0/24"] && lspOf(st, sim(9)) != nil
+	})
+	sinceA, sinceB := adj(a)["since"], adj(b)["since"]
+	update := func(cfg string) {
+		t.Helper()
+		if _, err := a.UpdateProtocol("isis", json.RawMessage(`{`+base+cfg+`}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	kept := func(what string) {
+		t.Helper()
+		for _, x := range []struct {
+			e     *core.Engine
+			since any
+		}{{a, sinceA}, {b, sinceB}} {
+			if s := adj(x.e); s["state"] != "up" || s["since"] != x.since {
+				t.Fatalf("%s: the adjacency was reset: %v", what, s)
+			}
+		}
+	}
+
+	// New prefixes, a loopback, a metric and a smaller simulated topology.
+	update(`,"metric":30,"loopbacks":["192.0.2.1/32"],"prefixes":[{"prefix":"203.0.113.0/24"}],
+		"topology":{"kind":"grid","rows":2,"cols":2,"loopback_base":"10.255.0.1/32"}`)
+	eventuallyLong(t, "the new LSPs at b", func() bool {
+		st := isisStatus(t, b)
+		p := prefixes(lspOf(st, "0000.0000.000a"))
+		gone := lspOf(st, sim(9))
+		return p["203.0.113.0/24"] && p["192.0.2.1/32"] && !p["198.51.100.0/24"] && (gone == nil || num(gone, "lifetime") == 0)
+	})
+	if l := lspOf(isisStatus(t, b), "0000.0000.000a"); !strings.Contains(fmt.Sprint(l["neighbors"]), "30") {
+		t.Fatalf("metric 30 not advertised: %v", l["neighbors"])
+	}
+	kept("prefixes, loopback, metric and topology")
+
+	// A new hello interval changes the adjacency: the instance restarts
+	// (its adjacency is new; b may keep its side up through the handshake).
+	// since has whole seconds: let one pass first.
+	time.Sleep(1100 * time.Millisecond)
+	update(`,"hello_interval":2`)
+	eventuallyLong(t, "a's adjacency re-formed", func() bool {
+		s := adj(a)
+		return s["state"] == "up" && s["since"] != sinceA
+	})
+}

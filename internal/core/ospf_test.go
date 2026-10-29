@@ -1065,3 +1065,54 @@ func TestOSPFv3SegmentRouting(t *testing.T) {
 			find("e-intra-area-prefix", "192.0.2.1", "2001:db8:ff::1/128 index 1") && find("e-intra-area-prefix", "10.254.0.2", "2001:db8:ff1::2/128 index 101")
 	})
 }
+
+// Config edits that only change what a router advertises apply in place:
+// the neighbor sees new LSAs (and the simulated routers that are gone
+// flushed) with the adjacency still full; new timers restart the instance.
+func TestOSPFReconfigure(t *testing.T) {
+	for _, v3 := range []bool{false, true} {
+		t.Run(map[bool]string{false: "v2", true: "v3"}[v3], func(t *testing.T) {
+			a, b, _, _ := ipPair(t)
+			typ, lb := "ospf", "10.255.0.1/32"
+			if v3 {
+				typ, lb = "ospfv3", "2001:db8:ff::1/128"
+			}
+			base := `"router_id": "192.0.2.1", "network": "point-to-point", ` + ospfTimers
+			topo := func(n int) string {
+				return fmt.Sprintf(`"topology": {"kind": "grid", "rows": %d, "cols": %d, "loopback_base": "%s"}`, n, n, lb)
+			}
+			if _, err := a.CreateProtocol(core.ProtocolSpec{Name: "o", Type: typ, Device: "d", Config: json.RawMessage(`{` + base + `, ` + topo(3) + `}`)}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := b.CreateProtocol(core.ProtocolSpec{Name: "o", Type: typ, Device: "d", Config: json.RawMessage(`{"router_id": "192.0.2.2", "network": "point-to-point", ` + ospfTimers + `}`)}); err != nil {
+				t.Fatal(err)
+			}
+			eventuallyLong(t, "11 router LSAs at b", func() bool { return ospfFull(t, b, "o", 1) && lsdbTypes(t, b, "o")["router"] == 11 })
+			since := func(e *core.Engine) any { return ospfNbrs(t, e, "o")[0]["since"] }
+			sa, sb := since(a), since(b)
+			rid := "192.0.2.1"
+			if v3 {
+				rid = "0.0.0.0"
+			}
+			seq := lsaSeqBy(t, b, "o", "router", rid, "192.0.2.1")
+			update := func(cfg string) {
+				t.Helper()
+				if _, err := a.UpdateProtocol("o", json.RawMessage(`{`+base+`, `+cfg+`}`)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// A smaller simulated topology and a new cost.
+			update(topo(2) + `, "cost": 30`)
+			eventuallyLong(t, "6 router LSAs at b and ours re-originated", func() bool {
+				return lsdbTypes(t, b, "o")["router"] == 6 && lsaSeqBy(t, b, "o", "router", rid, "192.0.2.1") != seq
+			})
+			if !ospfFull(t, a, "o", 1) || since(a) != sa || since(b) != sb {
+				t.Fatalf("the adjacency was reset: %v / %v", ospfNbrs(t, a, "o"), ospfNbrs(t, b, "o"))
+			}
+			// New timers change the adjacency: the instance restarts.
+			time.Sleep(1100 * time.Millisecond) // since has whole seconds
+			update(topo(2) + `, "cost": 30, "retransmit_interval": 2`)
+			eventuallyLong(t, "a's adjacency re-formed", func() bool { return ospfFull(t, a, "o", 1) && since(a) != sa })
+		})
+	}
+}

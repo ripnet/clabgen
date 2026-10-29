@@ -324,8 +324,9 @@ func TestMEPTools(t *testing.T) {
 	}
 	eb.drop.Store(false)
 
-	off := true
-	b.cfg.DisableLBR = off
+	nc := b.c().Config
+	nc.DisableLBR = true
+	b.live.Store(newLive(nc))
 	r, _ = a.Action(ctx, "loopback", &LoopbackArgs{Target: Target{TargetMEPID: 2}, Count: 1, IntervalMS: 1, TimeoutMS: 20})
 	if lb := r.(*LoopbackResult); lb.Received != 0 {
 		t.Errorf("LBR should be disabled %+v", lb)
@@ -432,5 +433,46 @@ func TestIgnoreLocalAndUnknownMEPs(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if slices.Contains(st(lenient).Defects, "DefErrorCCM") {
 		t.Fatalf("ignore_unknown_meps still raised DefErrorCCM: %v", st(lenient).Defects)
+	}
+}
+
+// A config change keeps the MEP (counters, remote MEPs) unless it changes
+// the MEP's identity.
+func TestReconfigure(t *testing.T) {
+	a, b := pair()
+	ma := start(t, a, func(c *Config) { c.MEPID = 1; c.RemoteMEPs = []uint16{2} })
+	mb := start(t, b, func(c *Config) { c.MEPID = 2; c.RemoteMEPs = []uint16{1} })
+	waitFor(t, "up both ways", func() bool {
+		return len(st(ma).Defects) == 0 && len(st(mb).Defects) == 0 && len(st(ma).RemoteMEPs) == 1 && st(ma).RemoteMEPs[0].State == "ok"
+	})
+	cfg := func(m *mep, mod func(*Config)) *Config {
+		c := m.c().Config
+		mod(&c)
+		return &c
+	}
+	tx := st(mb).Tx["ccm"]
+
+	// CCM off: the peer loses continuity, and the counters go on.
+	if !mb.Reconfigure(cfg(mb, func(c *Config) { c.CCMEnabled = false })) {
+		t.Fatal("ccm_enabled restarted the MEP")
+	}
+	waitFor(t, "LOC at the peer", func() bool { return slices.Contains(st(ma).Defects, "DefRemoteCCM") })
+	if st(mb).Tx["ccm"] < tx {
+		t.Fatalf("counters reset: %v < %v", st(mb).Tx["ccm"], tx)
+	}
+	mb.Reconfigure(cfg(mb, func(c *Config) { c.CCMEnabled = true }))
+	waitFor(t, "continuity back", func() bool { return len(st(ma).Defects) == 0 })
+
+	// Expect another MEP as well: listed at once, failing until it shows.
+	if !ma.Reconfigure(cfg(ma, func(c *Config) { c.RemoteMEPs = []uint16{2, 3} })) {
+		t.Fatal("remote_meps restarted the MEP")
+	}
+	waitFor(t, "MEP 3 expected", func() bool { return len(st(ma).RemoteMEPs) == 2 && slices.Contains(st(ma).Defects, "DefRemoteCCM") })
+	ma.Reconfigure(cfg(ma, func(c *Config) { c.RemoteMEPs = []uint16{2} }))
+	waitFor(t, "MEP 3 forgotten", func() bool { return len(st(ma).RemoteMEPs) == 1 && len(st(ma).Defects) == 0 })
+
+	// A new level is a new MEP: the engine restarts it.
+	if ma.Reconfigure(cfg(ma, func(c *Config) { c.Level = 4 })) {
+		t.Fatal("a new level was applied in place")
 	}
 }

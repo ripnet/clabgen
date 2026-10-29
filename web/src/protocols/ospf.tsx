@@ -2,7 +2,8 @@ import { Fragment, useState } from "react";
 import type { JsonObject } from "@bufbuild/protobuf";
 import { client, usePoll } from "../api";
 import { ValueView } from "../components/ValueView";
-import { registerView, type Health } from "./registry";
+import { inPlaceNote, registerView, restartNote, type Health } from "./registry";
+import type { Obj } from "../components/SchemaForm";
 
 type If = {
   name: string;
@@ -643,5 +644,21 @@ function Status({
   );
 }
 
-registerView("ospf", { summary, Status });
-registerView("ospfv3", { summary, Status });
+// What the agent applies in place (protocols/ospf/reconfig.go): the
+// simulated topology's area and, without a router_id, OSPFv2's first
+// loopback (the router ID) restart it.
+const ospfInPlace = inPlaceNote(
+  ["topology", "loopbacks", "prefixes", "max_metric", "cost", "te_metric", "delay_us", "admin_groups", "bandwidth_mbps", "segment_routing", "flex_algos",
+    "traffic_engineering", "lsa_refresh"],
+  { interfaces: ["cost", "te_metric", "delay_us", "admin_groups", "bandwidth_mbps"] },
+  "Applies in place: adjacencies stay up, and the new LSAs are flooded (ones no longer wanted are flushed).",
+);
+const ospfNote = (v3: boolean) => (was: Obj, now: Obj) => {
+  const area = (c: Obj) => ((c.topology ?? {}) as Obj).area ?? "";
+  const lb = (c: Obj) => ((c.loopbacks ?? []) as string[])[0] ?? "";
+  if (area(was) !== area(now) || (!v3 && !now.router_id && lb(was) !== lb(now))) return restartNote;
+  return ospfInPlace(was, now);
+};
+
+registerView("ospf", { summary, Status, applyNote: ospfNote(false) });
+registerView("ospfv3", { summary, Status, applyNote: ospfNote(true) });

@@ -191,8 +191,9 @@ class Agent:
         return self.call("CreateProtocol", {"protocol": {"name": name, "type": type, "device": device, "config": cfg}})["protocol"]
 
     def update_protocol(self, name: str, config: dict | None = None, *, replace: bool = False, **fields: Any) -> dict:
-        """Change a protocol's config: the instance restarts, except BGP, which
-        applies route and peer changes in place. By default config and the
+        """Change a protocol's config: applied in place where the protocol can
+        (BGP routes, IS-IS/OSPF advertisements, CFM and LLDP settings), else
+        the instance restarts. By default config and the
         keyword fields are merged onto the current config (like clabgenctl
         proto set); replace=True sends them as the whole config."""
         changes = merge(copy.deepcopy(config or {}), fields)

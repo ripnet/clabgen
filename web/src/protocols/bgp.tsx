@@ -21,6 +21,7 @@ type Peer = {
   end_of_rib_received?: string[];
   last_error?: string;
   last_down?: string;
+  bfd?: { state: string; remote_state?: string; diag?: string; tx_ms?: number; detect_ms?: number; silent?: boolean };
   last_down_at?: string;
   ups: number;
   downs: number;
@@ -236,6 +237,14 @@ function Status({
                 <td className="mono small-note">
                   {p.state === "established" &&
                     `id ${p.remote_id} · hold ${p.hold_time} s · from ${p.local_address}`}
+                  {p.bfd && (
+                    <div>
+                      BFD {p.bfd.state}
+                      {p.bfd.state === "up" && p.bfd.detect_ms ? ` (detect ${p.bfd.detect_ms} ms)` : ""}
+                      {p.bfd.state !== "up" && p.bfd.remote_state ? ` · remote ${p.bfd.remote_state}` : ""}
+                      {p.bfd.silent ? " · silenced" : ""}
+                    </div>
+                  )}
                   <div className="muted">
                     {p.ups} up · {p.downs} down
                     {p.last_down ? ` · last down: ${p.last_down}` : ""}
@@ -262,17 +271,20 @@ function Status({
 // applyNote mirrors the agent's in-place config changes
 // (protocols/bgp/reconfig.go): which peers' sessions reset, if any.
 function applyNote(was: Obj, now: Obj): ApplyNote {
-  if (was.local_as !== now.local_as || (was.router_id ?? "") !== (now.router_id ?? "")) return restartNote;
-  type P = { address: string; remote_as?: number; local_address?: string; families?: string[]; hold_time?: number; ttl?: number };
-  const key = (p: P, hold: unknown) =>
-    JSON.stringify([p.remote_as, p.local_address ?? "", (p.families ?? []).join(","), p.hold_time || hold, p.ttl ?? 0]);
+  type B = { enabled?: boolean };
+  const bfd = (c: Obj) => (c.bfd ?? {}) as B;
+  if (was.local_as !== now.local_as || (was.router_id ?? "") !== (now.router_id ?? "") || JSON.stringify(was.bfd ?? {}) !== JSON.stringify(now.bfd ?? {}))
+    return restartNote;
+  type P = { address: string; remote_as?: number; local_address?: string; families?: string[]; hold_time?: number; ttl?: number; bfd?: boolean };
+  const key = (p: P, c: Obj) =>
+    JSON.stringify([p.remote_as, p.local_address ?? "", (p.families ?? []).join(","), p.hold_time || c.hold_time, p.ttl ?? 0, p.bfd ?? !!bfd(c).enabled]);
   const peers = (c: Obj) => new Map(((c.peers ?? []) as P[]).map((p) => [p.address, p]));
   const before = peers(was);
   const reset: string[] = [];
   const removed: string[] = [];
   for (const [a, p] of peers(now)) {
     const o = before.get(a);
-    if (o && key(o, was.hold_time) !== key(p, now.hold_time)) reset.push(a);
+    if (o && key(o, was) !== key(p, now)) reset.push(a);
   }
   for (const a of before.keys()) if (!peers(now).has(a)) removed.push(a);
   const parts: string[] = [];

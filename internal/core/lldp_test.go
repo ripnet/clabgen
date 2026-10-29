@@ -97,3 +97,29 @@ func TestLLDP(t *testing.T) {
 		}
 	}
 }
+
+// An edit is sent at once without a shutdown LLDPDU: the neighbor keeps
+// us and sees the new values.
+func TestLLDPReconfigure(t *testing.T) {
+	a, b, _, _ := newPair()
+	for i, e := range []*core.Engine{a, b} {
+		if _, err := e.CreateDevice(core.DeviceSpec{Name: "lldp0", Port: "eth1", MAC: fmt.Sprintf("02:00:00:00:0%d:01", i+1)}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.CreateProtocol(core.ProtocolSpec{Name: "lldp", Type: "lldp", Device: "lldp0", Config: json.RawMessage(fmt.Sprintf(`{"tx_interval":30,"system_name":"gen-%d"}`, i))}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	eventually(t, "b sees a", func() bool { return len(lldpNeighbors(t, b)) == 1 })
+	if _, err := a.UpdateProtocol("lldp", json.RawMessage(`{"tx_interval":30,"system_name":"renamed"}`)); err != nil {
+		t.Fatal(err)
+	}
+	// With a 30 s interval, only the change itself sends this soon.
+	eventually(t, "b sees the new name", func() bool {
+		n := lldpNeighbors(t, b)
+		return len(n) == 1 && n[0]["system_name"] == "renamed"
+	})
+	if c := flowStatus(t, b, "lldp")["counters"].(map[string]any); num(c, "rx_shutdowns") != 0 {
+		t.Fatalf("a shutdown LLDPDU was sent: %v", c)
+	}
+}

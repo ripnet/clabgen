@@ -144,3 +144,32 @@ test("BGP: what applying does", async ({ page }) => {
   await yaml(head.replace("65000", "65009") + peer() + "routes:\n  - prefix: 100.64.0.0/24\n    peers: [10.0.0.1]\n");
   await expect(modal.locator(".warn-box")).toContainText("restarts the instance");
 });
+
+test("IS-IS, OSPF, CFM and LLDP: what applying does", async ({ page }) => {
+  const cases: { type: string; config: Record<string, unknown>; inPlace: string; restart: string }[] = [
+    { type: "isis", config: { system_id: "0000.0000.000a", metric: 10, hello_interval: 3 }, inPlace: "metric: 30", restart: "hello_interval: 5" },
+    { type: "ospf", config: { router_id: "192.0.2.1", area: "0.0.0.0", cost: 10, hello_interval: 10 }, inPlace: "cost: 30", restart: "hello_interval: 5" },
+    { type: "cfm-mep", config: { level: 5, mep_id: 1, ccm_enabled: true }, inPlace: "ccm_enabled: false", restart: "level: 4" },
+    { type: "lldp", config: { mode: "tx-rx", system_name: "a" }, inPlace: "system_name: b", restart: "mode: rx-only" },
+  ];
+  for (const c of cases) {
+    const p: Protocol = { name: "p1", type: c.type, device: "r1", state: "running", config: c.config };
+    await mockAgent(page, p, () => undefined);
+    await page.goto("./#/a/a1/p/p1");
+    await page.reload(); // a new protocol under the same name
+    await page.getByRole("button", { name: "Edit config" }).click();
+    const modal = page.locator(".modal");
+    const yaml = async (line: string) => {
+      const key = line.split(":")[0];
+      const rest = Object.entries(c.config).filter(([k]) => k !== key).map(([k, v]) => `${k}: ${v}`);
+      await modal.getByRole("button", { name: "edit as YAML" }).click();
+      await modal.getByLabel("Configuration as YAML").fill([...rest, line].join("\n") + "\n");
+      await modal.getByRole("button", { name: "form view" }).click();
+    };
+    await yaml(c.inPlace);
+    await expect(modal.locator(".info-box"), c.type).toContainText("Applies in place");
+    await yaml(c.restart);
+    await expect(modal.locator(".warn-box"), c.type).toContainText("restarts the instance");
+    await modal.getByRole("button", { name: "Close" }).click();
+  }
+});

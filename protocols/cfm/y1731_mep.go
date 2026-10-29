@@ -17,18 +17,18 @@ import (
 // signalsLocked sends AIS, LCK and CSF when due. Caller holds mu.
 func (m *mep) signalsLocked(now time.Time) (out []func()) {
 	period := time.Second
-	if m.cfg.AIS.Interval == "1m" {
+	if m.c().AIS.Interval == "1m" {
 		period = time.Minute
 	}
-	cl := m.cfg.clientLevel()
-	prio := m.cfg.CCMPriority
-	if m.cfg.AIS.Priority != nil {
-		prio = *m.cfg.AIS.Priority
+	cl := m.c().clientLevel()
+	prio := m.c().CCMPriority
+	if m.c().AIS.Priority != nil {
+		prio = *m.c().AIS.Priority
 	}
 	// AIS while we have a signal-fail defect (or receive AIS ourselves),
 	// unless locked.
 	sf := m.cur&(defRemoteCCM|defErrorCCM|defXconCCM) != 0 || now.Before(m.aisUntil)
-	ais := !m.lock && (m.forceAIS || m.cfg.AIS.Enabled && sf && m.cfg.Level < 7)
+	ais := !m.lock && (m.forceAIS || m.c().AIS.Enabled && sf && m.c().Level < 7)
 	if ais != m.aisOn {
 		m.aisOn = ais
 		msg := fmt.Sprintf("sending AIS to level %d", cl)
@@ -55,7 +55,7 @@ func (m *mep) signalsLocked(now time.Time) (out []func()) {
 		m.nextLCK = now.Add(period)
 	}
 	if m.csf != "" && !now.Before(m.nextCSF) {
-		send(OpCSF, csfTypes[m.csf]<<3|periodCode(time.Second), m.cfg.Level, m.cfg.CCMPriority)
+		send(OpCSF, csfTypes[m.csf]<<3|periodCode(time.Second), m.c().Level, m.c().CCMPriority)
 		m.nextCSF = now.Add(time.Second)
 	}
 	return out
@@ -169,15 +169,15 @@ func (m *mep) counters() (tx, rx uint32, ok bool) {
 // rxLMM answers with LMR: the frames we received (at reception) and sent.
 func (m *mep) rxLMM(h header, f *pkt.Frame) {
 	l, err := parseLM(h, f.Payload)
-	if err != nil || !m.forMe(f.Dst, ccmGroup(m.cfg.Level)) {
+	if err != nil || !m.forMe(f.Dst, ccmGroup(m.c().Level)) {
 		return
 	}
 	tx, rx, ok := m.counters()
 	if !ok {
 		return
 	}
-	r := &lm{Level: m.cfg.Level, Opcode: OpLMR, TxFCf: l.TxFCf, RxFCf: rx, TxFCb: tx}
-	if m.send(f.Src, r.encode(), rxPCP(f, m.cfg.CCMPriority)) == nil {
+	r := &lm{Level: m.c().Level, Opcode: OpLMR, TxFCf: l.TxFCf, RxFCf: rx, TxFCb: tx}
+	if m.send(f.Src, r.encode(), rxPCP(f, m.c().CCMPriority)) == nil {
 		m.count(OpLMR)
 	}
 }
@@ -220,7 +220,7 @@ func (m *mep) oneWayDelay(ctx context.Context, a *OneWayDelayArgs) (any, error) 
 	iv := time.Duration(a.IntervalMS) * time.Millisecond
 	for i := 0; i < a.Count; i++ {
 		start := time.Now()
-		if err := m.send(dst, encode1DM(m.cfg.Level, start), m.prio(a.Target)); err != nil {
+		if err := m.send(dst, encode1DM(m.c().Level, start), m.prio(a.Target)); err != nil {
 			return res, fmt.Errorf("send 1DM: %w", err)
 		}
 		m.count(Op1DM)
@@ -251,7 +251,7 @@ func (m *mep) testSignal(ctx context.Context, a *TestSignalArgs) (any, error) {
 		seq := m.tstSeq
 		m.tstSeq++
 		m.mu.Unlock()
-		if err := m.send(dst, encodeTST(m.cfg.Level, seq, a.Size, a.Pattern == "prbs", a.CRC), m.prio(a.Target)); err != nil {
+		if err := m.send(dst, encodeTST(m.c().Level, seq, a.Size, a.Pattern == "prbs", a.CRC), m.prio(a.Target)); err != nil {
 			return res, fmt.Errorf("send TST: %w", err)
 		}
 		m.count(OpTST)
@@ -312,7 +312,7 @@ func (m *mep) loss(ctx context.Context, a *LossArgs) (any, error) {
 	for i := 0; i < a.Count; i++ {
 		start := time.Now()
 		tx, _, _ := m.counters()
-		if err := m.send(dst, (&lm{Level: m.cfg.Level, Opcode: OpLMM, TxFCf: tx}).encode(), m.prio(a.Target)); err != nil {
+		if err := m.send(dst, (&lm{Level: m.c().Level, Opcode: OpLMM, TxFCf: tx}).encode(), m.prio(a.Target)); err != nil {
 			return res, fmt.Errorf("send LMM: %w", err)
 		}
 		m.count(OpLMM)

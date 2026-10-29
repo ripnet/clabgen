@@ -224,13 +224,11 @@ func start(env protocol.Env, cfg Config, cd codec, instance uint8) (protocol.Ses
 			s.routes[r.prefix] = r
 		}
 	}
-	if k := cfg.Topology.Kind; k != "" && k != "none" {
-		t, err := buildTopology(cfg.Topology, s.rid, cd.v3)
-		if err != nil {
-			return nil, fmt.Errorf("topology: %w", err)
-		}
-		s.topo = t
+	t, err := s.newTopology(cfg)
+	if err != nil {
+		return nil, err
 	}
+	s.topo = t
 	first := Interface{Device: env.Device().Name(), Network: cfg.Network, Cost: cfg.Cost, Passive: cfg.Passive, Neighbors: cfg.Neighbors}
 	s.ifs = []*iface{s.newIface(0, first)}
 	s.ifs[0].mac = env.Device().MAC()
@@ -253,6 +251,18 @@ func start(env protocol.Env, cfg Config, cd codec, instance uint8) (protocol.Ses
 	s.mu.Unlock()
 	go s.run()
 	return s, nil
+}
+
+// newTopology builds the simulated routers behind us (nil: none).
+func (s *session) newTopology(cfg Config) (*topology, error) {
+	if k := cfg.Topology.Kind; k == "" || k == "none" {
+		return nil, nil
+	}
+	t, err := buildTopology(cfg.Topology, s.rid, s.cd.v3)
+	if err != nil {
+		return nil, fmt.Errorf("topology: %w", err)
+	}
+	return t, nil
 }
 
 func (s *session) Stop() {

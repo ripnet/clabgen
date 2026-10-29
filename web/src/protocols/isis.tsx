@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import type { JsonObject } from "@bufbuild/protobuf";
 import { client, usePoll } from "../api";
-import { registerView, type Health } from "./registry";
+import { inPlaceNote, registerView, type Health } from "./registry";
 
 type AdjSID = { label: number; neighbor?: string; ipv6?: boolean; backup?: boolean };
 type SRv6SID = { sid: string; behavior: string; algorithm?: number; neighbor?: string };
@@ -635,4 +635,12 @@ function Status({ status, agentId, name: inst }: { status: JsonObject; agentId?:
   );
 }
 
-registerView("isis", { summary, Status });
+// What the agent applies in place (protocols/isis/reconfig.go).
+const isisNote = inPlaceNote(
+  ["hostname", "overload", "metric", "te_metric", "delay_us", "admin_groups", "prefixes", "loopbacks", "topology", "segment_routing", "flex_algos", "srv6",
+    "attached_bit", "summaries", "leak_to_l1", "lsp_refresh", "lsp_lifetime", "lsp_mtu", "csnp_interval"],
+  { interfaces: ["metric", "te_metric", "delay_us", "admin_groups"] },
+  "Applies in place: adjacencies stay up, and the new LSPs are flooded.",
+);
+
+registerView("isis", { summary, Status, applyNote: isisNote });

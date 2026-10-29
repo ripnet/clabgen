@@ -12,8 +12,8 @@ import (
 // Config changes apply in place: routes (all families) are advertised and
 // withdrawn as UPDATEs, peers are added and removed on their own, and a
 // peer's session is reset only when its OPEN or transport changes (remote
-// AS, local address, families, hold time, TTL). A new local AS or router ID
-// restarts the speaker. Routes added or withdrawn by actions stay as they
+// AS, local address, families, hold time, TTL, BFD). A new local AS,
+// router ID or speaker-wide BFD setting restarts the speaker. Routes added or withdrawn by actions stay as they
 // are, unless the change advertises or withdraws the same routes.
 
 func (s *session) Reconfigure(c any) bool {
@@ -26,7 +26,7 @@ func (s *session) Reconfigure(c any) bool {
 	default:
 	}
 	oc := s.cfg
-	if nc.LocalAS != oc.LocalAS || nc.RouterID != oc.RouterID {
+	if nc.LocalAS != oc.LocalAS || nc.RouterID != oc.RouterID || !sameJSON(nc.BFD, oc.BFD) {
 		s.mu.Unlock()
 		return false
 	}
@@ -57,7 +57,7 @@ func (s *session) Reconfigure(c any) bool {
 			p = newPeer(s, pc)
 			started = append(started, p)
 			notes = append(notes, "peer "+a.String()+" added")
-		case sessionKey(p.cfg, oc.HoldTime) != sessionKey(pc, nc.HoldTime):
+		case sessionKey(p.cfg, oc.HoldTime) != sessionKey(pc, nc.HoldTime) || bfdOn(oc, p.cfg) != bfdOn(nc, pc):
 			stopPeer(p, gb.BGP_ERROR_SUB_OTHER_CONFIGURATION_CHANGE)
 			p = newPeer(s, pc)
 			started = append(started, p)
@@ -275,4 +275,10 @@ func entryDiff[T any](old, new []T) (gone, added []T) {
 		return out
 	}
 	return diff(old, new), diff(new, old)
+}
+
+func sameJSON(a, b any) bool {
+	x, _ := json.Marshal(a)
+	y, _ := json.Marshal(b)
+	return string(x) == string(y)
 }
