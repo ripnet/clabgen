@@ -128,6 +128,15 @@ protocols:
              ma_format: string, ma_name: v100, ccm_interval: 1s}
 ```
 
+`remote_meps` lists the MEP IDs a MEP expects; a CCM from any other raises
+DefErrorCCM, and an empty list learns remote MEPs as they appear. MEPs on
+the same port of an agent (a [device group](#device-groups) of remote
+sites, say) don't hear each other's CCMs, as sites behind a router's down
+MEP wouldn't: `ignore_local_meps: false` lets them. `ignore_unknown_meps:
+true` ignores CCMs from MEP IDs not in `remote_meps` instead of raising
+DefErrorCCM. Each MEP sends its first CCM at a random point of its
+interval, so a group's CCMs are spread out rather than sent in one burst.
+
 Y.1731 beyond CCM: `one-way-delay` (1DM; the receiving MEP shows the delay,
 clocks being shared in a lab), `loss` (LMM over the devices' data-frame
 counters: every non-CFM frame they send and receive, e.g. a flow's) and

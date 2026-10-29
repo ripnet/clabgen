@@ -419,6 +419,9 @@ func (m *mep) HandleRx(f *pkt.Frame) {
 		m.mu.Unlock()
 		return
 	}
+	if h.Opcode == OpCCM && f.Local && m.cfg.IgnoreLocalMEPs {
+		return // another MEP on this agent's port (ignore_local_meps)
+	}
 	if h.Level > m.cfg.Level {
 		return // passes transparently through a MEP of a lower level
 	}
@@ -621,7 +624,9 @@ func (m *mep) rxCCM(h header, f *pkt.Frame) {
 	r := m.rmeps[c.MEPID]
 	if r == nil {
 		if len(m.cfg.RemoteMEPs) > 0 {
-			m.setError(now, fmt.Sprintf("unexpected MEPID %d from %s", c.MEPID, f.Src))
+			if !m.cfg.IgnoreUnknownMEPs {
+				m.setError(now, fmt.Sprintf("unexpected MEPID %d from %s", c.MEPID, f.Src))
+			}
 			return
 		}
 		r = &rmep{id: c.MEPID, state: rmepStart, since: now}

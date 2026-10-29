@@ -20,6 +20,11 @@ type Config struct {
 
 	// Empty means auto-discover: accept any MEPID and learn it.
 	RemoteMEPs []uint16 `json:"remote_meps,omitempty" jsonschema:"description=Expected remote MEP IDs; empty enables auto-discovery" jsonschema_extras:"x-group=Identity"`
+	// MEPs on the same port of this agent (a device group's members) hear
+	// each other's CCMs, which remote sites behind a router's down MEP
+	// wouldn't: they are ignored unless ignore_local_meps is off.
+	IgnoreLocalMEPs   bool `json:"ignore_local_meps" jsonschema:"description=Ignore CCMs from other MEPs on the same port of this agent (e.g. a device group's members): they don't count as remote MEPs or errors" jsonschema_extras:"x-group=Identity,x-advanced=true"`
+	IgnoreUnknownMEPs bool `json:"ignore_unknown_meps,omitempty" jsonschema:"description=With remote_meps set: ignore CCMs from other MEP IDs instead of raising DefErrorCCM" jsonschema_extras:"x-group=Identity,x-advanced=true"`
 
 	PortStatusTLV      bool `json:"port_status_tlv,omitempty" jsonschema:"description=Include Port Status TLV in CCMs" jsonschema_extras:"x-group=CCM"`
 	InterfaceStatusTLV bool `json:"interface_status_tlv,omitempty" jsonschema:"description=Include Interface Status TLV in CCMs" jsonschema_extras:"x-group=CCM"`
@@ -69,7 +74,7 @@ type Session struct {
 
 func defaultConfig() *Config {
 	return &Config{Level: 0, MEPID: 1, MDFormat: "none", MAFormat: "string", MAName: "clabgen",
-		CCMEnabled: true, CCMInterval: "1s", CCMPriority: 7, AIS: AISConfig{Interval: "1s"}}
+		CCMEnabled: true, IgnoreLocalMEPs: true, CCMInterval: "1s", CCMPriority: 7, AIS: AISConfig{Interval: "1s"}}
 }
 
 func (c *Config) Validate() error {

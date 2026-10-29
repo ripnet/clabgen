@@ -236,7 +236,7 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 	if err != nil {
 		return false
 	}
-	f.Port, f.RxTime = port, ts
+	f.Port, f.RxTime, f.Local = port, ts, from != nil
 	var targets []protocol.Session
 	var tapRx []func(*pkt.Frame)
 	var stacks, l2 []*ipstack.Stack

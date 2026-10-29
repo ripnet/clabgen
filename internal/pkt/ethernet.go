@@ -91,9 +91,11 @@ type Frame struct {
 	EtherType uint16
 	Payload   []byte
 
-	// Set on receive.
+	// Set on receive. Local: sent by another device on the same port of
+	// this agent, not received from the wire.
 	Port   string
 	RxTime time.Time
+	Local  bool
 }
 
 func IsTPID(v uint16) bool { return v == TPIDDot1Q || v == TPIDDot1AD || v == TPIDQinQ }

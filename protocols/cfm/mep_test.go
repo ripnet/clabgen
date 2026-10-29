@@ -23,6 +23,7 @@ type fakeEnv struct {
 	vlans []pkt.VLANTag
 	peer  *fakeEnv
 	drop  atomic.Bool // drop everything this side transmits
+	local bool        // frames this side sends arrive as from the same agent port
 
 	mu       sync.Mutex
 	sessions []protocol.Session
@@ -52,7 +53,7 @@ func (e *fakeEnv) Send(dst pkt.MAC, et uint16, payload []byte, opt protocol.Send
 	if err != nil {
 		return err
 	}
-	g.RxTime = time.Now()
+	g.RxTime, g.Local = time.Now(), e.local
 	p := e.peer
 	if g.Dst != p.mac && !g.Dst.IsMulticast() {
 		return nil
@@ -403,5 +404,33 @@ func TestCCMPhase(t *testing.T) {
 	rec.mu.Unlock()
 	if spread := first[19].Sub(first[0]); spread < 30*time.Millisecond {
 		t.Fatalf("the first CCMs of 20 MEPs came within %v of each other", spread)
+	}
+}
+
+// CCMs from MEPs on the same agent port (a device group) are ignored by
+// default; with ignore_local_meps off they are remote MEPs like any other.
+// ignore_unknown_meps drops unlisted MEP IDs instead of raising DefErrorCCM.
+func TestIgnoreLocalAndUnknownMEPs(t *testing.T) {
+	a, b := pair()
+	a.local = true
+	start(t, a, func(c *Config) { c.MEPID = 101 })
+	quiet := start(t, b, func(c *Config) { c.MEPID = 1 })
+	hears := start(t, b, func(c *Config) { c.MEPID = 2; c.IgnoreLocalMEPs = false })
+	waitFor(t, "101 discovered with ignore_local_meps off", func() bool { return len(st(hears).RemoteMEPs) > 0 })
+	time.Sleep(50 * time.Millisecond)
+	for _, r := range st(quiet).RemoteMEPs {
+		if r.MEPID == 101 {
+			t.Fatalf("a local MEP's CCMs counted: %+v", st(quiet).RemoteMEPs)
+		}
+	}
+
+	c, d := pair()
+	start(t, c, func(c *Config) { c.MEPID = 101 })
+	strict := start(t, d, func(c *Config) { c.MEPID = 1; c.RemoteMEPs = []uint16{5} })
+	lenient := start(t, d, func(c *Config) { c.MEPID = 2; c.RemoteMEPs = []uint16{5}; c.IgnoreUnknownMEPs = true })
+	waitFor(t, "DefErrorCCM for an unexpected MEP", func() bool { return slices.Contains(st(strict).Defects, "DefErrorCCM") })
+	time.Sleep(50 * time.Millisecond)
+	if slices.Contains(st(lenient).Defects, "DefErrorCCM") {
+		t.Fatalf("ignore_unknown_meps still raised DefErrorCCM: %v", st(lenient).Defects)
 	}
 }
