@@ -640,6 +640,10 @@ func (s *Stack) recordFlow(f *pkt.Frame, proto string, src, dst netip.Addr, spor
 	if own {
 		return // our own flow's echo coming back
 	}
+	if f.Dst.IsMulticast() && f.FlowCounted {
+		return // flooded: another device on the port counted it
+	}
+	f.FlowCounted = true
 	rx := f.RxTime
 	if rx.IsZero() {
 		rx = s.now()
@@ -677,6 +681,10 @@ func (s *Stack) RecordL2(f *pkt.Frame) bool {
 	if own {
 		return true // our own stream's echo coming back
 	}
+	if f.Dst.IsMulticast() && f.FlowCounted {
+		return true // flooded: another device on the port counted it
+	}
+	f.FlowCounted = true
 	rx := f.RxTime
 	if rx.IsZero() {
 		rx = s.now()

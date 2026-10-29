@@ -92,10 +92,13 @@ type Frame struct {
 	Payload   []byte
 
 	// Set on receive. Local: sent by another device on the same port of
-	// this agent, not received from the wire.
-	Port   string
-	RxTime time.Time
-	Local  bool
+	// this agent, not received from the wire. FlowCounted: a device has
+	// counted it as a received flow (a flooded frame reaches every device
+	// on the port, and is counted once).
+	Port        string
+	RxTime      time.Time
+	Local       bool
+	FlowCounted bool
 }
 
 func IsTPID(v uint16) bool { return v == TPIDDot1Q || v == TPIDDot1AD || v == TPIDQinQ }

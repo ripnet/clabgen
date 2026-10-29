@@ -293,6 +293,20 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 	return used || len(targets) > 0 || len(tapRx) > 0
 }
 
+// indexLocked adds d to its port's devices, standalone devices ahead of
+// group members: a flooded frame's flow is counted by the first device
+// that takes it.
+func (e *Engine) indexLocked(d *device) {
+	list := e.byPort[d.port]
+	i := len(list)
+	if d.group == "" {
+		for i > 0 && list[i-1].group != "" {
+			i--
+		}
+	}
+	e.byPort[d.port] = append(list[:i:i], append([]*device{d}, list[i:]...)...)
+}
+
 func (e *Engine) deriveMAC(name string) pkt.MAC {
 	h := sha256.Sum256([]byte(e.host + "/" + name))
 	var m pkt.MAC
@@ -377,7 +391,7 @@ func (e *Engine) createDevice(s DeviceSpec, group string) (DeviceSpec, error) {
 	d := e.newDevice(s, mac, cfg)
 	d.group = group
 	e.devices[s.Name] = d
-	e.byPort[s.Port] = append(e.byPort[s.Port], d)
+	e.indexLocked(d)
 	var waiting []*instance
 	for _, in := range e.insts {
 		if in.spec.Device == s.Name && !in.spec.Disabled {
@@ -428,7 +442,7 @@ func (e *Engine) updateDevice(s DeviceSpec, group string) (DeviceSpec, error) {
 	d := e.newDevice(s, mac, cfg)
 	d.group = group
 	e.devices[s.Name] = d
-	e.byPort[s.Port] = append(e.byPort[s.Port], d)
+	e.indexLocked(d)
 	insts := old.insts
 	old.insts = nil
 	var stop []protocol.Session

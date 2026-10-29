@@ -70,6 +70,43 @@ func TestL2OneWay(t *testing.T) {
 	}
 }
 
+// A flooded stream reaches every device on the port, but is counted once,
+// by a standalone device ahead of group members (even ones created first).
+func TestL2FloodCountedOnce(t *testing.T) {
+	a, b, _, _ := l2Pair(t)
+	if err := b.DeleteDevice("d"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CreateGroup(groupSpec(t, "name: m\ncount: 3\ndevice: {port: eth1, vlans: [{vid: 100}]}")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CreateDevice(core.DeviceSpec{Name: "d", Port: "eth1", VLANs: []pkt.VLANTag{{VID: 100}}}); err != nil {
+		t.Fatal(err)
+	}
+	mkL2(t, a, "s", "l2", `{"dst_mac":"ff:ff:ff:ff:ff:ff","mode":"count","count":100,"rate":1000,"auto_start":true}`)
+	eventually(t, "d counted 100 frames", func() bool {
+		rs := l2Received(t, b)
+		return len(rs) == 1 && rs[0].Flow.Rx == 100
+	})
+	if rs, _ := b.ReceivedFlows(""); len(rs) != 1 || rs[0].Device != "d" {
+		t.Fatalf("received %+v", rs)
+	}
+
+	// With only group members on the port, one of them counts it.
+	if err := b.DeleteDevice("d"); err != nil {
+		t.Fatal(err)
+	}
+	mkL2(t, a, "s2", "l2", `{"dst_mac":"ff:ff:ff:ff:ff:ff","mode":"count","count":100,"rate":1000,"auto_start":true}`)
+	eventually(t, "a member counted 100 frames", func() bool {
+		rs, _ := b.ReceivedFlows("")
+		n := 0
+		for _, r := range rs {
+			n += int(r.Flow.Rx)
+		}
+		return len(rs) == 1 && n == 100
+	})
+}
+
 func TestL2Echo(t *testing.T) {
 	a, b, wa, bMAC := l2Pair(t)
 	mkL2(t, b, "echo", "l2-echo", `{"ethertypes":[35000]}`)

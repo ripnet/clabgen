@@ -226,7 +226,9 @@ protocols:
 ```
 
 - `dst_mac`: the far device's MAC. The default is broadcast, which a VPLS
-  floods.
+  floods. A broadcast or multicast stream reaches every device on the
+  receiving port, but it is listed once among the received flows, under
+  a standalone device rather than a group member.
 - `src_mac`: the first source MAC. The default is the device's MAC.
 - `src_mac_count`: cycles through this many source MACs, one per frame,
   to fill MAC tables or test MAC limits.
