@@ -26,7 +26,9 @@ async function group(page: Page, existing?: Spec) {
         config: { ...p.config, mep_id: typeof mep === "object" ? mep.start + i - 1 : mep },
       })),
     }));
-    const plan = existing && { unchanged: Math.min(existing.count, s.count), changed: 0, added: Math.max(0, s.count - existing.count), removed: Math.max(0, existing.count - s.count) };
+    const kept = existing ? Math.min(existing.count, s.count) : 0;
+    const same = existing && JSON.stringify(s.protocols) === JSON.stringify(existing.protocols);
+    const plan = existing && { unchanged: same ? kept : 0, changed: same ? 0 : kept, added: Math.max(0, s.count - existing.count), removed: Math.max(0, existing.count - s.count) };
     return ok(r, { result: { count: s.count, members, ...(plan ? { plan } : {}) } });
   });
   await page.route(`**/agents/a1/${svc}/CreateDeviceGroup`, (r) => {
@@ -106,4 +108,23 @@ test("edit a group: what applying changes", async ({ page }) => {
   await m.getByRole("button", { name: "Apply" }).click();
   await expect(page.locator(".modal")).toHaveCount(0);
   expect(sent.update).toMatchObject({ name: "rmep", count: 12, protocols: [{ type: "cfm-mep", config: { mep_id: { start: 101 } } }] });
+});
+
+test("a setting left at its default shows its default", async ({ page }) => {
+  // The spec leaves ccm_enabled out: it is on (the default).
+  const existing: Spec = { name: "rmep", count: 10, device: { port: "eth1" }, protocols: [{ name: "cfm-mep", type: "cfm-mep", config: { level: 3, mep_id: { start: 1 } } }] };
+  const sent = await group(page, existing);
+  await page.goto("./#/a/a1/g/rmep");
+  await page.getByRole("button", { name: "Edit" }).first().click();
+  const m = page.locator(".modal");
+  await m.locator(".section-nav").getByRole("button", { name: "cfm-mep" }).click();
+  await m.getByRole("button", { name: /show all options/ }).click();
+  const ccm = m.locator(".field", { hasText: "ccm enabled" }).getByRole("checkbox");
+  await expect(ccm).toBeChecked();
+  await expect(m.getByRole("button", { name: "Apply" })).toBeDisabled();
+  await ccm.uncheck();
+  await expect(m.locator(".group-plan")).toContainText("10 changed");
+  await m.getByRole("button", { name: "Apply" }).click();
+  await expect(page.locator(".modal")).toHaveCount(0);
+  expect(sent.update?.protocols?.[0].config).toMatchObject({ ccm_enabled: false, level: 3 });
 });

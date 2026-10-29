@@ -416,24 +416,31 @@ function Field(p: FieldProps) {
           </select>
         );
       }
-      return (
-        <label className="switch">
-          <input
-            type="checkbox"
-            checked={value === true}
-            onChange={(e) =>
-              onChange(
-                e.target.checked
-                  ? true
-                  : mode === "config" && schema.default === true
-                    ? false
-                    : undefined,
-              )
-            }
-          />
-          <span>{value === true ? "on" : "off"}</span>
-        </label>
-      );
+      {
+        // In a config an unset boolean is its default (a group template
+        // leaves defaults out).
+        const on =
+          value === true ||
+          (value === undefined && mode === "config" && schema.default === true);
+        return (
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={on}
+              onChange={(e) =>
+                onChange(
+                  e.target.checked
+                    ? true
+                    : mode === "config" && schema.default === true
+                      ? false
+                      : undefined,
+                )
+              }
+            />
+            <span>{on ? "on" : "off"}</span>
+          </label>
+        );
+      }
     case "integer":
     case "number":
       return (
