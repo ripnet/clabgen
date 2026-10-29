@@ -368,3 +368,40 @@ func TestSchemaOrderEmbedded(t *testing.T) {
 		t.Errorf("embedded order: %s", s)
 	}
 }
+
+// arrivals is a session on the far side that notes when frames arrive.
+type arrivals struct {
+	mu sync.Mutex
+	at []time.Time
+}
+
+func (a *arrivals) HandleRx(*pkt.Frame) {
+	a.mu.Lock()
+	a.at = append(a.at, time.Now())
+	a.mu.Unlock()
+}
+func (a *arrivals) Status() any                                      { return nil }
+func (a *arrivals) Action(context.Context, string, any) (any, error) { return nil, nil }
+func (a *arrivals) Stop()                                            {}
+
+// MEPs started together (a device group) don't send their CCMs in the same
+// instant: each starts at a random point of the interval.
+func TestCCMPhase(t *testing.T) {
+	a, b := pair()
+	rec := &arrivals{}
+	b.sessions = append(b.sessions, rec)
+	for i := 0; i < 20; i++ {
+		start(t, a, func(c *Config) { c.MEPID = uint16(101 + i); c.CCMInterval = "100ms" })
+	}
+	waitFor(t, "a CCM from each", func() bool {
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+		return len(rec.at) >= 20
+	})
+	rec.mu.Lock()
+	first := slices.Clone(rec.at[:20])
+	rec.mu.Unlock()
+	if spread := first[19].Sub(first[0]); spread < 30*time.Millisecond {
+		t.Fatalf("the first CCMs of 20 MEPs came within %v of each other", spread)
+	}
+}

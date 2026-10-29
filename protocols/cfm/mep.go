@@ -226,20 +226,29 @@ func (m *mep) timeout() time.Duration { return m.iv * 7 / 2 }
 
 func (m *mep) run() {
 	defer close(m.done)
-	tx := time.NewTicker(m.iv)
-	defer tx.Stop()
+	// The first CCM goes out at a random point of the interval: MEPs
+	// started together (a device group) would otherwise send in the same
+	// instant forever, which remote MEPs at separate sites don't, and a
+	// receiver's policer drops part of such bursts.
+	first := time.NewTimer(rand.N(m.iv))
+	defer first.Stop()
+	var tx <-chan time.Time
 	evalEvery := m.iv
 	if evalEvery > 100*time.Millisecond {
 		evalEvery = 100 * time.Millisecond
 	}
 	eval := time.NewTicker(evalEvery)
 	defer eval.Stop()
-	m.sendCCM()
 	for {
 		select {
 		case <-m.stop:
 			return
-		case <-tx.C:
+		case <-first.C:
+			t := time.NewTicker(m.iv)
+			defer t.Stop()
+			tx = t.C
+			m.sendCCM()
+		case <-tx:
 			m.sendCCM()
 		case <-eval.C:
 			m.evaluate()
