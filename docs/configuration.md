@@ -75,6 +75,37 @@ too), `CLABGEN_STATE=off` turns saving off, and `CLABGEN_LAB_MOUNT` moves
 the mount point. A saved file that doesn't parse is renamed
 `clabgen.yml.unreadable` and the scenario used instead.
 
+## Link state
+
+Taking a port down (`ports: {eth1: {admin: down}}`, `clabgenctl port down
+eth1`, or the Ports tab) sets the agent's interface down, and on a
+containerlab veth link that drops carrier on the other end: the router sees
+the link fail. The other way round, the port shows oper down when the other
+end drops carrier.
+
+Since containerlab 0.78, links to Nokia SR-SIM (`nokia_srsim`) nodes default
+to `veth-stitch`: two veth pairs joined on the host by tc redirects
+(`clab-stitch-…` interfaces). Frames pass through, link state doesn't: a port
+taken down on either side stays up on the other. Where a test needs link
+failures, give that link `type: veth` in the long form:
+
+```yaml
+links:
+  - type: veth
+    endpoints:
+      - {node: gen1, interface: eth1}
+      - {node: sr1, interface: 1/1/c1/1}
+```
+
+What that costs: impairments. containerlab applies `containerlab tools netem`
+on a stitched link's host side, which works in both directions; the stitch
+exists because SR-SIM's own interfaces can't be impaired. On a plain veth
+link, netem can only go on the agent's end
+(`containerlab tools netem set -n clab-<lab>-gen1 -i eth1 --delay 20ms`),
+which impairs what the agent sends and not what the router sends back. Keep
+the default stitched link where you need impairments both ways and use
+`type: veth` where you need link state; a lab can mix the two link by link.
+
 ## Devices and CFM MEPs
 
 ```yaml
