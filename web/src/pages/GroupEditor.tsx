@@ -64,7 +64,12 @@ export function GroupEditor({ agentId, group, onClose, onDone }: { agentId: stri
           setPreview(r.result as unknown as Preview);
           setPreviewErr(undefined);
         })
-        .catch((e) => live && setPreviewErr(errorText(e)));
+        .catch((e) => {
+          if (!live) return;
+          const t = errorText(e);
+          // Agents before the group editor don't have the call.
+          setPreviewErr(/404|unimplemented/i.test(t) ? "This agent can't preview groups (it needs a newer clabgen); creating and editing still work." : t);
+        });
     }, 350);
     return () => {
       live = false;
@@ -461,7 +466,7 @@ function MemberPreview({ preview, error, protos }: { preview?: Preview; error?: 
         preview{preview && <span className="muted"> · {preview.count} members, showing {preview.members.map((m) => m.index).join(", ")}</span>}
       </div>
       {error ? (
-        <div className={error.startsWith("Name the") || error.startsWith("Set how") ? "muted small-note" : "error-text small"} role="status">
+        <div className={error.startsWith("Name the") || error.startsWith("Set how") || error.startsWith("This agent can") ? "muted small-note" : "error-text small"} role="status">
           {error}
         </div>
       ) : !preview ? (
