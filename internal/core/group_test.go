@@ -308,3 +308,60 @@ func TestGroupDisable(t *testing.T) {
 		}
 	}
 }
+
+// A preview renders members without creating anything, and for an existing
+// group counts what an update would change.
+func TestGroupPreview(t *testing.T) {
+	a, _, _, _ := newPair()
+	spec := func(count, mepStart int) core.GroupSpec {
+		return groupSpec(t, fmt.Sprintf(`
+name: rmep
+count: %d
+device: {port: eth1, vlans: [{vid: 300}]}
+protocols:
+  - type: cfm-mep
+    config: {level: 5, mep_id: {start: %d}, md_format: string, md_name: lab, ma_format: string, ma_name: vpls300}
+`, count, mepStart))
+	}
+	p, err := a.PreviewGroup(spec(100, 101), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Count != 100 || p.Plan != nil || len(p.Members) != 3 || p.Members[2].Index != 100 {
+		t.Fatalf("preview %+v", p)
+	}
+	last := p.Members[2]
+	if last.Device.Name != "rmep-100" || last.MAC == "" || last.MAC == p.Members[0].MAC ||
+		last.Protocols[0].Name != "rmep-100-cfm-mep" || !strings.Contains(string(last.Protocols[0].Config), `"mep_id":200`) {
+		t.Fatalf("member 100 %+v", last)
+	}
+	if len(a.Devices()) != 0 || len(a.Groups()) != 0 {
+		t.Fatal("a preview created something")
+	}
+	if p, _ := a.PreviewGroup(spec(100, 101), []int{50, 50, 0, 101}); len(p.Members) != 1 || p.Members[0].Index != 50 {
+		t.Fatalf("chosen members %+v", p.Members)
+	}
+	if _, err := a.PreviewGroup(groupSpec(t, "name: g\ncount: 2\ndevice: {port: eth1, name: x}"), nil); err == nil || !strings.Contains(err.Error(), "repeats") {
+		t.Fatalf("a bad spec: %v", err)
+	}
+
+	// Against the group as it is: 10 → 12 members with a new CCM interval.
+	if _, err := a.CreateGroup(spec(10, 101)); err != nil {
+		t.Fatal(err)
+	}
+	s := spec(12, 101)
+	s.Protocols[0].Config = json.RawMessage(`{"level":5,"mep_id":{"start":101},"md_format":"string","md_name":"lab","ma_format":"string","ma_name":"vpls300","ccm_interval":"100ms"}`)
+	if p, _ := a.PreviewGroup(s, nil); p.Plan == nil || *p.Plan != (core.GroupPlan{Changed: 10, Added: 2}) {
+		t.Fatalf("plan %+v", p.Plan)
+	}
+	if p, _ := a.PreviewGroup(spec(8, 101), nil); *p.Plan != (core.GroupPlan{Unchanged: 8, Removed: 2}) {
+		t.Fatalf("shrink plan %+v", p.Plan)
+	}
+	// A name taken outside the group.
+	if _, err := a.CreateDevice(core.DeviceSpec{Name: "x-1", Port: "eth1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.PreviewGroup(groupSpec(t, "name: x\ncount: 1\ndevice: {port: eth1}"), nil); err == nil || !strings.Contains(err.Error(), "exists") {
+		t.Fatalf("a taken name: %v", err)
+	}
+}

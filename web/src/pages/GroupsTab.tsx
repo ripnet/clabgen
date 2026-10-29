@@ -6,8 +6,9 @@ import type { Health, Summary } from "../protocols/registry";
 import type { DeviceGroup, GroupActionResult } from "../gen/clabgen/v1/agent_pb";
 import { SchemaForm, defaults, parseSchema, type Obj } from "../components/SchemaForm";
 import { ValueView } from "../components/ValueView";
-import { Empty, ErrorBox, HealthText, Modal, useBusy } from "../ui";
+import { Empty, ErrorBox, HealthText, useBusy } from "../ui";
 import { AgentHeader, Crumbs } from "./AgentPage";
+import { GroupEditor } from "./GroupEditor";
 import { EnableToggle } from "./ProtocolsTab";
 
 // throwFailed turns per-member failures of a group change into an error.
@@ -163,62 +164,8 @@ export function GroupsTab({ agentId }: { agentId: string }) {
           </table>
         </div>
       )}
-      {editing && <GroupForm agentId={agentId} group={editing === "new" ? undefined : editing} onClose={() => setEditing(undefined)} onDone={list.refresh} />}
+      {editing && <GroupEditor agentId={agentId} group={editing === "new" ? undefined : editing} onClose={() => setEditing(undefined)} onDone={list.refresh} />}
     </div>
-  );
-}
-
-const example = `name: ce
-count: 10
-device:
-  port: eth1
-  vlans: [{vid: {start: 1000}}]
-  addresses: [{start: 10.1.0.2/30, step: 0.0.0.4}]
-  gateway4: {start: 10.1.0.1, step: 0.0.0.4}
-protocols:
-  - type: bgp
-    config:
-      local_as: {start: 65001}
-      peers: [{address: "{gateway4}", remote_as: 65000}]
-      routes: [{prefix: {start: 100.64.0.0/24, step: 0.0.1.0}, count: 10}]
-`;
-
-function GroupForm({ agentId, group, onClose, onDone }: { agentId: string; group?: DeviceGroup; onClose: () => void; onDone: () => void }) {
-  const c = client(agentId);
-  const [text, setText] = useState(group?.yaml ?? example);
-  const { busy, run } = useBusy();
-  return (
-    <Modal title={group ? `Edit group ${group.name}` : "New device group"} onClose={onClose} wide>
-      <p className="muted small">
-        Any value can be stepped per member: <code>{"{start, step, repeat, cycle}"}</code> with an integer, IP address, prefix or MAC. Strings take{" "}
-        <code>{"{i}"}</code> (1-based), <code>{"{i0}"}</code> and <code>{"{group}"}</code>; protocol configs also take the member's{" "}
-        <code>{"{device} {ipv4} {ipv6} {gateway4} {gateway6} {mac} {vlan}"}</code>. Devices are named <code>{"{group}-{i}"}</code> unless the
-        device sets a name; protocols <code>{"<device>-<name>"}</code>.
-        {group && " Members whose rendered config is unchanged keep running."}
-      </p>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const req = { group: { name: group?.name ?? "", yaml: text } };
-          run(async () => (group ? (await c.updateDeviceGroup(req)).group : (await c.createDeviceGroup(req)).group), group ? `Updated ${group.name}` : "Group created").then((r) => {
-            if (!r) return;
-            onDone();
-            onClose();
-            if (!group) navigate({ page: "group", agent: agentId, group: r.name });
-          });
-        }}
-      >
-        <textarea className="input mono code scenario" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
-        <div className="modal-foot">
-          <button type="button" className="btn" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn primary" disabled={busy || !text.trim()}>
-            {group ? "Apply" : "Create"}
-          </button>
-        </div>
-      </form>
-    </Modal>
   );
 }
 
@@ -368,7 +315,7 @@ export function GroupDetail({ agentId, name }: { agentId: string; name: string }
             </div>
             {members.length === 0 && <div className="muted">No member matches.</div>}
           </div>
-          {editing && <GroupForm agentId={agentId} group={group} onClose={() => setEditing(false)} onDone={g.refresh} />}
+          {editing && <GroupEditor agentId={agentId} group={group} onClose={() => setEditing(false)} onDone={g.refresh} />}
         </>
       )}
     </div>

@@ -63,6 +63,9 @@ service AgentService {
   // device and protocols are unchanged keep running.
   rpc UpdateDeviceGroup(UpdateDeviceGroupRequest) returns (UpdateDeviceGroupResponse);
   rpc DeleteDeviceGroup(DeleteDeviceGroupRequest) returns (DeleteDeviceGroupResponse);
+  // PreviewDeviceGroup renders a spec's members without applying it (for
+  // editors), and for an existing group counts what an update would change.
+  rpc PreviewDeviceGroup(PreviewDeviceGroupRequest) returns (PreviewDeviceGroupResponse);
   // RunGroupAction runs a protocol action on some or all members.
   rpc RunGroupAction(RunGroupActionRequest) returns (RunGroupActionResponse);
   // Disables (stops, keeping config) or enables a group's protocols on
@@ -330,6 +333,15 @@ message UpdateDeviceGroupRequest { DeviceGroup group = 1; }
 message UpdateDeviceGroupResponse { DeviceGroup group = 1; }
 message DeleteDeviceGroupRequest { string name = 1; }
 message DeleteDeviceGroupResponse {}
+message PreviewDeviceGroupRequest {
+  // spec or yaml, as for CreateDeviceGroup.
+  DeviceGroup group = 1;
+  // 1-based members to render; none: the first two and the last.
+  repeated uint32 members = 2;
+}
+// count, members (index, device, mac, protocols: name, type, config) and,
+// for an existing group, plan (unchanged, changed, added, removed).
+message PreviewDeviceGroupResponse { google.protobuf.Struct result = 1; }
 
 message RunGroupActionRequest {
   string group = 1;

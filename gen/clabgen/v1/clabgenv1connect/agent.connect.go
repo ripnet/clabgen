@@ -109,6 +109,9 @@ const (
 	// AgentServiceDeleteDeviceGroupProcedure is the fully-qualified name of the AgentService's
 	// DeleteDeviceGroup RPC.
 	AgentServiceDeleteDeviceGroupProcedure = "/clabgen.v1.AgentService/DeleteDeviceGroup"
+	// AgentServicePreviewDeviceGroupProcedure is the fully-qualified name of the AgentService's
+	// PreviewDeviceGroup RPC.
+	AgentServicePreviewDeviceGroupProcedure = "/clabgen.v1.AgentService/PreviewDeviceGroup"
 	// AgentServiceRunGroupActionProcedure is the fully-qualified name of the AgentService's
 	// RunGroupAction RPC.
 	AgentServiceRunGroupActionProcedure = "/clabgen.v1.AgentService/RunGroupAction"
@@ -183,6 +186,9 @@ type AgentServiceClient interface {
 	// device and protocols are unchanged keep running.
 	UpdateDeviceGroup(context.Context, *connect.Request[v1.UpdateDeviceGroupRequest]) (*connect.Response[v1.UpdateDeviceGroupResponse], error)
 	DeleteDeviceGroup(context.Context, *connect.Request[v1.DeleteDeviceGroupRequest]) (*connect.Response[v1.DeleteDeviceGroupResponse], error)
+	// PreviewDeviceGroup renders a spec's members without applying it (for
+	// editors), and for an existing group counts what an update would change.
+	PreviewDeviceGroup(context.Context, *connect.Request[v1.PreviewDeviceGroupRequest]) (*connect.Response[v1.PreviewDeviceGroupResponse], error)
 	// RunGroupAction runs a protocol action on some or all members.
 	RunGroupAction(context.Context, *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error)
 	// Disables (stops, keeping config) or enables a group's protocols on
@@ -370,6 +376,12 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(agentServiceMethods.ByName("DeleteDeviceGroup")),
 			connect.WithClientOptions(opts...),
 		),
+		previewDeviceGroup: connect.NewClient[v1.PreviewDeviceGroupRequest, v1.PreviewDeviceGroupResponse](
+			httpClient,
+			baseURL+AgentServicePreviewDeviceGroupProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("PreviewDeviceGroup")),
+			connect.WithClientOptions(opts...),
+		),
 		runGroupAction: connect.NewClient[v1.RunGroupActionRequest, v1.RunGroupActionResponse](
 			httpClient,
 			baseURL+AgentServiceRunGroupActionProcedure,
@@ -449,6 +461,7 @@ type agentServiceClient struct {
 	createDeviceGroup   *connect.Client[v1.CreateDeviceGroupRequest, v1.CreateDeviceGroupResponse]
 	updateDeviceGroup   *connect.Client[v1.UpdateDeviceGroupRequest, v1.UpdateDeviceGroupResponse]
 	deleteDeviceGroup   *connect.Client[v1.DeleteDeviceGroupRequest, v1.DeleteDeviceGroupResponse]
+	previewDeviceGroup  *connect.Client[v1.PreviewDeviceGroupRequest, v1.PreviewDeviceGroupResponse]
 	runGroupAction      *connect.Client[v1.RunGroupActionRequest, v1.RunGroupActionResponse]
 	setGroupDisabled    *connect.Client[v1.SetGroupDisabledRequest, v1.SetGroupDisabledResponse]
 	watchEvents         *connect.Client[v1.WatchEventsRequest, v1.Event]
@@ -589,6 +602,11 @@ func (c *agentServiceClient) DeleteDeviceGroup(ctx context.Context, req *connect
 	return c.deleteDeviceGroup.CallUnary(ctx, req)
 }
 
+// PreviewDeviceGroup calls clabgen.v1.AgentService.PreviewDeviceGroup.
+func (c *agentServiceClient) PreviewDeviceGroup(ctx context.Context, req *connect.Request[v1.PreviewDeviceGroupRequest]) (*connect.Response[v1.PreviewDeviceGroupResponse], error) {
+	return c.previewDeviceGroup.CallUnary(ctx, req)
+}
+
 // RunGroupAction calls clabgen.v1.AgentService.RunGroupAction.
 func (c *agentServiceClient) RunGroupAction(ctx context.Context, req *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error) {
 	return c.runGroupAction.CallUnary(ctx, req)
@@ -678,6 +696,9 @@ type AgentServiceHandler interface {
 	// device and protocols are unchanged keep running.
 	UpdateDeviceGroup(context.Context, *connect.Request[v1.UpdateDeviceGroupRequest]) (*connect.Response[v1.UpdateDeviceGroupResponse], error)
 	DeleteDeviceGroup(context.Context, *connect.Request[v1.DeleteDeviceGroupRequest]) (*connect.Response[v1.DeleteDeviceGroupResponse], error)
+	// PreviewDeviceGroup renders a spec's members without applying it (for
+	// editors), and for an existing group counts what an update would change.
+	PreviewDeviceGroup(context.Context, *connect.Request[v1.PreviewDeviceGroupRequest]) (*connect.Response[v1.PreviewDeviceGroupResponse], error)
 	// RunGroupAction runs a protocol action on some or all members.
 	RunGroupAction(context.Context, *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error)
 	// Disables (stops, keeping config) or enables a group's protocols on
@@ -861,6 +882,12 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(agentServiceMethods.ByName("DeleteDeviceGroup")),
 		connect.WithHandlerOptions(opts...),
 	)
+	agentServicePreviewDeviceGroupHandler := connect.NewUnaryHandler(
+		AgentServicePreviewDeviceGroupProcedure,
+		svc.PreviewDeviceGroup,
+		connect.WithSchema(agentServiceMethods.ByName("PreviewDeviceGroup")),
+		connect.WithHandlerOptions(opts...),
+	)
 	agentServiceRunGroupActionHandler := connect.NewUnaryHandler(
 		AgentServiceRunGroupActionProcedure,
 		svc.RunGroupAction,
@@ -963,6 +990,8 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 			agentServiceUpdateDeviceGroupHandler.ServeHTTP(w, r)
 		case AgentServiceDeleteDeviceGroupProcedure:
 			agentServiceDeleteDeviceGroupHandler.ServeHTTP(w, r)
+		case AgentServicePreviewDeviceGroupProcedure:
+			agentServicePreviewDeviceGroupHandler.ServeHTTP(w, r)
 		case AgentServiceRunGroupActionProcedure:
 			agentServiceRunGroupActionHandler.ServeHTTP(w, r)
 		case AgentServiceSetGroupDisabledProcedure:
@@ -1090,6 +1119,10 @@ func (UnimplementedAgentServiceHandler) UpdateDeviceGroup(context.Context, *conn
 
 func (UnimplementedAgentServiceHandler) DeleteDeviceGroup(context.Context, *connect.Request[v1.DeleteDeviceGroupRequest]) (*connect.Response[v1.DeleteDeviceGroupResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.DeleteDeviceGroup is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) PreviewDeviceGroup(context.Context, *connect.Request[v1.PreviewDeviceGroupRequest]) (*connect.Response[v1.PreviewDeviceGroupResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.PreviewDeviceGroup is not implemented"))
 }
 
 func (UnimplementedAgentServiceHandler) RunGroupAction(context.Context, *connect.Request[v1.RunGroupActionRequest]) (*connect.Response[v1.RunGroupActionResponse], error) {

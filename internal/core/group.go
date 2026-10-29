@@ -297,6 +297,107 @@ func (e *Engine) UpdateGroup(g GroupSpec) (GroupView, error) {
 	return v, errors.Join(errs...)
 }
 
+// GroupPreview is what a group spec renders to, before it is applied: some
+// members, and (for an existing group) what applying would change.
+type GroupPreview struct {
+	Count   int                  `json:"count"`
+	Members []GroupMemberPreview `json:"members"`
+	Plan    *GroupPlan           `json:"plan,omitempty"`
+}
+
+type GroupMemberPreview struct {
+	Index     int            `json:"index"` // 1-based
+	Device    DeviceSpec     `json:"device"`
+	MAC       string         `json:"mac"`
+	Protocols []ProtocolSpec `json:"protocols"`
+}
+
+// GroupPlan counts an existing group's members by what an update does to
+// them.
+type GroupPlan struct {
+	Unchanged int `json:"unchanged"`
+	Changed   int `json:"changed"`
+	Added     int `json:"added"`
+	Removed   int `json:"removed"`
+}
+
+// PreviewGroup renders members (1-based; none: the first two and the last)
+// of a spec without applying it.
+func (e *Engine) PreviewGroup(g GroupSpec, which []int) (GroupPreview, error) {
+	g, members, err := e.expandGroup(g)
+	if err != nil {
+		return GroupPreview{}, err
+	}
+	e.mu.RLock()
+	err = e.checkFreeLocked(g.Name, members)
+	var plan *GroupPlan
+	if old, ok := e.groups[g.Name]; ok {
+		plan = planGroup(old.members, members)
+	}
+	e.mu.RUnlock()
+	if err != nil {
+		return GroupPreview{}, fmt.Errorf("group %s: %w", g.Name, err)
+	}
+	if len(which) == 0 {
+		which = []int{1, 2, len(members)}
+	}
+	out := GroupPreview{Count: len(members), Plan: plan, Members: []GroupMemberPreview{}}
+	seen := map[int]bool{}
+	for _, i := range which {
+		if i < 1 || i > len(members) || seen[i] {
+			continue
+		}
+		seen[i] = true
+		m := members[i-1]
+		mac := m.dev.MAC
+		if mac == "" {
+			mac = e.deriveMAC(m.dev.Name).String()
+		}
+		out.Members = append(out.Members, GroupMemberPreview{Index: i, Device: m.dev, MAC: mac, Protocols: m.protos})
+	}
+	return out, nil
+}
+
+// planGroup compares rendered members the way UpdateGroup does.
+func planGroup(old, now []groupMember) *GroupPlan {
+	p := &GroupPlan{}
+	prev := map[string]groupMember{}
+	for _, m := range old {
+		prev[m.dev.Name] = m
+	}
+	for _, m := range now {
+		o, had := prev[m.dev.Name]
+		delete(prev, m.dev.Name)
+		switch {
+		case !had:
+			p.Added++
+		case reflect.DeepEqual(o.dev, m.dev) && sameProtos(o.protos, m.protos):
+			p.Unchanged++
+		default:
+			p.Changed++
+		}
+	}
+	p.Removed = len(prev)
+	return p
+}
+
+func sameProtos(a, b []ProtocolSpec) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	byName := map[string]ProtocolSpec{}
+	for _, x := range a {
+		byName[x.Name] = x
+	}
+	for _, y := range b {
+		x, ok := byName[y.Name]
+		if !ok || x.Type != y.Type || x.Disabled != y.Disabled || !bytes.Equal(x.Config, y.Config) {
+			return false
+		}
+	}
+	return true
+}
+
 func (e *Engine) DeleteGroup(name string) error {
 	e.gmu.Lock()
 	defer e.gmu.Unlock()

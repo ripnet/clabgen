@@ -67,6 +67,12 @@ address.
   config editor: sections per part of the config, field search, the
   changes reviewed before they are applied, and an agent's rejection shown
   on the fields it names.
+- A device group editor: the member device and each group protocol's
+  config as forms, where `±` on a number, address or MAC steps it per
+  member; a live preview of the first, second and last member as the agent
+  renders them; and, when editing, how many members applying changes, adds
+  or removes (the rest keep running). The whole group can also be edited
+  as YAML.
 - Flows: every agent's traffic flows in one table, with their pass/fail
   checks, counts of passing and failing flows, a "failing only" filter,
   and start, stop and clear for all of them (or the ones the filter

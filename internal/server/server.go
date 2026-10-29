@@ -572,6 +572,26 @@ func (s *Server) UpdateDeviceGroup(ctx context.Context, r *connect.Request[v1.Up
 	return connect.NewResponse(&v1.UpdateDeviceGroupResponse{Group: g}), nil
 }
 
+func (s *Server) PreviewDeviceGroup(ctx context.Context, r *connect.Request[v1.PreviewDeviceGroupRequest]) (*connect.Response[v1.PreviewDeviceGroupResponse], error) {
+	spec, err := groupSpec(r.Msg.Group)
+	if err != nil {
+		return nil, err
+	}
+	var which []int
+	for _, m := range r.Msg.Members {
+		which = append(which, int(m))
+	}
+	res, err := s.eng.PreviewGroup(spec, which)
+	if err != nil {
+		return nil, connectErr(err)
+	}
+	st, err := toStruct(res)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&v1.PreviewDeviceGroupResponse{Result: st}), nil
+}
+
 func (s *Server) DeleteDeviceGroup(ctx context.Context, r *connect.Request[v1.DeleteDeviceGroupRequest]) (*connect.Response[v1.DeleteDeviceGroupResponse], error) {
 	return connect.NewResponse(&v1.DeleteDeviceGroupResponse{}), connectErr(s.eng.DeleteGroup(r.Msg.Name))
 }

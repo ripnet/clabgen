@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { parse as parseYAML, stringify as toYAML } from "yaml";
+import { StepInput, fmtStep, isStep } from "./Stepped";
 
 // A JSON schema as published by the agent (invopop/jsonschema output plus
 // "default" values and "x-order"), with hints from the Go config's
@@ -182,6 +183,8 @@ type FormCtx = {
   errKeys: Set<string>;
   allErrKeys: Set<string>;
   scope: Set<string>;
+  // A device group template: number and text fields can step per member.
+  stepping: boolean;
 };
 const none = new Set<string>();
 const Ctx = createContext<FormCtx>({
@@ -190,7 +193,15 @@ const Ctx = createContext<FormCtx>({
   errKeys: none,
   allErrKeys: none,
   scope: none,
+  stepping: false,
 });
+
+// steppable: a field a group template can step (integers, and text that
+// may hold an address, prefix or MAC).
+const steppable = (s: Schema) => {
+  const t = typeOf(s);
+  return !s.enum && (t === "integer" || t === "number" || t === "string");
+};
 
 // canon is a stable JSON text (keys sorted) for comparing values.
 function canon(v: unknown): string {
@@ -507,7 +518,7 @@ function FieldSet({
 }) {
   const [all, setAll] = useState(false);
   const ctx = useContext(Ctx);
-  const { query, errKeys } = ctx;
+  const { query, errKeys, stepping } = ctx;
   const req = new Set(schema.required ?? []);
   // Fields that don't apply (x-show-if) aren't offered at all; a filter
   // keeps the fields matching it (or holding fields that do).
@@ -565,14 +576,32 @@ function FieldSet({
                   key={k}
                 >
                   <FieldLabel name={k} schema={ps} required={req.has(k)} />
-                  <Field
-                    name={k}
-                    schema={ps}
-                    value={value[k]}
-                    required={req.has(k)}
-                    mode={mode}
-                    onChange={(v) => set(k, v)}
-                  />
+                  {stepping && steppable(ps) ? (
+                    <StepInput
+                      value={value[k]}
+                      numeric={typeOf(ps) !== "string"}
+                      label={label(k)}
+                      onChange={(v) => set(k, v)}
+                    >
+                      <Field
+                        name={k}
+                        schema={ps}
+                        value={value[k]}
+                        required={req.has(k)}
+                        mode={mode}
+                        onChange={(v) => set(k, v)}
+                      />
+                    </StepInput>
+                  ) : (
+                    <Field
+                      name={k}
+                      schema={ps}
+                      value={value[k]}
+                      required={req.has(k)}
+                      mode={mode}
+                      onChange={(v) => set(k, v)}
+                    />
+                  )}
                 </div>
               );
             })}
@@ -627,8 +656,14 @@ function FieldSet({
   );
 }
 
-const fmt = (x: unknown) =>
-  Array.isArray(x) ? x.join(", ") : typeof x === "object" ? "…" : String(x);
+const fmt = (x: unknown): string =>
+  Array.isArray(x)
+    ? x.map(fmt).join(", ")
+    : isStep(x)
+      ? fmtStep(x)
+      : typeof x === "object"
+        ? "…"
+        : String(x);
 
 // fill renders an x-summary template: {field} is the field's value (a set
 // boolean its name), [ … ] a part shown only when its fields are all set.
@@ -952,6 +987,7 @@ export function SchemaForm({
   mode,
   original,
   errorText = "",
+  stepping = false,
 }: {
   schema: Schema;
   value: Obj;
@@ -959,6 +995,7 @@ export function SchemaForm({
   mode: FormMode;
   original?: Obj;
   errorText?: string;
+  stepping?: boolean;
 }) {
   const [raw, setRaw] = useState(false);
   const [text, setText] = useState("");
@@ -985,8 +1022,9 @@ export function SchemaForm({
       errKeys: scope.size ? none : errKeys,
       allErrKeys: errKeys,
       scope,
+      stepping,
     }),
-    [q, errorText, errKeys, scope],
+    [q, errorText, errKeys, scope, stepping],
   );
   return (
     <div className="schema-form">
