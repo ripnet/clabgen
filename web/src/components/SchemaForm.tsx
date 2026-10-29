@@ -4,13 +4,15 @@ import { parse as parseYAML, stringify as toYAML } from "yaml";
 // A JSON schema as published by the agent (invopop/jsonschema output plus
 // "default" values and "x-order"), with hints from the Go config's
 // jsonschema_extras tags: x-group (a field's group heading), x-advanced
-// (kept back until "show all options"), x-summary (an object list's item
+// (kept back until "show all options"), x-common (always shown, even where
+// a large form keeps back what isn't set or required), x-summary (an object list's item
 // line, e.g. "{address} AS {remote_as}[ · {description}]": bracketed parts
 // only when their fields are set) and x-show-if ("type=a|b" or "type!=c":
 // the field applies only for those values of a sibling field).
 export type Schema = {
   "x-group"?: string;
   "x-advanced"?: boolean | string;
+  "x-common"?: boolean | string;
   "x-summary"?: string;
   "x-show-if"?: string;
   type?: string | string[];
@@ -81,6 +83,7 @@ function isSet(v: unknown): boolean {
 
 const isAdvanced = (s: Schema) =>
   s["x-advanced"] === true || s["x-advanced"] === "true";
+const isCommon = (s: Schema) => s["x-common"] === true || s["x-common"] === "true";
 
 // applies evaluates a field's x-show-if against its siblings (an unset
 // sibling counts as its default).
@@ -520,6 +523,7 @@ function FieldSet({
     !!query ||
     all ||
     req.has(k) ||
+    isCommon(schema.properties![k]) ||
     isSet(value[k]) ||
     errorIn(k, schema.properties![k], errKeys) ||
     (ks.length <= 6 && !adv(k));

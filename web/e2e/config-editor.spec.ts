@@ -117,3 +117,13 @@ test("YAML view", async ({ page }) => {
   await expect(modal.locator(".diff-table")).toContainText("hold_time");
   await expect(modal.locator(".diff-table")).toContainText("peers[0].families");
 });
+
+test("a peer offers its families without showing all options", async ({ page }) => {
+  const p = bgp();
+  (p.config.peers as Record<string, unknown>[])[0] = { address: "10.0.0.1", remote_as: 65001 };
+  const modal = await edit(page, p);
+  await modal.locator(".section-nav").getByRole("button", { name: /peers/ }).click();
+  await modal.getByRole("button", { name: /10\.0\.0\.1 AS 65001/ }).click();
+  await expect(modal.getByRole("checkbox", { name: "ipv6-unicast" })).toBeVisible();
+  await expect(modal.getByRole("button", { name: /show all options/ })).toBeVisible();
+});

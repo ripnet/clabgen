@@ -29,7 +29,7 @@ type Peer struct {
 	RemoteAS     uint32   `json:"remote_as" jsonschema:"required,minimum=1" jsonschema_extras:"x-group=Session"`
 	LocalAddress string   `json:"local_address,omitempty" jsonschema:"description=Our source address. Default: the device address toward the peer" jsonschema_extras:"x-group=Session"`
 	Passive      bool     `json:"passive,omitempty" jsonschema:"description=Only accept the peer's connection; don't dial" jsonschema_extras:"x-group=Transport,x-advanced=true"`
-	Families     []string `json:"families,omitempty" jsonschema:"enum=ipv4-unicast,enum=ipv6-unicast,enum=ipv4-vpn,enum=ipv6-vpn,enum=evpn,enum=l2vpn,enum=ipv4-srpolicy,enum=ipv6-srpolicy,description=Address families. Default: the peer address's unicast family" jsonschema_extras:"x-group=Session"`
+	Families     []string `json:"families,omitempty" jsonschema:"enum=ipv4-unicast,enum=ipv6-unicast,enum=ipv4-vpn,enum=ipv6-vpn,enum=evpn,enum=l2vpn,enum=ipv4-srpolicy,enum=ipv6-srpolicy,description=Address families. Default: the peer address's unicast family" jsonschema_extras:"x-group=Session,x-common=true"`
 	HoldTime     int      `json:"hold_time,omitempty" jsonschema:"description=Default: the speaker's" jsonschema_extras:"x-group=Timers"`
 	TTL          int      `json:"ttl,omitempty" jsonschema:"minimum=0,maximum=255,description=TTL of our packets (eBGP multihop / GTSM 255). Default 64 (eBGP 1)" jsonschema_extras:"x-group=Transport,x-advanced=true"`
 	Description  string   `json:"description,omitempty" jsonschema_extras:"x-group=Session"`
