@@ -5,7 +5,7 @@ import { client, errorText, usePoll } from "../api";
 import { navigate } from "../router";
 import type { DeviceGroup } from "../gen/clabgen/v1/agent_pb";
 import { SchemaForm, defaults, normalize, parseSchema, type Obj } from "../components/SchemaForm";
-import { StepInput } from "../components/Stepped";
+import { StepInput, fmtStep, isStep } from "../components/Stepped";
 import { Modal, useToast } from "../ui";
 
 // GroupEditor creates or edits a device group as a form: the device
@@ -13,7 +13,7 @@ import { Modal, useToast } from "../ui";
 // step per member) and a live preview of members rendered by the agent.
 // The whole spec can also be edited as YAML.
 
-type Spec = { name?: string; count?: number; device?: Obj; protocols?: Proto[] } & Obj;
+export type Spec = { name?: string; count?: number; device?: Obj; protocols?: Proto[] } & Obj;
 type Proto = { name?: string; type: string; config?: Obj; disabled?: boolean };
 
 type PreviewMember = {
@@ -29,12 +29,28 @@ const blank = (port: string): Spec => ({ name: "", count: 10, device: { port }, 
 
 const placeholders = "{i} (1-based), {i0}, {group}; in protocol configs also the member's {device}, {ipv4}, {ipv6}, {gateway4}, {gateway6}, {mac}, {vlan}, {inner_vlan}";
 
-export function GroupEditor({ agentId, group, onClose, onDone }: { agentId: string; group?: DeviceGroup; onClose: () => void; onDone: () => void }) {
+// initial (with note, shown above the form) starts a new group from
+// something else, e.g. an existing device and its protocols.
+export function GroupEditor({
+  agentId,
+  group,
+  initial,
+  note,
+  onClose,
+  onDone,
+}: {
+  agentId: string;
+  group?: DeviceGroup;
+  initial?: Spec;
+  note?: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const c = client(agentId);
   const ports = usePoll(() => c.listPorts({}), [agentId]);
   const types = usePoll(() => c.listProtocolTypes({}), [agentId]);
   const portNames = (ports.data?.ports ?? []).map((p) => p.name);
-  const [spec, setSpec] = useState<Spec>(() => (group?.spec as Spec | undefined) ?? blank(""));
+  const [spec, setSpec] = useState<Spec>(() => (group?.spec as Spec | undefined) ?? initial ?? blank(""));
   // A new group starts on the first port, once the ports are known.
   useEffect(() => {
     if (!group && !spec.device?.port && portNames.length) setSpec((s) => ({ ...s, device: { ...s.device, port: portNames[0] } }));
@@ -44,6 +60,8 @@ export function GroupEditor({ agentId, group, onClose, onDone }: { agentId: stri
   const [yamlErr, setYamlErr] = useState<string>();
   const [preview, setPreview] = useState<Preview>();
   const [previewErr, setPreviewErr] = useState<string>();
+  // Members to preview besides the first two and the last.
+  const [extra, setExtra] = useState<number[]>([]);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -58,7 +76,8 @@ export function GroupEditor({ agentId, group, onClose, onDone }: { agentId: stri
     }
     let live = true;
     const t = setTimeout(() => {
-      c.previewDeviceGroup({ group: { name: spec.name, spec: spec as JsonObject } })
+      const members = [...new Set([1, 2, spec.count!, ...extra])].filter((i) => i >= 1 && i <= spec.count!).sort((a, b) => a - b);
+      c.previewDeviceGroup({ group: { name: spec.name, spec: spec as JsonObject }, members })
         .then((r) => {
           if (!live) return;
           setPreview(r.result as unknown as Preview);
@@ -75,7 +94,7 @@ export function GroupEditor({ agentId, group, onClose, onDone }: { agentId: stri
       live = false;
       clearTimeout(t);
     };
-  }, [agentId, text]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [agentId, text, extra.join()]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // clean drops protocol values equal to their defaults, so a spec built
   // here is as short as one written by hand.
@@ -117,6 +136,7 @@ export function GroupEditor({ agentId, group, onClose, onDone }: { agentId: stri
       if (!group && r) navigate({ page: "group", agent: agentId, group: r.name });
     } catch (e) {
       setError(errorText(e));
+      setStep("edit");
     } finally {
       setBusy(false);
     }
@@ -124,6 +144,10 @@ export function GroupEditor({ agentId, group, onClose, onDone }: { agentId: stri
 
   const selIdx = protos.findIndex((p, i) => protoKey(p, i) === sel);
   const plan = group ? preview?.plan : undefined;
+  // Editing ends in a review of the template's changes and the plan.
+  const [step, setStep] = useState<"edit" | "review">("edit");
+  const original = useMemo(() => (group?.spec as Spec | undefined) ?? {}, [group]);
+  const changes = useMemo(() => (group ? specChanges(clean(original), clean(spec)) : []), [group, original, text, types.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Modal title={group ? `Edit group ${group.name}` : "New device group"} onClose={onClose} wide="x">
@@ -132,114 +156,147 @@ export function GroupEditor({ agentId, group, onClose, onDone }: { agentId: stri
           The agent rejected the group: {error}
         </div>
       )}
-      <div className="group-head">
-        <label className="field">
-          <span className="field-label">name</span>
-          <input
-            className="input mono"
-            aria-label="Group name"
-            value={spec.name ?? ""}
-            disabled={!!group}
-            placeholder="e.g. rmep"
-            onChange={(e) => setSpec({ ...spec, name: e.target.value })}
-          />
-        </label>
-        <label className="field">
-          <span className="field-label">members</span>
-          <input
-            className="input mono"
-            aria-label="Member count"
-            type="number"
-            min={1}
-            max={4096}
-            value={spec.count ?? ""}
-            onChange={(e) => setSpec({ ...spec, count: e.target.value === "" ? undefined : Number(e.target.value) })}
-          />
-        </label>
-        <button
-          type="button"
-          className="link group-yaml-toggle"
-          onClick={() => {
-            if (yaml === undefined) {
-              setYaml(toYAML(clean(spec)));
-              setYamlErr(undefined);
-            } else if (!yamlErr) setYaml(undefined);
-          }}
-        >
-          {yaml === undefined ? "edit as YAML" : "form view"}
-        </button>
+      <div hidden={step === "review"}>
+        {note && <div className="info-box">{note}</div>}
+        <div className="group-head">
+          <label className="field">
+            <span className="field-label">name</span>
+            <input
+              className="input mono"
+              aria-label="Group name"
+              value={spec.name ?? ""}
+              disabled={!!group}
+              placeholder="e.g. rmep"
+              onChange={(e) => setSpec({ ...spec, name: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span className="field-label">members</span>
+            <input
+              className="input mono"
+              aria-label="Member count"
+              type="number"
+              min={1}
+              max={4096}
+              value={spec.count ?? ""}
+              onChange={(e) => setSpec({ ...spec, count: e.target.value === "" ? undefined : Number(e.target.value) })}
+            />
+          </label>
+          <button
+            type="button"
+            className="link group-yaml-toggle"
+            onClick={() => {
+              if (yaml === undefined) {
+                setYaml(toYAML(clean(spec)));
+                setYamlErr(undefined);
+              } else if (!yamlErr) setYaml(undefined);
+            }}
+          >
+            {yaml === undefined ? "edit as YAML" : "form view"}
+          </button>
+        </div>
+
+        {yaml !== undefined ? (
+          <>
+            <textarea
+              className="input mono code scenario"
+              aria-label="Group as YAML"
+              spellCheck={false}
+              value={yaml}
+              onChange={(e) => {
+                setYaml(e.target.value);
+                try {
+                  const v = parseYAML(e.target.value) ?? {};
+                  if (typeof v !== "object" || Array.isArray(v)) throw new Error("must be a mapping of fields");
+                  setYamlErr(undefined);
+                  setSpec(v as Spec);
+                } catch (x) {
+                  setYamlErr((x as Error).message);
+                }
+              }}
+            />
+            {yamlErr && <div className="hint error-text">{yamlErr}</div>}
+          </>
+        ) : (
+          <div className="sectioned group-sections">
+            <nav className="section-nav" aria-label="Group parts">
+              <button type="button" className={sel === "device" ? "active" : ""} onClick={() => setSel("device")}>
+                <span>device</span>
+              </button>
+              {protos.map((p, i) => (
+                <button type="button" key={i} className={sel === protoKey(p, i) ? "active" : ""} onClick={() => setSel(protoKey(p, i))}>
+                  <span className="mono">{p.name || p.type}</span>
+                </button>
+              ))}
+              <select
+                className="input add-proto"
+                aria-label="Add a protocol"
+                value=""
+                onChange={(e) => e.target.value && addProto(e.target.value)}
+              >
+                <option value="">+ protocol…</option>
+                {(types.data?.types ?? []).map((t) => (
+                  <option key={t.name} value={t.name}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </nav>
+            <div className="section-pane">
+              <p className="muted small-note">
+                <b>±</b> steps a value per member: start, plus a step (1, or an address/MAC form like <code>0.0.0.4</code>) for each member. Text takes{" "}
+                <code>{placeholders}</code>.
+              </p>
+              {selIdx < 0 ? (
+                <DeviceTemplate value={spec.device ?? {}} ports={portNames} onChange={(d) => setSpec({ ...spec, device: d })} />
+              ) : (
+                <ProtoTemplate
+                  key={sel}
+                  proto={protos[selIdx]}
+                  schemaText={types.data?.types.find((t) => t.name === protos[selIdx].type)?.configSchema}
+                  onChange={(p) => setProto(selIdx, p)}
+                  onRemove={() => {
+                    setProto(selIdx, undefined);
+                    setSel("device");
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        <MemberPreview
+          preview={preview}
+          error={previewErr}
+          protos={protos}
+          extra={extra}
+          onShow={(i) => setExtra([...new Set([...extra, i])])}
+          onHide={(i) => setExtra(extra.filter((x) => x !== i))}
+        />
       </div>
 
-      {yaml !== undefined ? (
-        <>
-          <textarea
-            className="input mono code scenario"
-            aria-label="Group as YAML"
-            spellCheck={false}
-            value={yaml}
-            onChange={(e) => {
-              setYaml(e.target.value);
-              try {
-                const v = parseYAML(e.target.value) ?? {};
-                if (typeof v !== "object" || Array.isArray(v)) throw new Error("must be a mapping of fields");
-                setYamlErr(undefined);
-                setSpec(v as Spec);
-              } catch (x) {
-                setYamlErr((x as Error).message);
-              }
-            }}
-          />
-          {yamlErr && <div className="hint error-text">{yamlErr}</div>}
-        </>
-      ) : (
-        <div className="sectioned group-sections">
-          <nav className="section-nav" aria-label="Group parts">
-            <button type="button" className={sel === "device" ? "active" : ""} onClick={() => setSel("device")}>
-              <span>device</span>
-            </button>
-            {protos.map((p, i) => (
-              <button type="button" key={i} className={sel === protoKey(p, i) ? "active" : ""} onClick={() => setSel(protoKey(p, i))}>
-                <span className="mono">{p.name || p.type}</span>
-              </button>
-            ))}
-            <select
-              className="input add-proto"
-              aria-label="Add a protocol"
-              value=""
-              onChange={(e) => e.target.value && addProto(e.target.value)}
-            >
-              <option value="">+ protocol…</option>
-              {(types.data?.types ?? []).map((t) => (
-                <option key={t.name} value={t.name}>
-                  {t.name}
-                </option>
+      {step === "review" && (
+        <div className="table-wrap">
+          <table className="table diff-table">
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Was</th>
+                <th>Now</th>
+              </tr>
+            </thead>
+            <tbody>
+              {changes.map((ch) => (
+                <tr key={ch.path}>
+                  <td className="mono">{ch.path}</td>
+                  <td className="mono diff-from">{ch.from ?? <span className="muted">—</span>}</td>
+                  <td className="mono diff-to">{ch.to ?? <span className="muted">removed</span>}</td>
+                </tr>
               ))}
-            </select>
-          </nav>
-          <div className="section-pane">
-            <p className="muted small-note">
-              <b>±</b> steps a value per member: start, plus a step (1, or an address/MAC form like <code>0.0.0.4</code>) for each member. Text takes{" "}
-              <code>{placeholders}</code>.
-            </p>
-            {selIdx < 0 ? (
-              <DeviceTemplate value={spec.device ?? {}} ports={portNames} onChange={(d) => setSpec({ ...spec, device: d })} />
-            ) : (
-              <ProtoTemplate
-                key={sel}
-                proto={protos[selIdx]}
-                schemaText={types.data?.types.find((t) => t.name === protos[selIdx].type)?.configSchema}
-                onChange={(p) => setProto(selIdx, p)}
-                onRemove={() => {
-                  setProto(selIdx, undefined);
-                  setSel("device");
-                }}
-              />
-            )}
-          </div>
+            </tbody>
+          </table>
         </div>
       )}
-
-      <MemberPreview preview={preview} error={previewErr} protos={protos} />
 
       <div className="modal-foot">
         {plan && (
@@ -247,15 +304,49 @@ export function GroupEditor({ agentId, group, onClose, onDone }: { agentId: stri
             Applying: {planText(plan)}
           </span>
         )}
-        <button type="button" className="btn" onClick={onClose}>
-          Cancel
-        </button>
-        <button type="button" className="btn primary" disabled={busy || !!yamlErr || !spec.name || !!(plan && !plan.changed && !plan.added && !plan.removed)} onClick={save}>
-          {group ? "Apply" : "Create"}
-        </button>
+        {step === "review" ? (
+          <button type="button" className="btn" onClick={() => setStep("edit")}>
+            Back
+          </button>
+        ) : (
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
+        )}
+        {group && step === "edit" ? (
+          <button type="button" className="btn primary" disabled={!!yamlErr || !changes.length} onClick={() => setStep("review")}>
+            {changes.length ? `Review ${changes.length} change${changes.length === 1 ? "" : "s"}` : "No changes"}
+          </button>
+        ) : (
+          <button type="button" className="btn primary" disabled={busy || !!yamlErr || !spec.name} onClick={save}>
+            {group ? "Apply" : "Create"}
+          </button>
+        )}
       </div>
     </Modal>
   );
+}
+
+type Change = { path: string; from?: string; to?: string };
+
+// specLeaves lists a spec's values by path, a stepped value as one
+// ("protocols[0].config.mep_id": "101 +1 per member").
+function specLeaves(v: unknown, at = "", out: Record<string, string> = {}): Record<string, string> {
+  if (isStep(v)) out[at] = fmtStep(v);
+  else if (Array.isArray(v)) v.forEach((x, i) => specLeaves(x, `${at}[${i}]`, out));
+  else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) specLeaves(x, at ? `${at}.${k}` : k, out);
+  else if (v !== undefined && v !== null) out[at] = typeof v === "string" ? v : JSON.stringify(v);
+  return out;
+}
+
+// specChanges lists what differs between two group specs, by path.
+function specChanges(a: Spec, b: Spec): Change[] {
+  const x = specLeaves(a);
+  const y = specLeaves(b);
+  const out: Change[] = [];
+  for (const k of [...new Set([...Object.keys(x), ...Object.keys(y)])].sort())
+    if (x[k] !== y[k]) out.push({ path: k, from: x[k], to: y[k] });
+  return out;
 }
 
 export function planText(p: Plan): string {
@@ -433,7 +524,7 @@ function ProtoTemplate({ proto, schemaText, onChange, onRemove }: { proto: Proto
           </button>
         </div>
       </div>
-      <SchemaForm schema={schema} value={proto.config ?? {}} mode="config" stepping onChange={(cfg) => onChange({ ...proto, config: cfg })} />
+      <SchemaForm schema={schema} value={proto.config ?? {}} mode="config" stepping expanded onChange={(cfg) => onChange({ ...proto, config: cfg })} />
     </div>
   );
 }
@@ -447,23 +538,109 @@ function flat(v: unknown, at = "", out: Record<string, string> = {}): Record<str
 }
 
 // MemberPreview shows the members the agent rendered: the device, and the
-// protocol values that differ between them (what the template steps).
-function MemberPreview({ preview, error, protos }: { preview?: Preview; error?: string; protos: Proto[] }) {
+// protocol values that differ between them (what the template steps). A
+// muted row stands for the members in between; any member can be added to
+// the view (extra) and taken out again.
+function MemberPreview({
+  preview,
+  error,
+  protos,
+  extra,
+  onShow,
+  onHide,
+}: {
+  preview?: Preview;
+  error?: string;
+  protos: Proto[];
+  extra: number[];
+  onShow: (i: number) => void;
+  onHide: (i: number) => void;
+}) {
+  const [want, setWant] = useState("");
+  const ms = preview?.members ?? [];
+  const protoOf = (m: PreviewMember, short: string) => (m.protocols ?? []).find((x) => x.name === `${m.device.name}-${short}`);
   const varying = useMemo(() => {
-    const ms = preview?.members ?? [];
     const out: Record<string, string[]> = {};
     for (const p of ms[0]?.protocols ?? []) {
       const short = p.name.slice(ms[0].device.name.length + 1);
-      const vals = ms.map((m) => flat(m.protocols.find((x) => x.name.endsWith("-" + short))?.config));
+      const vals = ms.map((m) => flat(protoOf(m, short)?.config));
       out[short] = Object.keys(vals[0] ?? {}).filter((k) => vals.some((v) => v[k] !== vals[0][k]));
     }
     return out;
-  }, [preview]);
+  }, [preview]); // eslint-disable-line react-hooks/exhaustive-deps
   const stepped = protos.some((p) => JSON.stringify(p.config ?? {}).includes('"start"'));
+  const cols = 5 + Object.keys(varying).length;
+  const n = Number(want);
+  const valid = !!preview && Number.isInteger(n) && n >= 1 && n <= preview.count;
+  const rows: React.ReactNode[] = [];
+  ms.forEach((m, k) => {
+    const gap = m.index - (k ? ms[k - 1].index : 0) - 1;
+    if (gap > 0)
+      rows.push(
+        <tr key={`gap${m.index}`} className="gap-row">
+          <td colSpan={cols} className="muted">
+            ⋯ {gap === 1 ? `member ${m.index - 1}` : `${gap} more (${m.index - gap}–${m.index - 1})`}
+          </td>
+        </tr>,
+      );
+    rows.push(
+      <tr key={m.index}>
+        <td>
+          {m.index}
+          {extra.includes(m.index) && (
+            <button type="button" className="icon-btn hide-member" aria-label={`Stop showing member ${m.index}`} onClick={() => onHide(m.index)}>
+              ×
+            </button>
+          )}
+        </td>
+        <td className="mono">{m.device.name}</td>
+        <td className="mono">{(m.device.vlans ?? []).map((v) => v.vid).join(".") || "—"}</td>
+        <td className="mono">
+          {[...(m.device.addresses ?? []), m.device.gateway4 && `gw ${m.device.gateway4}`, m.device.gateway6 && `gw ${m.device.gateway6}`].filter(Boolean).join(", ") || "—"}
+        </td>
+        <td className="mono">{m.mac}</td>
+        {Object.entries(varying).map(([p, keys]) => {
+          const cfg = flat(protoOf(m, p)?.config);
+          return (
+            <td key={p} className="mono">
+              {keys.length ? keys.map((k) => `${k} ${cfg[k]}`).join(", ") : stepped ? "—" : "same on every member"}
+            </td>
+          );
+        })}
+      </tr>,
+    );
+  });
   return (
     <div className="group-preview">
-      <div className="field-label">
-        preview{preview && <span className="muted"> · {preview.count} members, showing {preview.members.map((m) => m.index).join(", ")}</span>}
+      <div className="preview-head">
+        <span className="field-label">
+          preview{preview && <span className="muted"> · {preview.count} members</span>}
+        </span>
+        {preview && preview.count > 3 && (
+          <form
+            className="show-member"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!valid) return;
+              onShow(n);
+              setWant("");
+            }}
+          >
+            <input
+              className="input mono"
+              aria-label="Member to show"
+              type="number"
+              min={1}
+              max={preview.count}
+              placeholder="member #"
+              value={want}
+              onChange={(e) => setWant(e.target.value)}
+            />
+            <button className="btn small" disabled={!valid}>
+              Show
+            </button>
+          </form>
+        )}
       </div>
       {error ? (
         <div className={error.startsWith("Name the") || error.startsWith("Set how") || error.startsWith("This agent can") ? "muted small-note" : "error-text small"} role="status">
@@ -488,27 +665,7 @@ function MemberPreview({ preview, error, protos }: { preview?: Preview; error?: 
                 ))}
               </tr>
             </thead>
-            <tbody>
-              {preview.members.map((m) => (
-                <tr key={m.index}>
-                  <td>{m.index}</td>
-                  <td className="mono">{m.device.name}</td>
-                  <td className="mono">{(m.device.vlans ?? []).map((v) => v.vid).join(".") || "—"}</td>
-                  <td className="mono">
-                    {[...(m.device.addresses ?? []), m.device.gateway4 && `gw ${m.device.gateway4}`, m.device.gateway6 && `gw ${m.device.gateway6}`].filter(Boolean).join(", ") || "—"}
-                  </td>
-                  <td className="mono">{m.mac}</td>
-                  {Object.entries(varying).map(([p, keys]) => {
-                    const cfg = flat(m.protocols.find((x) => x.name.endsWith("-" + p))?.config);
-                    return (
-                      <td key={p} className="mono">
-                        {keys.length ? keys.map((k) => `${k} ${cfg[k]}`).join(", ") : stepped ? "—" : "same on every member"}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
+            <tbody>{rows}</tbody>
           </table>
         </div>
       )}

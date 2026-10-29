@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { client, usePoll } from "../api";
-import type { Device, VlanTag } from "../gen/clabgen/v1/agent_pb";
+import type { Device, Protocol, VlanTag } from "../gen/clabgen/v1/agent_pb";
+import type { Obj } from "../components/SchemaForm";
+import { GroupEditor, type Spec } from "./GroupEditor";
 import { DeviceIP } from "./DeviceIP";
 import { CreateProtocol } from "./ProtocolsTab";
 import { Empty, ErrorBox, Modal, useBusy } from "../ui";
@@ -20,6 +22,7 @@ export function DevicesTab({ agentId }: { agentId: string }) {
   const [editing, setEditing] = useState<Device | "new">();
   const [ipOf, setIpOf] = useState<string>();
   const [pingFrom, setPingFrom] = useState<Device>();
+  const [groupFrom, setGroupFrom] = useState<Device>();
   const { busy, run } = useBusy();
   const all = devs.data?.devices ?? [];
   // Group members are listed in the Groups tab.
@@ -86,6 +89,9 @@ export function DevicesTab({ agentId }: { agentId: string }) {
                       <button className="btn small" disabled={!d.addresses.length} title={d.addresses.length ? "Start an ICMP flow from this device" : "No IP addresses"} onClick={() => setPingFrom(d)}>
                         Ping…
                       </button>
+                      <button className="btn small" title="A device group of devices like this one, with its protocols" onClick={() => setGroupFrom(d)}>
+                        Make group…
+                      </button>
                       <button className="btn small" disabled={busy} onClick={() => setEditing(d)}>
                         Edit
                       </button>
@@ -120,6 +126,15 @@ export function DevicesTab({ agentId }: { agentId: string }) {
           }}
           onClose={() => setPingFrom(undefined)}
           onDone={protos.refresh}
+        />
+      )}
+      {groupFrom && (
+        <GroupEditor
+          agentId={agentId}
+          initial={groupSpecFrom(groupFrom, (protos.data?.protocols ?? []).filter((p) => p.device === groupFrom.name && !p.group))}
+          note={`Started from ${groupFrom.name} and its protocols. Name the group, set how many members, and step (±) what must differ per member: addresses, VLANs, IDs.${groupFrom.macDerived ? "" : " Its fixed MAC is left out: each member gets its own."}`}
+          onClose={() => setGroupFrom(undefined)}
+          onDone={() => undefined}
         />
       )}
       {ipOf && <DeviceIP agentId={agentId} device={ipOf} onClose={() => setIpOf(undefined)} />}
@@ -349,4 +364,17 @@ function DeviceForm({
 function uniqueName(base: string, taken: string[]): string {
   if (!taken.includes(base)) return base;
   for (let i = 2; ; i++) if (!taken.includes(`${base}-${i}`)) return `${base}-${i}`;
+}
+
+// groupSpecFrom starts a group spec from a device and its protocols: the
+// device's port, VLANs, addresses and gateways (not a fixed MAC, which
+// members can't share) and each protocol's config.
+function groupSpecFrom(d: Device, ps: Protocol[]): Spec {
+  const device: Obj = { port: d.port };
+  if (d.vlans.length)
+    device.vlans = d.vlans.map((t) => ({ vid: t.vid, ...(t.tpid && t.tpid !== 0x8100 ? { tpid: t.tpid } : {}), ...(t.pcp ? { pcp: t.pcp } : {}) }));
+  if (d.addresses.length) device.addresses = [...d.addresses];
+  if (d.gateway4) device.gateway4 = d.gateway4;
+  if (d.gateway6) device.gateway6 = d.gateway6;
+  return { name: "", count: 10, device, protocols: ps.map((p) => ({ name: p.name, type: p.type, config: (p.config ?? {}) as Obj })) };
 }

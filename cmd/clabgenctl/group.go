@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -81,6 +82,132 @@ func total(m map[string]any) int {
 	return t
 }
 
+// memberList parses "1,2,57" or "1-5,57" into member indices.
+func memberList(s string) ([]uint32, error) {
+	var out []uint32
+	for _, part := range strings.Split(s, ",") {
+		if part = strings.TrimSpace(part); part == "" {
+			continue
+		}
+		a, b, isRange := strings.Cut(part, "-")
+		lo, err := strconv.ParseUint(a, 10, 32)
+		hi := lo
+		if err == nil && isRange {
+			hi, err = strconv.ParseUint(b, 10, 32)
+		}
+		if err != nil || lo < 1 || hi < lo || hi-lo > 4096 {
+			return nil, fmt.Errorf("members %q: indices and ranges like 1-5,57", s)
+		}
+		for i := lo; i <= hi; i++ {
+			out = append(out, uint32(i))
+		}
+	}
+	return out, nil
+}
+
+// flatten lists a config's scalar values by path ("peers[0].address").
+func flatten(v any, at string, out map[string]string) {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, y := range x {
+			p := k
+			if at != "" {
+				p = at + "." + k
+			}
+			flatten(y, p, out)
+		}
+	case []any:
+		for i, y := range x {
+			flatten(y, fmt.Sprintf("%s[%d]", at, i), out)
+		}
+	default:
+		out[at] = fmt.Sprint(x)
+	}
+}
+
+// previewGroup prints what a spec renders to without applying it: for an
+// existing group what applying changes, then the chosen members (default:
+// the first two and the last) with the protocol values that differ
+// between them. raw (-o given) prints the preview as YAML or JSON.
+func previewGroup(spec *structpb.Struct, members string, raw bool) error {
+	which, err := memberList(members)
+	if err != nil {
+		return err
+	}
+	c, cancel := ctx()
+	defer cancel()
+	r, err := client().PreviewDeviceGroup(c, connect.NewRequest(&v1.PreviewDeviceGroupRequest{Group: &v1.DeviceGroup{Spec: spec}, Members: which}))
+	if err != nil {
+		return err
+	}
+	res := r.Msg.Result.AsMap()
+	if raw {
+		return printMsg(r.Msg.Result)
+	}
+	if p, ok := res["plan"].(map[string]any); ok {
+		n := func(k string) int { f, _ := p[k].(float64); return int(f) }
+		if n("changed")+n("added")+n("removed") == 0 {
+			fmt.Println("applying changes nothing")
+		} else {
+			fmt.Printf("applying: %d changed, %d added, %d removed, %d unchanged (keep running)\n", n("changed"), n("added"), n("removed"), n("unchanged"))
+		}
+	}
+	ms, _ := res["members"].([]any)
+	fmt.Printf("%v members; showing %d\n\n", res["count"], len(ms))
+	// The protocol values that differ between the members shown.
+	vals := make([]map[string]string, len(ms))
+	for i, x := range ms {
+		vals[i] = map[string]string{}
+		ps, _ := x.(map[string]any)["protocols"].([]any)
+		for _, y := range ps {
+			p := y.(map[string]any)
+			dev := x.(map[string]any)["device"].(map[string]any)["name"].(string)
+			flatten(p["config"], strings.TrimPrefix(p["name"].(string), dev+"-"), vals[i])
+		}
+	}
+	var varying []string
+	if len(vals) > 0 {
+		for k, v := range vals[0] {
+			for _, o := range vals[1:] {
+				if o[k] != v {
+					varying = append(varying, k)
+					break
+				}
+			}
+		}
+	}
+	sort.Strings(varying)
+	w := table()
+	fmt.Fprintln(w, "#\tDEVICE\tVLANS\tADDRESSES\tMAC\tVARIES")
+	for i, x := range ms {
+		m := x.(map[string]any)
+		d := m["device"].(map[string]any)
+		var vl []string
+		tags, _ := d["vlans"].([]any)
+		for _, t := range tags {
+			vl = append(vl, fmt.Sprint(t.(map[string]any)["vid"]))
+		}
+		var addrs []string
+		al, _ := d["addresses"].([]any)
+		for _, a := range al {
+			addrs = append(addrs, fmt.Sprint(a))
+		}
+		var vs []string
+		for _, k := range varying {
+			vs = append(vs, k+"="+vals[i][k])
+		}
+		fmt.Fprintf(w, "%v\t%v\t%s\t%s\t%v\t%s\n", m["index"], d["name"], dash(strings.Join(vl, ".")), dash(strings.Join(addrs, ",")), m["mac"], dash(strings.Join(vs, " ")))
+	}
+	return w.Flush()
+}
+
+func dash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
 func groupsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "groups", Short: "List device groups",
@@ -104,12 +231,17 @@ func groupsCmd() *cobra.Command {
 func groupCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "group", Short: "Create, inspect, change and drive device groups"}
 
+	var dryRun bool
+	var showMembers string
 	add := &cobra.Command{
 		Use: "add FILE", Short: "Create a group from a YAML spec ('-' for stdin)", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			spec, err := readSpec(args[0])
 			if err != nil {
 				return err
+			}
+			if dryRun {
+				return previewGroup(spec, showMembers, cmd.Flag("output").Changed)
 			}
 			c, cancel := ctx()
 			defer cancel()
@@ -128,6 +260,9 @@ func groupCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if dryRun {
+				return previewGroup(spec, showMembers, cmd.Flag("output").Changed)
+			}
 			c, cancel := ctx()
 			defer cancel()
 			r, err := client().UpdateDeviceGroup(c, connect.NewRequest(&v1.UpdateDeviceGroupRequest{Group: &v1.DeviceGroup{Spec: spec}}))
@@ -137,6 +272,11 @@ func groupCmd() *cobra.Command {
 			fmt.Printf("%s: %v devices; %s\n", r.Msg.Group.Name, r.Msg.Group.Status.AsMap()["devices"], strings.Join(groupProtocols(r.Msg.Group), "; "))
 			return nil
 		}}
+
+	for _, c := range []*cobra.Command{add, set} {
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "show what the spec renders to (and for set, what applying changes) without applying it")
+		c.Flags().StringVar(&showMembers, "members", "", "with --dry-run: members to show, e.g. 1-3,57 (default: the first two and the last)")
+	}
 
 	var specOnly bool
 	show := &cobra.Command{

@@ -320,6 +320,14 @@ class Agent:
         g = {"yaml": spec} if isinstance(spec, str) else {"name": spec["name"], "spec": spec}
         return self.call("UpdateDeviceGroup", {"group": g})["group"]
 
+    def preview_group(self, spec: dict | str, members: list[int] | None = None) -> dict:
+        """What a group spec renders to, without applying it: count, members
+        (index, device, mac, protocols; by default the first two and the
+        last) and, for an existing group, plan (unchanged, changed, added,
+        removed members)."""
+        g = {"yaml": spec} if isinstance(spec, str) else {"name": spec["name"], "spec": spec}
+        return self.call("PreviewDeviceGroup", {"group": g, "members": members or []}).get("result", {})
+
     def delete_group(self, name: str) -> None:
         self.call("DeleteDeviceGroup", {"name": name})
 

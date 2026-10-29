@@ -659,10 +659,11 @@ device_groups:
           routes: [{prefix: {start: 172.16.0.0/24, step: 0.0.10.0}, count: 10, communities: ["65100:{i}"]}]
 ```
 
-In the UI (Groups tab, **New group**), the device and each protocol are
-forms: `±` next to a number, address or MAC turns it into a stepped value,
-and a preview shows members as the agent renders them before anything is
-created.
+In the UI (Groups tab, **New group**, or **Make group…** on a device), the
+device and each protocol are forms: `±` next to a number, address or MAC
+turns it into a stepped value, and a preview shows members as the agent
+renders them before anything is created. `clabgenctl group add|set
+--dry-run` prints the same preview.
 
 Members are ordinary devices and protocol instances (their pages, actions
 and flows work as usual) but change only through the group. Changing a

@@ -179,6 +179,8 @@ Device groups (see [configuration](configuration.md#device-groups)):
 ```sh
 clabgenctl groups                                   # each group protocol's states
 clabgenctl group show ce                            # the members
+clabgenctl group set ce.yml --dry-run               # what it would change, members 1, 2 and the last
+clabgenctl group add rmep.yml --dry-run --members 1-3,57
 clabgenctl group run ce flap --members 1-20 seconds=10
 clabgenctl group run ce reset --random 5
 clabgenctl group disable ce --members 2,5           # until group enable

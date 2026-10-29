@@ -94,6 +94,7 @@ gen1.wait_protocol("bgp1", lambda p: p["status"]["peers"][0]["state"] == "establ
 gen1.port_down("eth1"); gen1.port_up("eth1")
 gen1.received()                                 # flows arriving at gen1's devices
 gen1.run_group("ce", "flap", members="1-20", seconds=10)
+gen1.preview_group(spec, members=[1, 57])       # a group spec rendered, not applied
 gen1.apply_scenario(Path("gen1.yml"))
 for e in gen1.events(replay=True):              # a stream of events
     print(e["time"], e["source"], e["message"])

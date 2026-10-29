@@ -70,9 +70,11 @@ address.
 - A device group editor: the member device and each group protocol's
   config as forms, where `±` on a number, address or MAC steps it per
   member; a live preview of the first, second and last member as the agent
-  renders them; and, when editing, how many members applying changes, adds
-  or removes (the rest keep running). The whole group can also be edited
-  as YAML.
+  renders them (and any other member you ask for); and, when editing, the
+  template's changes field by field with how many members applying
+  changes, adds or removes (the rest keep running). **Make group…** in the
+  Devices tab starts one from a device and its protocols. The whole group
+  can also be edited as YAML.
 - Flows: every agent's traffic flows in one table, with their pass/fail
   checks, counts of passing and failing flows, a "failing only" filter,
   and start, stop and clear for all of them (or the ones the filter

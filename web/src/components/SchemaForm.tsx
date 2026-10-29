@@ -185,6 +185,8 @@ type FormCtx = {
   scope: Set<string>;
   // A device group template: number and text fields can step per member.
   stepping: boolean;
+  // Every field shows from the start (not only set and required ones).
+  expanded: boolean;
 };
 const none = new Set<string>();
 const Ctx = createContext<FormCtx>({
@@ -194,6 +196,7 @@ const Ctx = createContext<FormCtx>({
   allErrKeys: none,
   scope: none,
   stepping: false,
+  expanded: false,
 });
 
 // steppable: a field a group template can step (integers, and text that
@@ -523,8 +526,8 @@ function FieldSet({
   onChange: (v: Obj) => void;
   keys?: string[];
 }) {
-  const [all, setAll] = useState(false);
   const ctx = useContext(Ctx);
+  const [all, setAll] = useState(ctx.expanded);
   const { query, errKeys, stepping } = ctx;
   const req = new Set(schema.required ?? []);
   // Fields that don't apply (x-show-if) aren't offered at all; a filter
@@ -995,6 +998,7 @@ export function SchemaForm({
   original,
   errorText = "",
   stepping = false,
+  expanded = false,
 }: {
   schema: Schema;
   value: Obj;
@@ -1003,6 +1007,7 @@ export function SchemaForm({
   original?: Obj;
   errorText?: string;
   stepping?: boolean;
+  expanded?: boolean;
 }) {
   const [raw, setRaw] = useState(false);
   const [text, setText] = useState("");
@@ -1030,8 +1035,9 @@ export function SchemaForm({
       allErrKeys: errKeys,
       scope,
       stepping,
+      expanded,
     }),
-    [q, errorText, errKeys, scope, stepping],
+    [q, errorText, errKeys, scope, stepping, expanded],
   );
   return (
     <div className="schema-form">

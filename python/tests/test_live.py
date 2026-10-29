@@ -52,6 +52,19 @@ def test_protocols(clean):
     assert e.value.code == "already_exists"
 
 
+def test_preview_group(clean):
+    spec = {"name": "g", "count": 30, "device": {"port": clean.test_port, "vlans": [{"vid": 300}]},
+            "protocols": [{"type": "cfm-mep", "config": {"level": 3, "mep_id": {"start": 101}}}]}
+    p = clean.preview_group(spec)
+    assert p["count"] == 30 and [m["index"] for m in p["members"]] == [1, 2, 30] and "plan" not in p
+    assert p["members"][2]["protocols"][0]["config"]["mep_id"] == 130
+    assert clean.groups() == []
+    clean.add_group(spec)
+    p = clean.preview_group({**spec, "count": 32}, members=[31])
+    assert [m["index"] for m in p["members"]] == [31] and p["plan"] == {"unchanged": 30, "changed": 0, "added": 2, "removed": 0}
+    clean.delete_group("g")
+
+
 def test_scenario(clean):
     two_devices(clean)
     y = clean.scenario()

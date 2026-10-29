@@ -600,3 +600,8 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .group-preview .table-wrap { max-height: 220px; overflow: auto; }
 .group-plan { margin-right: auto; align-self: center; }
 .group-sections .field-block > .btn { align-self: flex-start; justify-self: start; width: auto; }
+.preview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.show-member { display: flex; gap: 6px; align-items: center; }
+.show-member .input { width: 110px; padding: 3px 8px; }
+.gap-row td { padding-top: 2px; padding-bottom: 2px; font-size: 12px; text-align: center; letter-spacing: 0.02em; }
+.hide-member { margin-left: 4px; width: 18px; height: 18px; font-size: 13px; }
