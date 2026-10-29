@@ -6,7 +6,7 @@ import { summarize, viewFor } from "../protocols/registry";
 import { SchemaForm, defaults, diff, parseSchema, type Obj } from "../components/SchemaForm";
 import { ValueView } from "../components/ValueView";
 import { Empty, ErrorBox, HealthText, Modal, useBusy, useToast } from "../ui";
-import { AgentHeader } from "./AgentPage";
+import { AgentHeader, Crumbs } from "./AgentPage";
 import type { Event as AgentEvent } from "../gen/clabgen/v1/agent_pb";
 import { EventRow } from "./EventsTab";
 import { EnableToggle } from "./ProtocolsTab";
@@ -29,17 +29,18 @@ export function ProtocolDetail({ agentId, name }: { agentId: string; name: strin
   return (
     <div className="page">
       <AgentHeader agentId={agentId}>
-        <div className="crumbs">
-          {proto?.group ? (
-            <>
-              <a href={href({ page: "agent", agent: agentId, tab: "groups" })}>groups</a> /{" "}
-              <a href={href({ page: "group", agent: agentId, group: proto.group })}>{proto.group}</a>
-            </>
-          ) : (
-            <a href={href({ page: "agent", agent: agentId, tab: section })}>{section}</a>
-          )}{" "}
-          / <span className="mono">{name}</span>
-        </div>
+        <Crumbs
+          agentId={agentId}
+          current={name}
+          trail={
+            proto?.group
+              ? [
+                  { label: "Groups", href: href({ page: "agent", agent: agentId, tab: "groups" }) },
+                  { label: proto.group, href: href({ page: "group", agent: agentId, group: proto.group }) },
+                ]
+              : [{ label: section === "traffic" ? "Traffic" : "Protocols", href: href({ page: "agent", agent: agentId, tab: section }) }]
+          }
+        />
       </AgentHeader>
       {p.error && !proto && <ErrorBox error={p.error} />}
       {proto && (

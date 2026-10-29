@@ -7,7 +7,7 @@ import type { DeviceGroup, GroupActionResult } from "../gen/clabgen/v1/agent_pb"
 import { SchemaForm, defaults, parseSchema, type Obj } from "../components/SchemaForm";
 import { ValueView } from "../components/ValueView";
 import { Empty, ErrorBox, HealthText, Modal, useBusy } from "../ui";
-import { AgentHeader } from "./AgentPage";
+import { AgentHeader, Crumbs } from "./AgentPage";
 import { EnableToggle } from "./ProtocolsTab";
 
 // throwFailed turns per-member failures of a group change into an error.
@@ -251,9 +251,7 @@ export function GroupDetail({ agentId, name }: { agentId: string; name: string }
   return (
     <div className="page">
       <AgentHeader agentId={agentId}>
-        <div className="crumbs">
-          <a href={href({ page: "agent", agent: agentId, tab: "groups" })}>groups</a> / <span className="mono">{name}</span>
-        </div>
+        <Crumbs agentId={agentId} current={name} trail={[{ label: "Groups", href: href({ page: "agent", agent: agentId, tab: "groups" }) }]} />
       </AgentHeader>
       {g.error && !group && <ErrorBox error={g.error} />}
       {group && s && (

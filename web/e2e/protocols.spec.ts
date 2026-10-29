@@ -87,3 +87,15 @@ test("disable a group protocol on some members, then on all", async ({ page }) =
   expect(group.specDisabled).toBe(false);
   expect(group.disabled.size).toBe(0);
 });
+
+test("breadcrumb goes back to the protocol's section", async ({ page }) => {
+  const p: Protocol = { name: "bgp1", type: "bgp", device: "r1", state: "running", config: { local_as: 65000 } };
+  await mockAgent(page, p, () => undefined);
+
+  await page.goto("./#/a/a1/p/bgp1");
+  const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
+  await expect(crumbs).toContainText("Protocols");
+  await expect(crumbs).toContainText("bgp1");
+  await crumbs.getByRole("link", { name: "Back to Protocols" }).click();
+  await expect(page).toHaveURL(/#\/a\/a1\/protocols$/);
+});

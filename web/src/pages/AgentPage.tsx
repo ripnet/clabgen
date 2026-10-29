@@ -41,6 +41,35 @@ export function AgentHeader({ agentId, children }: { agentId: string; children?:
   );
 }
 
+// Crumbs is the trail on a detail page, where the agent's tabs would be: a
+// back arrow to the parent, then agent › section › … › the page itself.
+export function Crumbs({ agentId, trail, current }: { agentId: string; trail: { label: string; href: string }[]; current: string }) {
+  const { agents, info } = useAgents();
+  const parent = trail[trail.length - 1];
+  return (
+    <nav className="crumbs" aria-label="Breadcrumb">
+      {parent && (
+        <a className="crumb-back" href={parent.href} title={`Back to ${parent.label}`} aria-label={`Back to ${parent.label}`}>
+          ←
+        </a>
+      )}
+      <a href={href({ page: "agent", agent: agentId, tab: "protocols" })}>{agentLabel(agents.find((a) => a.id === agentId), info[agentId])}</a>
+      {trail.map((t) => (
+        <span key={t.href} className="crumb">
+          <span className="crumb-sep">›</span>
+          <a href={t.href}>{t.label}</a>
+        </span>
+      ))}
+      <span className="crumb">
+        <span className="crumb-sep">›</span>
+        <span className="mono crumb-current" aria-current="page">
+          {current}
+        </span>
+      </span>
+    </nav>
+  );
+}
+
 export function AgentPage({ agentId, tab }: { agentId: string; tab: AgentTab }) {
   const { agents } = useAgents();
   if (agents.length && !agents.some((a) => a.id === agentId)) {
