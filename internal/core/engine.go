@@ -655,10 +655,36 @@ func (e *Engine) updateProtocol(name string, raw json.RawMessage, group string) 
 	}
 	spec := in.spec
 	spec.Config, _ = json.Marshal(cfg)
+	// A running session that can take the change keeps running.
+	e.mu.RLock()
+	sess := in.sess
+	e.mu.RUnlock()
+	if r, ok := sess.(protocol.Reconfigurer); ok && sameEtherTypes(in, cfg) && r.Reconfigure(cfg) {
+		e.mu.Lock()
+		in.spec.Config, in.cfg = spec.Config, cfg
+		e.mu.Unlock()
+		return e.GetProtocol(name)
+	}
 	if err := e.deleteProtocol(name, group); err != nil {
 		return ProtocolView{}, err
 	}
 	return e.createProtocol(spec, group)
+}
+
+// sameEtherTypes reports whether cfg keeps the ethertypes in receives.
+func sameEtherTypes(in *instance, cfg any) bool {
+	c, ok := in.typ.(protocol.ConfigEtherTypes)
+	if !ok {
+		return true
+	}
+	ets := map[uint16]bool{}
+	for _, et := range c.EtherTypesFor(cfg) {
+		if !in.ets[et] {
+			return false
+		}
+		ets[et] = true
+	}
+	return len(ets) == len(in.ets)
 }
 
 func (e *Engine) DeleteProtocol(name string) error { return e.deleteProtocol(name, "") }

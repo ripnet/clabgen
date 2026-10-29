@@ -87,7 +87,7 @@ gen1.add_device("v300", "eth1", vlans=[300], mac="02:00:00:00:30:01")
 gen1.add_device("qinq", "eth2", vlans=["0x88a8:200", "10.5"])     # tag 10, PCP 5
 gen1.add_protocol("ping", "icmp", "v100", destination="10.0.100.2", rate=100, auto_start=True,
                   checks={"max_loss_pct": 1})
-gen1.update_protocol("ping", rate=50)          # merged onto the current config, then restarted
+gen1.update_protocol("ping", rate=50)          # merged onto the current config (the instance restarts; BGP applies in place)
 gen1.run("mep-v100", "loopback", target_mep_id=102, count=5)
 gen1.status("bgp1")["peers"]
 gen1.wait_protocol("bgp1", lambda p: p["status"]["peers"][0]["state"] == "established")

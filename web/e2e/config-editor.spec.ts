@@ -127,3 +127,20 @@ test("a peer offers its families without showing all options", async ({ page }) 
   await expect(modal.getByRole("checkbox", { name: "ipv6-unicast" })).toBeVisible();
   await expect(modal.getByRole("button", { name: /show all options/ })).toBeVisible();
 });
+
+test("BGP: what applying does", async ({ page }) => {
+  const modal = await edit(page, bgp());
+  const yaml = async (doc: string) => {
+    await modal.getByRole("button", { name: "edit as YAML" }).click();
+    await modal.getByLabel("Configuration as YAML").fill(doc);
+    await modal.getByRole("button", { name: "form view" }).click();
+  };
+  const head = "local_as: 65000\nrouter_id: 192.0.2.1\nhold_time: 30\n";
+  const peer = (extra = "") => `peers:\n  - address: 10.0.0.1\n    remote_as: 65001\n    families: [ipv4-unicast]\n${extra}`;
+  await yaml(head + peer() + "routes:\n  - prefix: 100.64.0.0/24\n    peers: [10.0.0.1]\n  - prefix: 100.64.1.0/24\n");
+  await expect(modal.locator(".info-box")).toContainText("Applies in place");
+  await yaml(head + peer("    hold_time: 60\n") + "routes:\n  - prefix: 100.64.0.0/24\n    peers: [10.0.0.1]\n");
+  await expect(modal.locator(".warn-box")).toContainText("resets the session with 10.0.0.1");
+  await yaml(head.replace("65000", "65009") + peer() + "routes:\n  - prefix: 100.64.0.0/24\n    peers: [10.0.0.1]\n");
+  await expect(modal.locator(".warn-box")).toContainText("restarts the instance");
+});

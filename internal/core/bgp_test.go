@@ -257,3 +257,87 @@ func TestBGPSRPolicy(t *testing.T) {
 	bgpRun(t, a, "withdraw", `{"sr_policies":[{"endpoint":"10.0.0.5","color":100,"distinguisher":2,"segment_lists":[{"labels":[16]}]}]}`)
 	eventuallyLong(t, "withdrawn", func() bool { return received(bgpPeer(t, b, "10.0.0.1"), "ipv4-srpolicy") == 1 })
 }
+
+// A config edit applies in place: routes change without the session going
+// down, and only a peer whose session settings change is reset.
+func TestBGPReconfigure(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	fams := `"families":["ipv4-unicast","ipv4-srpolicy"]`
+	peer := `{"address":"10.0.0.2","remote_as":65000,` + fams + `,"connect_retry":1%s}`
+	cfg := func(peerExtra, routes, policies string) json.RawMessage {
+		return json.RawMessage(`{"local_as":65000,"hold_time":9,"peers":[` + fmt.Sprintf(peer, peerExtra) + `],
+			"routes":[` + routes + `],"sr_policies":[` + policies + `]}`)
+	}
+	r1 := `{"prefix":"198.51.100.0/24"}`
+	pol := func(comm string) string {
+		return `{"endpoint":"10.0.0.5","color":100,"communities":["` + comm + `"],"segment_lists":[{"labels":[40005]}]}`
+	}
+	if _, err := a.CreateProtocol(core.ProtocolSpec{Name: "bgp", Type: "bgp", Device: "d", Config: cfg("", r1, pol("65000:1"))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CreateProtocol(core.ProtocolSpec{Name: "bgp", Type: "bgp", Device: "d", Config: json.RawMessage(
+		`{"local_as":65000,"router_id":"10.0.0.2","hold_time":9,"peers":[{"address":"10.0.0.1","remote_as":65000,` + fams + `,"connect_retry":1}]}`)}); err != nil {
+		t.Fatal(err)
+	}
+	at := func() map[string]any { return bgpPeer(t, b, "10.0.0.1") }
+	eventuallyLong(t, "up", func() bool {
+		p := at()
+		return p["state"] == "established" && received(p, "ipv4-unicast") == 1 && received(p, "ipv4-srpolicy") == 1
+	})
+	update := func(c json.RawMessage) {
+		t.Helper()
+		if _, err := a.UpdateProtocol("bgp", c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	steady := func(what string) {
+		t.Helper()
+		if p := at(); num(p, "ups") != 1 || p["state"] != "established" {
+			t.Fatalf("%s: the session went down: %v", what, p)
+		}
+	}
+	comm := func() string {
+		rs := bgpRun(t, b, "rib", `{"peer":"10.0.0.1","family":"ipv4-srpolicy"}`)["routes"].([]any)
+		if len(rs) != 1 {
+			t.Fatalf("policies %v", rs)
+		}
+		return fmt.Sprint(rs[0].(map[string]any)["communities"])
+	}
+
+	// An injected route stays through config edits.
+	bgpRun(t, a, "advertise", `{"routes":[{"prefix":"192.0.2.0/24"}]}`)
+	// Add routes and edit a policy's attributes.
+	update(cfg("", r1+`,{"prefix":"203.0.113.0/24","count":2}`, pol("65000:2")))
+	eventuallyLong(t, "routes added, policy replaced", func() bool {
+		return received(at(), "ipv4-unicast") == 4 && strings.Contains(comm(), "65000:2")
+	})
+	steady("adding routes")
+	// Remove a route and the policy; a description is no reason to reset.
+	update(cfg(`,"description":"lab"`, `{"prefix":"203.0.113.0/24","count":2}`, ""))
+	eventuallyLong(t, "route and policy withdrawn", func() bool {
+		p := at()
+		return received(p, "ipv4-unicast") == 3 && received(p, "ipv4-srpolicy") == 0
+	})
+	steady("withdrawing routes")
+	if p := bgpPeer(t, a, "10.0.0.2"); p["description"] != "lab" {
+		t.Fatalf("description %v", p["description"])
+	}
+	// A new hold time resets that peer, which comes back with everything.
+	update(cfg(`,"description":"lab","hold_time":12`, `{"prefix":"203.0.113.0/24","count":2}`, ""))
+	eventuallyLong(t, "peer reset and back", func() bool {
+		p := at()
+		return num(p, "ups") == 2 && p["state"] == "established" && received(p, "ipv4-unicast") == 3
+	})
+	// Without the peer, the session goes and stays down.
+	update(json.RawMessage(`{"local_as":65000,"hold_time":9}`))
+	eventuallyLong(t, "peer removed", func() bool { return at()["state"] != "established" })
+	time.Sleep(1500 * time.Millisecond)
+	if p := at(); p["state"] == "established" {
+		t.Fatalf("a removed peer came back: %v", p)
+	}
+	// A new AS restarts the speaker.
+	update(json.RawMessage(`{"local_as":65001,"hold_time":9}`))
+	if v, _ := a.GetProtocol("bgp"); v.State != "running" || !strings.Contains(string(v.Config), "65001") {
+		t.Fatalf("after a new AS: %+v", v)
+	}
+}

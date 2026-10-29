@@ -18,7 +18,14 @@ export type ProtocolView = {
   // Config editor replacing the generic form (create and edit), e.g. the
   // packet builder's layers with a live preview from the device.
   ConfigEditor?: ComponentType<ConfigEditorProps>;
+  // What applying a config edit does, for types that apply some edits in
+  // place (default: the instance restarts).
+  applyNote?: (was: Obj, now: Obj) => ApplyNote;
 };
+
+export type ApplyNote = { restart: boolean; text: string };
+
+export const restartNote: ApplyNote = { restart: true, text: "Applying restarts the instance: counters and the remote state are reset." };
 
 export type ConfigEditorProps = {
   schema: Schema;

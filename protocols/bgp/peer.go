@@ -29,14 +29,18 @@ const (
 )
 
 type peer struct {
-	s     *session
-	cfg   Peer
-	addr  netip.Addr
-	fams  []family
-	hold  int
-	ttl   int
+	s    *session
+	cfg  Peer
+	addr netip.Addr
+	fams []family
+	hold int
+	ttl  int
+	wake chan struct{}
+	quit chan struct{} // closed (under s.mu) when the peer leaves the config
+
+	// Under s.mu, like cfg.Passive and cfg.Description: a config change
+	// updates them in place.
 	retry time.Duration
-	wake  chan struct{}
 
 	// Under s.mu.
 	conns    map[*conn]bool
@@ -59,13 +63,10 @@ type peer struct {
 
 func newPeer(s *session, c Peer) *peer {
 	p := &peer{s: s, cfg: c, addr: netip.MustParseAddr(c.Address).Unmap(), hold: c.HoldTime, ttl: c.TTL,
-		retry: time.Duration(c.ConnectRetry) * time.Second, wake: make(chan struct{}, 1), conns: map[*conn]bool{},
+		retry: retryOf(c), wake: make(chan struct{}, 1), quit: make(chan struct{}), conns: map[*conn]bool{},
 		state: stIdle, since: time.Now(), counters: map[string]uint64{}}
 	if p.hold == 0 {
 		p.hold = s.cfg.HoldTime
-	}
-	if p.retry == 0 {
-		p.retry = 5 * time.Second
 	}
 	if p.ttl == 0 && c.RemoteAS != s.cfg.LocalAS {
 		p.ttl = 1 // directly connected eBGP
@@ -79,6 +80,23 @@ func newPeer(s *session, c Peer) *peer {
 	}
 	p.resetRIBLocked()
 	return p
+}
+
+func retryOf(c Peer) time.Duration {
+	if c.ConnectRetry == 0 {
+		return 5 * time.Second
+	}
+	return time.Duration(c.ConnectRetry) * time.Second
+}
+
+// removedLocked reports whether the peer was taken out of the config.
+func (p *peer) removedLocked() bool {
+	select {
+	case <-p.quit:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *peer) ebgp() bool { return p.cfg.RemoteAS != p.s.cfg.LocalAS }
@@ -105,16 +123,18 @@ func (p *peer) manage() {
 		if len(p.conns) == 0 && p.state != stIdle && !flapping {
 			p.setStateLocked(stActive)
 		}
-		p.s.mu.Unlock()
-		if dial {
-			p.dial()
-		}
 		wait := p.retry
 		if flapping {
 			wait = time.Until(p.flapTill)
 		}
+		p.s.mu.Unlock()
+		if dial {
+			p.dial()
+		}
 		select {
 		case <-p.s.stop:
+			return
+		case <-p.quit:
 			return
 		case <-p.wake:
 		case <-time.After(wait):
@@ -157,8 +177,9 @@ func (p *peer) localAddr() netip.Addr {
 func (p *peer) dial() {
 	p.s.mu.Lock()
 	p.setStateLocked(stConnect)
+	retry := p.retry
 	p.s.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), min(p.retry, 10*time.Second)+time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), min(retry, 10*time.Second)+time.Second)
 	defer cancel()
 	nc, err := p.s.env.IP().DialTCP(ctx, netip.AddrPortFrom(p.addr, 179), p.localAddr(), p.ttl)
 	if err != nil {
@@ -178,7 +199,7 @@ func (p *peer) dial() {
 func (p *peer) attach(nc net.Conn, outbound bool) {
 	c := &conn{p: p, c: nc, outbound: outbound, state: stOpenSent, closed: make(chan struct{}), jobSig: make(chan struct{}, 1)}
 	p.s.mu.Lock()
-	refuse := p.est != nil || len(p.conns) >= 2 || time.Now().Before(p.flapTill)
+	refuse := p.est != nil || len(p.conns) >= 2 || time.Now().Before(p.flapTill) || p.removedLocked()
 	if !refuse {
 		p.conns[c] = true
 		p.setStateLocked(stOpenSent)

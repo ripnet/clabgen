@@ -306,6 +306,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 /* ---- feedback ---- */
 .error-box { background: var(--bad-soft); color: var(--bad); border: 1px solid var(--bad); border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
 .warn-box { background: var(--warn-soft); color: var(--text); border: 1px solid var(--warn); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
+.info-box { background: var(--accent-soft); color: var(--text); border: 1px solid var(--accent); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
 .empty { text-align: center; padding: 28px 16px; color: var(--text-2); }
 .empty-title { font-weight: 600; color: var(--text); margin-bottom: 4px; }
 .empty-body { max-width: 560px; margin: 0 auto; }

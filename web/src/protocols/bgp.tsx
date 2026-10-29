@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { JsonObject } from "@bufbuild/protobuf";
 import { client, usePoll } from "../api";
-import { registerView, type Health } from "./registry";
+import { registerView, restartNote, type ApplyNote, type Health } from "./registry";
+import type { Obj } from "../components/SchemaForm";
 
 type Peer = {
   address: string;
@@ -258,4 +259,27 @@ function Status({
   );
 }
 
-registerView("bgp", { summary, Status });
+// applyNote mirrors the agent's in-place config changes
+// (protocols/bgp/reconfig.go): which peers' sessions reset, if any.
+function applyNote(was: Obj, now: Obj): ApplyNote {
+  if (was.local_as !== now.local_as || (was.router_id ?? "") !== (now.router_id ?? "")) return restartNote;
+  type P = { address: string; remote_as?: number; local_address?: string; families?: string[]; hold_time?: number; ttl?: number };
+  const key = (p: P, hold: unknown) =>
+    JSON.stringify([p.remote_as, p.local_address ?? "", (p.families ?? []).join(","), p.hold_time || hold, p.ttl ?? 0]);
+  const peers = (c: Obj) => new Map(((c.peers ?? []) as P[]).map((p) => [p.address, p]));
+  const before = peers(was);
+  const reset: string[] = [];
+  const removed: string[] = [];
+  for (const [a, p] of peers(now)) {
+    const o = before.get(a);
+    if (o && key(o, was.hold_time) !== key(p, now.hold_time)) reset.push(a);
+  }
+  for (const a of before.keys()) if (!peers(now).has(a)) removed.push(a);
+  const parts: string[] = [];
+  if (reset.length) parts.push(`resets the session with ${reset.join(", ")} (session settings changed)`);
+  if (removed.length) parts.push(`closes the session with ${removed.join(", ")} (removed)`);
+  if (!parts.length) return { restart: false, text: "Applies in place: routes are advertised and withdrawn as updates, and no session goes down." };
+  return { restart: true, text: `Applying ${parts.join(" and ")}. Other sessions stay up; routes change as updates.` };
+}
+
+registerView("bgp", { summary, Status, applyNote });

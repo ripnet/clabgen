@@ -419,6 +419,15 @@ peer from loopbacks too):
 message="maintenance"`, `… route-refresh` and `… rib peer=10.0.50.1 prefix=…`.
 There is no TCP MD5 authentication (the netstack has none).
 
+Config edits (the UI's Edit config, `proto set`, the API, a group change)
+apply without dropping sessions: added, changed and removed routes and SR
+policies go out as UPDATEs and withdrawals, and peers are added or removed
+on their own. A peer's session resets only when its `remote_as`,
+`local_address`, `families`, `hold_time` (its own or the speaker's default)
+or `ttl` changes; a new `local_as` or `router_id` restarts the speaker.
+Routes added with `advertise` survive edits, unless an edit advertises or
+withdraws the same prefixes. Other protocols restart on a config edit.
+
 VPN families (peer `families`: `ipv4-vpn`, `ipv6-vpn`, `evpn`, `l2vpn`;
 SR policies below):
 a route with an `rd` is VPNv4/VPNv6 (`label`, `route_targets`; the VPNv6

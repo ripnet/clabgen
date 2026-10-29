@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { JsonObject } from "@bufbuild/protobuf";
 import { client, errorText, usePoll, useStream } from "../api";
 import { href, navigate } from "../router";
-import { summarize, viewFor } from "../protocols/registry";
+import { restartNote, summarize, viewFor, type ApplyNote } from "../protocols/registry";
 import { SchemaForm, defaults, diff, parseSchema, type Obj } from "../components/SchemaForm";
 import { ValueView } from "../components/ValueView";
 import { Empty, ErrorBox, HealthText, Modal, useBusy, useToast } from "../ui";
@@ -126,6 +126,10 @@ export function ProtocolDetail({ agentId, name }: { agentId: string; name: strin
   );
 }
 
+function Note({ note }: { note: ApplyNote }) {
+  return <div className={note.restart ? "warn-box" : "info-box"}>{note.text}</div>;
+}
+
 // EditConfig edits a running instance's config: the form, then a review of
 // the changes before applying. A rejected config comes back to the form
 // with the fields the error names marked.
@@ -154,6 +158,7 @@ function EditConfig({
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const changes = useMemo(() => diff(schema, original, cfg), [schema, original, cfg]);
+  const note = (viewFor(type).applyNote ?? (() => restartNote))(original, cfg);
   const apply = async () => {
     setBusy(true);
     try {
@@ -169,7 +174,7 @@ function EditConfig({
     <Modal title={step === "edit" ? "Edit configuration" : "Review changes"} onClose={onClose} wide={Editor ? "x" : true}>
       {/* Kept mounted during review so the section, open items and filter stay. */}
       <div hidden={step !== "edit"}>
-        {error ? <div className="error-box" role="alert">The agent rejected the configuration: {error}</div> : <div className="warn-box">Applying restarts the instance: counters and the remote state are reset.</div>}
+        {error ? <div className="error-box" role="alert">The agent rejected the configuration: {error}</div> : <Note note={note} />}
         {Editor ? (
           <Editor schema={schema} value={cfg} onChange={setCfg} original={original} errorText={error} agentId={agentId} device={device} />
         ) : (
@@ -178,7 +183,7 @@ function EditConfig({
       </div>
       {step === "review" && (
         <>
-          <div className="warn-box">Applying restarts the instance: counters and the remote state are reset.</div>
+          <Note note={note} />
           <div className="table-wrap">
             <table className="table diff-table">
               <thead>

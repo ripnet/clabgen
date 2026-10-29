@@ -127,6 +127,12 @@ type Type interface {
 	Start(env Env, cfg any) (Session, error)
 }
 
+// Reconfigurer may be implemented by a Session that can take a new config
+// (validated, from Type.NewConfig) while running, e.g. to change its routes
+// without dropping its sessions. It returns false when it can't; the engine
+// then restarts the session with the new config.
+type Reconfigurer interface{ Reconfigure(cfg any) bool }
+
 // Briefer may be implemented by a Session whose Status is large (e.g. an
 // LSDB). Brief returns a compact status for lists that poll many
 // protocols; detail views still use Status.
