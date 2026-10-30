@@ -112,8 +112,10 @@ copied from there: change both together.
 
 - `dev` is where work happens. `main` only moves forward to a `dev` whose
   CI passed, for a release.
-- Every pull request and push to `main` runs the tests
-  ([`ci.yml`](../.github/workflows/ci.yml)). The `internal/core` engine
+- Every pull request runs the tests
+  ([`ci.yml`](../.github/workflows/ci.yml)), as do pushes to `dev` and
+  release tags before anything is published. A push to `main` doesn't:
+  it's a commit that already passed on `dev`. The `internal/core` engine
   tests run in four parallel shards; to run one locally:
   `.github/scripts/test-shard.sh 2 4 -race` (shard 2 of 4).
 - A push to `dev` runs them and then publishes `:dev` and `:sha-<commit>`

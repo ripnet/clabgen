@@ -3,14 +3,13 @@
 # parallel shards), the Python package (unit tests, and live tests against
 # the agent in a container), the web UI (typecheck, build, Playwright
 # against a mocked agent) and the documentation site (a strict build).
-# Runs on pull requests and pushes to main; images.yml runs it before
-# publishing from dev or a release tag.
+# Runs on pull requests; images.yml runs it before publishing from dev or
+# a release tag. Pushes to main aren't tested again: main only moves to a
+# dev commit that passed.
 name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
   workflow_call:
 
 permissions:

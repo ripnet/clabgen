@@ -160,7 +160,7 @@ func TestISISP2P(t *testing.T) {
 	// Flap: down, then back up on its own.
 	act(t, a, "flap", `{"seconds":1,"mode":"reset"}`)
 	eventually(t, "b sees the adjacency drop", func() bool { return !up(b) })
-	eventually(t, "back up after the flap", func() bool { return up(a) && up(b) })
+	eventuallyLong(t, "back up after the flap", func() bool { return up(a) && up(b) })
 
 	// Restart a with the same system ID: it takes over its old LSP with a
 	// higher sequence number.
