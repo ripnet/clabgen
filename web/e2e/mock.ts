@@ -19,7 +19,8 @@ export type MockOpts = {
 
 // MockGroup is a device group "name" of count members running one bgp
 // protocol; disabled holds the member indices (1-based) that are off.
-export type MockGroup = { name: string; count: number; specDisabled: boolean; disabled: Set<number> };
+// health is what running members report (default "established").
+export type MockGroup = { name: string; count: number; specDisabled: boolean; disabled: Set<number>; health?: string };
 
 // members parses a selection like "1-3,5" (empty: all).
 function members(sel: string, count: number): number[] {
@@ -31,13 +32,14 @@ function members(sel: string, count: number): number[] {
 }
 
 function groupMsg(g: MockGroup) {
+  const word = g.health ?? "established";
   const states: Record<string, number> = {};
   const ms = Array.from({ length: g.count }, (_, i) => {
     const state = g.disabled.has(i + 1) ? "disabled" : "running";
     states[state] = (states[state] ?? 0) + 1;
-    return { index: i + 1, device: `${g.name}-${i + 1}`, mac: "", vlans: "", protocols: [{ name: `${g.name}-${i + 1}-bgp`, state, ...(state === "running" ? { health: "established" } : {}) }] };
+    return { index: i + 1, device: `${g.name}-${i + 1}`, mac: "", vlans: "", protocols: [{ name: `${g.name}-${i + 1}-bgp`, state, ...(state === "running" ? { health: word } : {}) }] };
   });
-  const health = states.running ? { established: states.running } : undefined;
+  const health = states.running ? { [word]: states.running } : undefined;
   return {
     name: g.name,
     spec: { name: g.name, count: g.count, device: { port: "eth1" }, protocols: [{ name: "bgp", type: "bgp", ...(g.specDisabled ? { disabled: true } : {}) }] },

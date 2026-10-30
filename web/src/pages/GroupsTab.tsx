@@ -30,8 +30,8 @@ type ProtoSummary = { name: string; type: string; states: Counts; health?: Count
 type MemberProto = { name: string; state: string; health?: string; error?: string };
 type Member = { index: number; device: string; mac: string; vlans: string; addresses?: string[]; protocols?: MemberProto[] };
 
-const goodWords = /^(established|up|ok|running|passive|\d+ neighbors?)$/;
-const idleWords = /^(stopped|idle|no peers)$/;
+const goodWords = /^(established|up|ok|running|passive|bound|\d+ neighbors?)$/;
+const idleWords = /^(stopped|idle|no peers|released)$/;
 
 export function wordHealth(state: string, health?: string): Health {
   if (state === "error") return "bad";

@@ -119,3 +119,13 @@ test("DHCP server pools: a placeholder names the default", async ({ page }) => {
   await expect(field(/^valid/)).toHaveAttribute("placeholder", "the server-wide valid");
   await expect(field(/^preferred/)).toHaveAttribute("placeholder", "the server-wide preferred");
 });
+
+test("DHCP client groups: bound members are healthy", async ({ page }) => {
+  const group = { name: "clients", count: 3, specDisabled: false, disabled: new Set<number>(), health: "bound" };
+  await mockAgent(page, { name: "x", type: "dhcp", device: "c", state: "running", config: {} }, () => undefined, { group });
+  await page.goto("./#/a/a1/g/clients");
+  await expect(page.locator(".group-proto")).toContainText("3 bound");
+  await expect(page.locator(".group-proto .dot")).toHaveClass(/ok/);
+  const rows = page.locator(".card", { has: page.getByRole("heading", { name: "Members" }) }).locator("tbody tr");
+  await expect(rows.nth(0).locator(".dot")).toHaveClass(/ok/);
+});
