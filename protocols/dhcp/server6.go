@@ -286,12 +286,25 @@ func (s *server6) Reconfigure(c any) bool {
 	return true
 }
 
-// selectPool picks the pool by the innermost relay's link-address, or for
+// clientLink is the link-address of the relay nearest the client that
+// has one. A lightweight relay (LDRA, RFC 6221) sends ::, so the next
+// relay out names the link; with only LDRAs, the client is on the
+// server's own link.
+func clientLink(relays []*Relay6) (netip.Addr, bool) {
+	for i := len(relays) - 1; i >= 0; i-- {
+		if !relays[i].Link.IsUnspecified() {
+			return relays[i].Link, true
+		}
+	}
+	return netip.Addr{}, false
+}
+
+// selectPool picks the pool by the client's link (see clientLink), or for
 // a client on the server's own link, by the server's addresses.
 func (s *server6) selectPool(relays []*Relay6) *pool6 {
 	var links []netip.Addr
-	if len(relays) > 0 {
-		links = []netip.Addr{relays[len(relays)-1].Link}
+	if a, ok := clientLink(relays); ok {
+		links = []netip.Addr{a}
 	} else {
 		for _, p := range s.env.IP().Addresses() {
 			if p.Addr().Is6() && !p.Addr().IsLinkLocalUnicast() {
@@ -333,8 +346,8 @@ func (s *server6) handle(r request) {
 		s.mu.Unlock()
 		s.count("no_pool")
 		where := "on the server's link"
-		if len(relays) > 0 {
-			where = "for link " + relays[len(relays)-1].Link.String()
+		if a, ok := clientLink(relays); ok {
+			where = "for link " + a.String()
 		}
 		s.env.Emit("no-pool", fmt.Sprintf("no pool for a %s %s", names6[m.Type], where), nil)
 		return

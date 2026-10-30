@@ -151,8 +151,9 @@ where the request came from:
 - **Relayed**, DHCPv4: the subnet holding the relay's `giaddr`, or the
   address in a link-selection sub-option (option 82 sub-option 5, or
   option 118) when the relay sends one.
-- **Relayed**, DHCPv6: the link holding the innermost relay's
-  link-address, the relay nearest the client.
+- **Relayed**, DHCPv6: the link holding the link-address of the relay
+  nearest the client. A lightweight relay (LDRA, RFC 6221) sends `::`,
+  so the next relay out names the link.
 - **On the server's own link**: the pool holding the server device's
   address.
 

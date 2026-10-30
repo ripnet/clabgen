@@ -298,3 +298,39 @@ func TestServer6TwoRelays(t *testing.T) {
 		t.Fatalf("no-PD pool: %+v", adv2.IAs())
 	}
 }
+
+// A lightweight relay (LDRA, RFC 6221) at the access node sends link-address
+// ::; the routing relay above it names the client's link.
+func TestServer6LightweightRelay(t *testing.T) {
+	env := newEnv("2001:db8:ff::1/64")
+	cfg := &ServerConfig6{Preferred: 600, Valid: 900, Pools: []Pool6{
+		{Link: "2001:db8:1::/64", Start: "2001:db8:1::100", End: "2001:db8:1::1ff"},
+		{Link: "2001:db8:63::/64", Start: "2001:db8:63::100", End: "2001:db8:63::1ff"},
+	}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := server6Type{}.Start(env, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Stop()
+	s := sess.(*server6)
+	sol := &Msg6{Type: MsgSolicit, XID: 0x321}
+	sol.Add(Opt6ClientID, DUIDLL(pkt.MAC{2, 0, 0, 0, 0xc, 2}))
+	sol.Options = append(sol.Options, IA{Kind: Opt6IANA, IAID: 1}.Encode())
+	ldra := &Relay6{Type: MsgRelayForw, Link: netip.IPv6Unspecified(), Peer: netip.MustParseAddr("fe80::c2"),
+		Options: []Option6{{Opt6InterfaceID, []byte("olt|1/1/c2/1")}, {Opt6RelayMsg, sol.Encode()}}}
+	router := &Relay6{Type: MsgRelayForw, Hops: 1, Link: netip.MustParseAddr("2001:db8:63::1"), Peer: netip.MustParseAddr("fe80::c2"),
+		Options: []Option6{{Opt6RelayMsg, ldra.Encode()}}}
+	src := netip.MustParseAddr("2001:db8:63::1")
+	s.handle(request{src: src, data: router.Encode()})
+	out := env.take(t)
+	relays, adv, err := Unwrap6(out.data)
+	if err != nil || out.dst != src || len(relays) != 2 || string(relays[1].Get(Opt6InterfaceID)) != "olt|1/1/c2/1" {
+		t.Fatalf("reply to %v: %v %v", out.dst, relays, err)
+	}
+	if ias := adv.IAs(); len(ias) != 1 || len(ias[0].Addrs) != 1 || ias[0].Addrs[0].Addr != netip.MustParseAddr("2001:db8:63::100") {
+		t.Fatalf("advertise %+v", ias)
+	}
+}
