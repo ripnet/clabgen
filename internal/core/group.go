@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net/netip"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -502,11 +503,17 @@ func (e *Engine) GetGroup(name string, members bool) (GroupView, error) {
 			mac = d.mac.String()
 			if members {
 				// Not the link-local a DHCPv6 client adds: every member has one.
+				// IPv4 before IPv6 (Addr.Compare orders by family), not lease order.
 				all, _, _ := d.ip.Dynamic()
+				var ps []netip.Prefix
 				for _, a := range all {
 					if p, err := netip.ParsePrefix(a); err == nil && !p.Addr().IsLinkLocalUnicast() {
-						leased[i] = append(leased[i], a)
+						ps = append(ps, p)
 					}
+				}
+				slices.SortFunc(ps, func(x, y netip.Prefix) int { return x.Addr().Compare(y.Addr()) })
+				for _, p := range ps {
+					leased[i] = append(leased[i], p.String())
 				}
 			}
 		}
