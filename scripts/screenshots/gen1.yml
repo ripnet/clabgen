@@ -1,0 +1,44 @@
+devices:
+  - {name: pe, port: eth1, addresses: [192.0.2.1/24]}
+  - {name: v100, port: eth1, vlans: [{vid: 100}], addresses: [10.0.100.1/24]}
+protocols:
+  - name: bgp
+    type: bgp
+    device: pe
+    config: {local_as: 65001, bfd: {enabled: true, min_tx_ms: 100, min_rx_ms: 100, multiplier: 3},
+             peers: [{address: 192.0.2.2, remote_as: 65002}],
+             routes: [{prefix: 100.64.0.0/24, count: 5000, communities: ["65001:100"]}]}
+  - name: mep
+    type: cfm-mep
+    device: pe
+    config: {level: 3, mep_id: 1, remote_meps: [11, 12, 13, 14, 15, 16], md_format: string, md_name: lab,
+             ma_name: vpls-100, ccm_interval: 100ms}
+  - name: ping
+    type: icmp
+    device: pe
+    config: {destination: 192.0.2.2, rate: 100, timeout: 500ms, auto_start: true,
+             checks: {max_loss_pct: 1, max_outage_ms: 50}}
+  - name: udp-echo
+    type: udp
+    device: v100
+    config: {destination: 10.0.100.2, dst_port: 7, reply: echo, rate: 200, timeout: 500ms, auto_start: true,
+             checks: {max_loss_pct: 1, max_outage_ms: 50, max_rtt_ms: 20}}
+  # VXLAN over an MPLS label stack: every layer shown in the packet builder.
+  - name: crafted
+    type: packet
+    device: v100
+    config:
+      layers:
+        - mpls: {label: 16002, tc: 5}
+        - mpls: {label: 24010}
+        - ipv4: {src: 10.0.100.1, dst: 10.0.100.2, dscp: 46}
+        - udp: {dst_port: 4789}
+        - vxlan: {vni: 5000}
+        - ethernet: {src: "02:00:00:00:50:01", dst: "02:00:00:00:50:02"}
+        - ipv4: {src: 172.16.1.1, dst: 172.16.2.1}
+        - udp: {src_port: 30000, dst_port: 5001}
+        - payload: {size: 64, pattern: increment}
+      modifiers:
+        - {field: "udp[2].src_port", mode: increment, start: "30000", count: 64}
+      rate: 10
+      auto_start: true

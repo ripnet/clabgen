@@ -1,0 +1,22 @@
+devices:
+  - {name: pe, port: eth1, addresses: [192.0.2.2/24]}
+  - {name: v100, port: eth1, vlans: [{vid: 100}], addresses: [10.0.100.2/24]}
+device_groups:
+  - name: rmep
+    count: 6
+    device: {port: eth1}
+    protocols:
+      - type: cfm-mep
+        config: {level: 3, mep_id: {start: 11}, remote_meps: [1], md_format: string, md_name: lab,
+                 ma_name: vpls-100, ccm_interval: 100ms}
+protocols:
+  - name: bgp
+    type: bgp
+    device: pe
+    config: {local_as: 65002, bfd: {enabled: true, min_tx_ms: 100, min_rx_ms: 100, multiplier: 3},
+             peers: [{address: 192.0.2.1, remote_as: 65001}],
+             routes: [{prefix: 198.51.100.0/24, count: 2000}]}
+  - name: echo
+    type: udp-echo
+    device: v100
+    config: {ports: [7]}

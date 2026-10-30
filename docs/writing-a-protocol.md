@@ -45,6 +45,7 @@ func (myType) Start(env protocol.Env, cfg any) (protocol.Session, error) { ... }
 
 `EtherTypes` is the receive classifier. The agent delivers a frame to a
 session when all of these hold:
+
 - the frame arrived on the device's port;
 - its VLAN stack matches the device's (TPIDs and VIDs; PCP is ignored, and a
   lone priority tag counts as untagged);
@@ -139,6 +140,7 @@ It then appears in `clabgenctl types`, can be created with
 ## 7. UI (optional)
 
 The web UI needs no changes for a new protocol:
+
 - the create and edit forms come from the config schema, in struct field
   order;
 - each action gets a form generated from its args schema;

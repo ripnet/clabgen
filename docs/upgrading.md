@@ -6,7 +6,7 @@ and the UI image `ghcr.io/ripnet/clabgen-ui` as `:X.Y.Z`, `:X.Y` and
 links to a newer release when there is one, and marks agents running an
 older release than the UI with **update** (see [Versions](ui.md#versions)).
 
-Upgrade the UI and the agents together: a newer UI works with older
+Upgrade the UI and the agents together. A newer UI works with older
 agents, but what they don't have yet (a newer API call, say) isn't
 available on them until they are upgraded.
 
@@ -35,7 +35,7 @@ pull the new one first:
 
 ```sh
 docker pull ghcr.io/ripnet/clabgen:latest
-containerlab redeploy -t mylab.clab.yml
+clab redeploy -t mylab.clab.yml
 ```
 
 - `redeploy` recreates every node of the lab, routers included, which
@@ -51,6 +51,9 @@ containerlab redeploy -t mylab.clab.yml
 
 To check, `clabgenctl --lab mylab nodes` lists each agent's version, and
 the UI's **update** markers go away.
+
+> **Labs with routers:** the redeploy reboots them too. Save any router
+> config you want to keep before redeploying.
 
 ## clabgenctl and Python
 

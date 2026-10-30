@@ -14,7 +14,9 @@ On your own machine (to drive agents from a laptop, and for the
 dependencies. `releases/latest/download/` always points at the newest
 release.
 
-**macOS** (`arm64` for Apple silicon, `amd64` for Intel):
+### macOS
+
+`arm64` for Apple silicon, `amd64` for Intel:
 
 ```sh
 f=clabgenctl-darwin-arm64
@@ -27,10 +29,12 @@ clabgenctl --version
 
 Download it with `curl` as above. A browser marks the file as downloaded
 from the internet, and macOS then refuses to run it ("cannot be opened
-because the developer cannot be verified"); clear that with
+because the developer cannot be verified"). Clear that with
 `xattr -d com.apple.quarantine /usr/local/bin/clabgenctl`.
 
-**Linux** (`amd64` or `arm64`):
+### Linux
+
+`amd64` or `arm64`:
 
 ```sh
 f=clabgenctl-linux-amd64
@@ -41,7 +45,9 @@ chmod +x $f && sudo mv $f /usr/local/bin/clabgenctl   # or ~/.local/bin, without
 clabgenctl --version
 ```
 
-**Windows** (PowerShell; `amd64`, or `arm64` on ARM machines):
+### Windows
+
+In PowerShell; `amd64`, or `arm64` on ARM machines:
 
 ```powershell
 $f = "clabgenctl-windows-amd64.exe"
@@ -53,20 +59,24 @@ Move-Item clabgenctl.exe "$env:USERPROFILE\bin\" -Force
 clabgenctl --version
 ```
 
-**With Go** (1.23 or newer): `go install github.com/ripnet/clabgen/cmd/clabgenctl@latest`
+### With Go
+
+With Go 1.23 or newer, `go install github.com/ripnet/clabgen/cmd/clabgenctl@latest`
 puts it in `$(go env GOPATH)/bin`.
 
-Then point it at an agent's management address or containerlab name with
-`-s` (or `CLABGEN_SERVER`):
+## Connecting to agents
+
+Point it at an agent's management address or containerlab name with `-s`
+(or `CLABGEN_SERVER`):
 
 ```sh
 clabgenctl -s clab-b2b-gen1 protocols
 ```
 
 With `--lab` (or `CLABGEN_LAB`) set to a lab's name or its topology file,
-`-s` takes node names: the address comes from docker (containerlab's
-labels), else from the container name, the topology's `prefix` included.
-`nodes` lists the lab's agents:
+`-s` takes node names instead. The address comes from Docker
+(containerlab's labels), or else from the container name, the topology's
+`prefix` included. `nodes` lists the lab's agents:
 
 ```sh
 export CLABGEN_LAB=examples/b2b/b2b.clab.yml
@@ -76,29 +86,35 @@ clabgenctl -s gen2 received
 
 ## Commands
 
-```
-info                      agent hostname, version and start time
-nodes                     the lab's agents (with --lab)
-ports / port              data ports; port down|up <port>
-devices / device          emulated devices: add, set, show, del, resolve, clear-neighbors
-protocols / proto         protocol instances: add, show, set, disable, enable, del, run <action>
-types [TYPE]              protocol types, or one type's config and action schemas
-groups / group            device groups: add, set, show, disable, enable, del, run <action>
-ping                      ping from a device (a temporary icmp flow)
-start / stop              start or stop traffic flows
-received                  flows arriving at the agent's devices (one-way statistics)
-preview                   the packet a config would send (packet type), decoded and as hex
-capture                   frames the ports receive and send: live summaries, or pcapng
-events                    stream the agent's events
-scenario get / apply      export or apply the whole config
-scenario reset            forget the saved config: back to the topology's scenario
-```
+| Command | |
+|---|---|
+| `info` | the agent's hostname, version and start time |
+| `nodes` | the lab's agents (with `--lab`) |
+| `ports`, `port down <port>`, `port up <port>` | data ports, and their admin state |
+| `devices`, `device …` | emulated devices: `add`, `set`, `show`, `del`, `resolve`, `clear-neighbors` |
+| `protocols`, `proto …` | protocol instances: `add`, `show`, `set`, `disable`, `enable`, `del`, `run <action>` |
+| `types [TYPE]` | protocol types, or one type's config and action schemas |
+| `groups`, `group …` | device groups: `add`, `set`, `show`, `disable`, `enable`, `del`, `run <action>` |
+| `ping` | ping from a device (a temporary icmp flow) |
+| `start`, `stop` | start or stop traffic flows |
+| `received` | flows arriving at the agent's devices (one-way statistics) |
+| `preview` | the packet a config would send (packet type), decoded and as hex |
+| `capture` | frames the ports receive and send: live summaries, or pcapng |
+| `events` | stream the agent's events |
+| `scenario get`, `scenario apply` | export or apply the whole config |
+| `scenario reset` | forget the saved config: back to the topology's scenario |
+| `wireshark …` | the [Wireshark plugin](#wireshark) |
 
-`clabgenctl <command> --help` lists each command's options. Configs and
-action arguments take `key=value` pairs or a whole document with
-`--config` / `--args` (JSON, YAML, or `@file`). A value is read as JSON
-when it is valid JSON (`remote_meps=[2]` is a list, `rate=50` a number)
-and as a string otherwise; dots reach into nested settings:
+`clabgenctl <command> --help` lists each command's options.
+
+### Configs and arguments
+
+Configs and action arguments take `key=value` pairs, or a whole document
+with `--config` / `--args` (JSON, YAML, or `@file`):
+
+- A value is read as JSON when it is valid JSON (`remote_meps=[2]` is a
+  list, `rate=50` a number), and as a string otherwise.
+- Dots reach into nested settings.
 
 ```sh
 clabgenctl proto add ping --type icmp --device d1 destination=10.9.0.2 rate=50 auto_start=true \
@@ -107,7 +123,9 @@ clabgenctl proto add ping --type icmp --device d1 destination=10.9.0.2 rate=50 a
 
 ## Examples
 
-With the [b2b example lab](../examples/b2b):
+These use the [b2b example lab](../examples/b2b).
+
+### Protocols and devices
 
 ```sh
 clabgenctl -s clab-b2b-gen1 events &                          # live events
@@ -127,7 +145,9 @@ clabgenctl -s clab-b2b-gen1 scenario get > saved.yml
 clabgenctl -s clab-b2b-gen1 scenario reset                    # back to gen1.yml (asks first; -y doesn't)
 ```
 
-Packet flows (see [configuration](configuration.md#packet-builder)):
+### Packet flows
+
+See [packet builder](flows.md#packet-builder):
 
 ```sh
 clabgenctl preview --device untagged --config '{layers: [{ipv4: {dst: 192.0.2.2}}, {tcp: {dst_port: 22, flags: SA}}]}'
@@ -136,10 +156,15 @@ clabgenctl proto add replay --type packet --device untagged --pcap capture.pcapn
 clabgenctl proto run replay preview index=2                            # a running flow's packet
 ```
 
-Packet capture: every frame the agent's ports receive and send, as on the
-wire (device VLAN tags included). `-w` writes pcapng (`-` for stdout);
-filters are `--device`, `--direction rx|tx`, `--ethertype` and
-`--snaplen`; `-c` and `--seconds` stop it:
+### Packet capture
+
+Every frame the agent's ports receive and send, as on the wire (device
+VLAN tags included):
+
+- `-w` writes pcapng (`-` for stdout).
+- The filters are `--device`, `--direction rx|tx`, `--ethertype` and
+  `--snaplen`.
+- `-c` and `--seconds` stop it.
 
 ```sh
 clabgenctl capture eth1                            # In/Out lines, like tcpdump
@@ -150,6 +175,20 @@ clabgenctl capture eth1 -w - | wireshark -k -i -   # live in Wireshark
 
 A capture that can't keep up drops frames (never the agent's traffic)
 and says how many.
+
+### Device groups
+
+See [device groups](device-groups.md):
+
+```sh
+clabgenctl groups                                   # each group protocol's states
+clabgenctl group show ce                            # the members
+clabgenctl group set ce.yml --dry-run               # what it would change, members 1, 2 and the last
+clabgenctl group add rmep.yml --dry-run --members 1-3,57
+clabgenctl group run ce flap --members 1-20 seconds=10
+clabgenctl group run ce reset --random 5
+clabgenctl group disable ce --members 2,5           # until group enable
+```
 
 ## Wireshark
 
@@ -166,22 +205,12 @@ clabgenctl wireshark status                             # what Wireshark will li
 clabgenctl wireshark uninstall
 ```
 
-`install` links `clabgenctl` into Wireshark's personal extcap folder
-(`~/.local/lib/wireshark/extcap`; `%APPDATA%\Wireshark\extcap` on
-Windows; Help → About Wireshark → Folders shows yours, and `--dir` picks
-another) and saves where the agents are in
-`~/.config/clabgen/wireshark.json`. Restart Wireshark, or Capture →
-Refresh Interfaces, to see new agents. Capture filters (BPF) don't apply;
-use the options, or a display filter.
-
-Device groups (see [configuration](configuration.md#device-groups)):
-
-```sh
-clabgenctl groups                                   # each group protocol's states
-clabgenctl group show ce                            # the members
-clabgenctl group set ce.yml --dry-run               # what it would change, members 1, 2 and the last
-clabgenctl group add rmep.yml --dry-run --members 1-3,57
-clabgenctl group run ce flap --members 1-20 seconds=10
-clabgenctl group run ce reset --random 5
-clabgenctl group disable ce --members 2,5           # until group enable
-```
+- `install` links `clabgenctl` into Wireshark's personal extcap folder:
+  `~/.local/lib/wireshark/extcap`, or `%APPDATA%\Wireshark\extcap` on
+  Windows. Help → About Wireshark → Folders shows yours, and `--dir` picks
+  another.
+- It saves where the agents are in `~/.config/clabgen/wireshark.json`.
+- Restart Wireshark, or use Capture → Refresh Interfaces, to see new
+  agents.
+- Capture filters (BPF) don't apply: use the interface's options, or a
+  display filter.

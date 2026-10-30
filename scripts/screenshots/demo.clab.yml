@@ -1,0 +1,14 @@
+# The lab the README and docs screenshots are taken in (make screenshots):
+# two agents back to back, with BGP (BFD), CFM (one MEP against a group of
+# six), echo flows with checks and a crafted packet flow on gen1's eth1.
+name: demo
+topology:
+  defaults:
+    kind: linux
+    image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+    binds: [.:/clab]
+  nodes:
+    gen1: {env: {CLABGEN_SCENARIO: gen1.yml}}
+    gen2: {env: {CLABGEN_SCENARIO: gen2.yml}}
+  links:
+    - endpoints: [gen1:eth1, gen2:eth1]
