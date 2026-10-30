@@ -914,8 +914,8 @@ type Neighbor struct {
 }
 
 type Status struct {
-	Addresses []string          `json:"addresses"`       // effective, incl. automatic link-local
-	Local     []string          `json:"local,omitempty"` // also answered for (router loopbacks)
+	Addresses []string          `json:"addresses"`         // effective, incl. automatic link-local
+	Local     []string          `json:"local,omitempty"`   // also answered for (router loopbacks)
 	Dynamic   []string          `json:"dynamic,omitempty"` // added by protocols (DHCP), also in Addresses
 	Gateway4  string            `json:"gateway4,omitempty"`
 	Gateway6  string            `json:"gateway6,omitempty"`
