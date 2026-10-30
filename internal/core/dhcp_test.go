@@ -448,3 +448,76 @@ func TestDHCPv6NoPrefix(t *testing.T) {
 		t.Fatalf("counters %v", c)
 	}
 }
+
+// clabgen's own servers with its clients, on one link.
+func TestDHCPServers(t *testing.T) {
+	a, b, _, _ := newPair()
+	if _, err := b.CreateDevice(core.DeviceSpec{Name: "srv", Port: "eth1", MAC: "02:00:00:00:0b:01", VLANs: []pkt.VLANTag{{VID: 10}},
+		Addresses: []string{"10.0.0.1/24", "2001:db8::1/64"}}); err != nil {
+		t.Fatal(err)
+	}
+	mkProto(t, b, "srv4", "dhcp-server", "srv", `{"lease_time": 4, "pools": [{"subnet": "10.0.0.0/24", "start": "10.0.0.100", "end": "10.0.0.199", "router": "10.0.0.1"}]}`)
+	mkProto(t, b, "srv6", "dhcpv6-server", "srv", `{"preferred": 4, "valid": 8, "pools": [{"link": "2001:db8::/64", "start": "2001:db8::1000", "end": "2001:db8::1fff",
+		"pd_prefix": "2001:db8:100::/40", "pd_length": 56}]}`)
+	for i := range 3 {
+		dev := fmt.Sprintf("c%d", i)
+		if _, err := a.CreateDevice(core.DeviceSpec{Name: dev, Port: "eth1", MAC: fmt.Sprintf("02:00:00:00:0a:%02x", i+1), VLANs: []pkt.VLANTag{{VID: 10}}}); err != nil {
+			t.Fatal(err)
+		}
+		mkProto(t, a, dev+"-v4", "dhcp", dev, `{}`)
+		mkProto(t, a, dev+"-v6", "dhcpv6", dev, `{"ia_pd": true, "ra": false}`)
+	}
+	defer func() {
+		if t.Failed() {
+			t.Logf("c0-v4 %v", flowStatus(t, a, "c0-v4"))
+			t.Logf("c0-v6 %v", flowStatus(t, a, "c0-v6"))
+			t.Logf("srv4 %v", flowStatus(t, b, "srv4")["counters"])
+			t.Logf("srv6 %v", flowStatus(t, b, "srv6")["counters"])
+		}
+	}()
+	eventually(t, "all bound", func() bool {
+		for i := range 3 {
+			if flowStatus(t, a, fmt.Sprintf("c%d-v4", i))["state"] != "bound" || !v6Bound(t, a, fmt.Sprintf("c%d-v6", i)) {
+				return false
+			}
+		}
+		return true
+	})
+	pools := func(name string) map[string]any { return flowStatus(t, b, name)["pools"].([]any)[0].(map[string]any) }
+	if p := pools("srv4"); p["bound"] != 3.0 {
+		t.Fatalf("v4 pool %v", p)
+	}
+	if p := pools("srv6"); p["addresses_bound"] != 3.0 || p["prefixes_bound"] != 3.0 {
+		t.Fatalf("v6 pool %v", p)
+	}
+	if st := flowStatus(t, a, "c0-v4"); st["gateway"] != "10.0.0.1" || st["server"] != "10.0.0.1" {
+		t.Fatalf("c0: %v", st)
+	}
+
+	// Renewals at T1 (2 s) keep the same leases.
+	before := flowStatus(t, a, "c1-v6")["prefixes"]
+	eventuallyLong(t, "renewed", func() bool {
+		return num(flowStatus(t, b, "srv4")["counters"].(map[string]any), "rx_request") >= 6 &&
+			num(flowStatus(t, b, "srv6")["counters"].(map[string]any), "rx_renew") >= 3
+	})
+	eventually(t, "still bound", func() bool { return v6Bound(t, a, "c1-v6") })
+	if after := flowStatus(t, a, "c1-v6")["prefixes"]; fmt.Sprint(after.([]any)[0].(map[string]any)["prefix"]) != fmt.Sprint(before.([]any)[0].(map[string]any)["prefix"]) {
+		t.Fatalf("prefix changed on renewal: %v → %v", before, after)
+	}
+
+	// A release frees the lease on the server.
+	if _, err := a.RunAction(context.Background(), "c2-v4", "release", nil); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "server freed it", func() bool { return pools("srv4")["bound"] == 2.0 })
+
+	// Paused, the server lets the 4 s leases run out.
+	if _, err := b.RunAction(context.Background(), "srv4", "pause", nil); err != nil {
+		t.Fatal(err)
+	}
+	eventuallyLong(t, "expired", func() bool { return flowStatus(t, a, "c0-v4")["address"] == nil })
+	if _, err := b.RunAction(context.Background(), "srv4", "resume", nil); err != nil {
+		t.Fatal(err)
+	}
+	eventuallyLong(t, "bound again", func() bool { return flowStatus(t, a, "c0-v4")["state"] == "bound" })
+}

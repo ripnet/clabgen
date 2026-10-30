@@ -675,19 +675,22 @@ func (c *client6) bind(m *Msg6, now time.Time, from string) {
 		return
 	}
 	// Without T1/T2, renew at half and rebind at 0.8 of the shortest
-	// preferred lifetime.
-	if t1 == 0 || t2 == 0 {
-		short := uint32(0)
-		for _, b := range append(append([]binding(nil), addrs...), prefixes...) {
-			short = tmin(short, b.preferred)
-		}
-		if t1 == 0 {
-			t1 = short / 2
-		}
-		if t2 == 0 {
-			t2 = short * 4 / 5
-		}
+	// preferred lifetime; either way before the shortest valid one ends.
+	short, valid := uint32(0), uint32(0)
+	for _, b := range append(append([]binding(nil), addrs...), prefixes...) {
+		short, valid = tmin(short, b.preferred), tmin(valid, b.valid)
 	}
+	if short == 0 {
+		short = valid
+	}
+	t1d, t2d := lifetime(t1), lifetime(t2)
+	if t1 == 0 {
+		t1d = lifetime(short) / 2
+	}
+	if t2 == 0 {
+		t2d = lifetime(short) * 4 / 5
+	}
+	t1d, t2d = saneTimes(t1d, t2d, lifetime(valid))
 	var dns []netip.Addr
 	for b := m.Get(Opt6DNS); len(b) >= 16; b = b[16:] {
 		dns = append(dns, netip.AddrFrom16([16]byte(b[:16])))
@@ -702,7 +705,7 @@ func (c *client6) bind(m *Msg6, now time.Time, from string) {
 	if c.cfg.IAPD && len(prefixes) == 0 {
 		c.pdStatus = iaStatus(pd, hasPD, "prefix")
 	}
-	c.t1, c.t2 = now.Add(lifetime(t1)), now.Add(lifetime(t2))
+	c.t1, c.t2 = now.Add(t1d), now.Add(t2d)
 	if from != stRenewing && from != stRebinding {
 		c.bindTime = now.Sub(c.solicited)
 	}

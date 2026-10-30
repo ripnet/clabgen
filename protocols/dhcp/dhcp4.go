@@ -435,6 +435,7 @@ func (c *client4) bind(m *Msg4, now time.Time, from string) {
 	if v, ok := m.Uint32(OptT2); ok {
 		t2 = lifetime(v)
 	}
+	t1, t2 = saneTimes(t1, t2, d)
 	l.t1, l.t2, l.expiry = now.Add(t1), now.Add(t2), now.Add(d)
 	old := c.cur()
 	c.mu.Lock()

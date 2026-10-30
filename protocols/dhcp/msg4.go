@@ -41,7 +41,15 @@ const (
 	OptT2          uint8 = 59
 	OptVendorClass uint8 = 60
 	OptClientID    uint8 = 61
+	OptRelayInfo   uint8 = 82 // relay agent information (RFC 3046)
 	OptRapidCommit uint8 = 80
+	OptSubnetSel   uint8 = 118 // subnet selection (RFC 3011)
+
+	// Relay agent information sub-options.
+	SubCircuitID    uint8 = 1
+	SubRemoteID     uint8 = 2
+	SubLinkSel      uint8 = 5 // RFC 3527
+	SubSubscriberID uint8 = 6 // RFC 3993
 )
 
 var magicCookie = [4]byte{99, 130, 83, 99}
@@ -55,6 +63,7 @@ type Option4 struct {
 // Msg4 is a DHCPv4 message. Unset addresses are sent as 0.0.0.0.
 type Msg4 struct {
 	Op        uint8
+	Hops      uint8 // relays passed
 	XID       uint32
 	Secs      uint16
 	Broadcast bool
@@ -134,7 +143,7 @@ func put4(b []byte, a netip.Addr) {
 // longer than 255 bytes are split (RFC 3396).
 func (m *Msg4) Encode() []byte {
 	b := make([]byte, 240, 300)
-	b[0], b[1], b[2] = m.Op, 1, 6
+	b[0], b[1], b[2], b[3] = m.Op, 1, 6, m.Hops
 	binary.BigEndian.PutUint32(b[4:], m.XID)
 	binary.BigEndian.PutUint16(b[8:], m.Secs)
 	if m.Broadcast {
@@ -171,6 +180,7 @@ func Decode4(b []byte) (*Msg4, error) {
 	}
 	m := &Msg4{
 		Op:        b[0],
+		Hops:      b[3],
 		XID:       binary.BigEndian.Uint32(b[4:]),
 		Secs:      binary.BigEndian.Uint16(b[8:]),
 		Broadcast: b[10]&0x80 != 0,
@@ -203,4 +213,20 @@ func Decode4(b []byte) (*Msg4, error) {
 		o = o[2+int(o[1]):]
 	}
 	return m, nil
+}
+
+// SubOption is a relay agent information sub-option.
+type SubOption struct {
+	Code uint8
+	Data []byte
+}
+
+// SubOptions splits option 82's data into its sub-options.
+func SubOptions(b []byte) []SubOption {
+	var out []SubOption
+	for len(b) >= 2 && len(b) >= 2+int(b[1]) {
+		out = append(out, SubOption{b[0], b[2 : 2+int(b[1])]})
+		b = b[2+int(b[1]):]
+	}
+	return out
 }

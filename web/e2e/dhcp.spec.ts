@@ -47,3 +47,60 @@ test("DHCP clients: lease summaries, and leased addresses on the device", async 
   const bare = page.locator("tr", { hasText: "cpe2" });
   await expect(bare.getByRole("button", { name: "Ping…" })).toBeDisabled();
 });
+
+test("DHCP servers: pool use, and how each lease was relayed", async ({ page }) => {
+  const v4: Protocol = {
+    name: "srv4",
+    type: "dhcp-server",
+    device: "srv",
+    state: "running",
+    config: {},
+    status: {
+      pools: [{ subnet: "10.2.0.0/24", range: "10.2.0.10-10.2.0.20", size: "11", bound: 1, offered: 0 }],
+      leases: [
+        { address: "10.2.0.10", state: "bound", mac: "02:00:00:00:0c:01", client_id: "01020000000c01", hostname: "cpe-1", expires_in_s: 590, relay: { giaddr: "10.2.0.1", hops: 2, circuit_id: "eth1:100", remote_id: "bng1" } },
+      ],
+      counters: { rx_discover: 1 },
+    },
+  };
+  const v6: Protocol = {
+    name: "srv6",
+    type: "dhcpv6-server",
+    device: "srv",
+    state: "running",
+    config: {},
+    status: {
+      duid: "00030001020000000001",
+      paused: true,
+      pools: [{ link: "2001:db8:2::/64", addresses: "2001:db8:2::100-2001:db8:2::1ff", addresses_bound: 1, prefixes: "2001:db8:200::/40 by /56", prefixes_bound: 0 }],
+      bindings: [
+        {
+          prefix: "2001:db8:2::100",
+          kind: "address",
+          state: "bound",
+          duid: "00030001020000000c01",
+          iaid: 1,
+          preferred_in_s: 500,
+          valid_in_s: 800,
+          relays: [
+            { link_address: "::", peer_address: "2001:db8:2::1", hop_count: 1, interface_id: "uplink" },
+            { link_address: "2001:db8:2::1", peer_address: "fe80::c1", hop_count: 0, interface_id: "ge-0/0/1.100", remote_id: "6527:cpe-7" },
+          ],
+        },
+      ],
+      counters: {},
+    },
+  };
+  await mockAgent(page, v4, () => undefined, { more: [v6] });
+  await page.goto("./#/a/a1/protocols");
+  await expect(page.locator("tr", { hasText: "srv4" })).toContainText("10.2.0.0/24 1/11");
+  await expect(page.locator("tr", { hasText: "srv6" })).toContainText("paused · 2001:db8:2::/64 1 addr, 0 pd");
+
+  await page.locator("tr", { hasText: "srv4" }).getByRole("link", { name: "srv4" }).click();
+  await expect(page.locator("tr", { hasText: "cpe-1" })).toContainText("10.2.0.1 (hops 2) · circuit eth1:100 · remote bng1");
+  await page.goto("./#/a/a1/protocols");
+  await page.locator("tr", { hasText: "srv6" }).getByRole("link", { name: "srv6" }).click();
+  const row = page.locator("tr", { hasText: "2001:db8:2::100" });
+  // The relay nearest the client first.
+  await expect(row.locator("td").last()).toHaveText("link 2001:db8:2::1 · interface ge-0/0/1.100 · remote 6527:cpe-7link :: · interface uplink");
+});

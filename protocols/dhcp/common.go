@@ -88,6 +88,19 @@ func jitter(d time.Duration, f float64) time.Duration {
 	return time.Duration(float64(d) * (1 + f*(2*rand.Float64()-1)))
 }
 
+// saneTimes keeps renewing (t1) and rebinding (t2) inside a lifetime, in
+// order: t1 < t2 < life (RFC 2131 4.4.5), so a server's odd values (or
+// rounding of short ones) can't make a client renew in a loop.
+func saneTimes(t1, t2, life time.Duration) (time.Duration, time.Duration) {
+	if t2 <= 0 || t2 >= life {
+		t2 = life * 7 / 8
+	}
+	if t1 <= 0 || t1 >= t2 {
+		t1 = min(life/2, t2*4/7)
+	}
+	return t1, t2
+}
+
 // secs is seconds, for durations in status.
 func secs(d time.Duration) float64 { return float64(d.Round(time.Millisecond)) / float64(time.Second) }
 

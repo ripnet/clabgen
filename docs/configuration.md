@@ -14,7 +14,7 @@ each protocol has its own page with typical configs:
   builder and pass/fail checks
 - [Device groups](device-groups.md): many devices from one template
 - [CFM and Y.1731](cfm.md), [IS-IS](isis.md), [BGP](bgp.md),
-  [OSPFv2 and OSPFv3](ospf.md), [LLDP](lldp.md), [DHCP clients](dhcp.md)
+  [OSPFv2 and OSPFv3](ospf.md), [LLDP](lldp.md), [DHCP](dhcp.md)
 
 [`examples/`](../examples) has two complete labs.
 
@@ -62,7 +62,8 @@ protocols:                   # protocol instances and traffic flows, each on a d
 | `cfm-mep` | 802.1ag / Y.1731 down MEP ([CFM](cfm.md)) |
 | `isis`, `ospf`, `ospfv3`, `bgp` | routing protocols ([IS-IS](isis.md), [OSPF](ospf.md), [BGP](bgp.md)) |
 | `lldp` | LLDP agent ([LLDP](lldp.md)) |
-| `dhcp`, `dhcpv6` | DHCP clients that lease a device's addresses ([DHCP clients](dhcp.md)) |
+| `dhcp`, `dhcpv6` | DHCP clients that lease a device's addresses ([DHCP](dhcp.md)) |
+| `dhcp-server`, `dhcpv6-server` | DHCP servers, on the link or behind relays ([DHCP](dhcp.md#servers)) |
 | `icmp`, `udp`, `l2`, `packet` | [traffic flows](flows.md) |
 | `udp-echo`, `l2-echo` | responders that send flows back |
 
@@ -191,7 +192,7 @@ devices:
 - `addresses`, `gateway4`, `gateway6`: IPv4 and IPv6 addresses with prefix
   lengths, and default gateways. A device with addresses answers ARP, ND
   and ping. Without them it is a plain L2 endpoint, which is all CFM, LLDP
-  and L2 streams need, or a device for a [DHCP client](dhcp.md) to lease
+  and L2 streams need, or a device for a [DHCP client](dhcp.md#clients) to lease
   them.
 
 More examples: IPv4 and IPv6 with a gateway, QinQ, and a fixed MAC.
@@ -218,4 +219,5 @@ which it will be. Anything else restarts the instance with the new config.
 | CFM MEP | CCM on/off, priority and TLVs, `remote_meps`, AIS, responders, sessions (restarted on their own) | level, MEP ID, MD, MA, CCM interval |
 | LLDP | everything else (the next LLDPDU goes out at once) | `dest`, `mode` |
 | DHCP clients | | every edit (the lease is released first) |
+| DHCP servers | pools and options (leases inside a pool are kept) | the DUID (DHCPv6) |
 | Traffic flows and others | | every edit |

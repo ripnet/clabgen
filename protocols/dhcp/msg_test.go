@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/ripnet/clabgen/internal/pkt"
 )
@@ -87,5 +88,21 @@ func TestDomainList(t *testing.T) {
 	b := []byte("\x07example\x03com\x00\x03lab\x00")
 	if got := domainList(b); len(got) != 2 || got[0] != "example.com" || got[1] != "lab" {
 		t.Fatalf("%q", got)
+	}
+}
+
+func TestSaneTimes(t *testing.T) {
+	s := time.Second
+	for _, c := range []struct{ t1, t2, life, w1, w2 time.Duration }{
+		{2 * s, 3 * s, 4 * s, 2 * s, 3 * s},               // fine as given
+		{2 * s, 0, 4 * s, 2 * s, 3500 * time.Millisecond}, // a T2 rounded to 0
+		{0, 0, s, 500 * time.Millisecond, 875 * time.Millisecond},
+		{5 * s, 4 * s, 10 * s, 4 * s * 4 / 7, 4 * s},    // T1 after T2: before it
+		{s, 20 * s, 10 * s, s, 8750 * time.Millisecond}, // T2 past the lease
+	} {
+		g1, g2 := saneTimes(c.t1, c.t2, c.life)
+		if g1 != c.w1 || g2 != c.w2 || !(0 < g1 && g1 < g2 && g2 < c.life) {
+			t.Errorf("%v %v %v: got %v %v, want %v %v", c.t1, c.t2, c.life, g1, g2, c.w1, c.w2)
+		}
 	}
 }

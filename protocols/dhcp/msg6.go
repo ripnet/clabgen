@@ -21,20 +21,28 @@ const (
 	MsgRelease6    uint8 = 8
 	MsgDecline6    uint8 = 9
 	MsgReconfigure uint8 = 10
+	MsgInfoRequest uint8 = 11
+	MsgRelayForw   uint8 = 12
+	MsgRelayRepl   uint8 = 13
 
-	Opt6ClientID    uint16 = 1
-	Opt6ServerID    uint16 = 2
-	Opt6IANA        uint16 = 3
-	Opt6IAAddr      uint16 = 5
-	Opt6ORO         uint16 = 6
-	Opt6Preference  uint16 = 7
-	Opt6ElapsedTime uint16 = 8
-	Opt6StatusCode  uint16 = 13
-	Opt6RapidCommit uint16 = 14
-	Opt6DNS         uint16 = 23
-	Opt6DomainList  uint16 = 24
-	Opt6IAPD        uint16 = 25
-	Opt6IAPrefix    uint16 = 26
+	Opt6ClientID     uint16 = 1
+	Opt6ServerID     uint16 = 2
+	Opt6IANA         uint16 = 3
+	Opt6IAAddr       uint16 = 5
+	Opt6ORO          uint16 = 6
+	Opt6Preference   uint16 = 7
+	Opt6ElapsedTime  uint16 = 8
+	Opt6RelayMsg     uint16 = 9
+	Opt6StatusCode   uint16 = 13
+	Opt6RapidCommit  uint16 = 14
+	Opt6InterfaceID  uint16 = 18
+	Opt6DNS          uint16 = 23
+	Opt6DomainList   uint16 = 24
+	Opt6IAPD         uint16 = 25
+	Opt6IAPrefix     uint16 = 26
+	Opt6RemoteID     uint16 = 37 // RFC 4649
+	Opt6SubscriberID uint16 = 38 // RFC 4580
+	Opt6ClientLLAddr uint16 = 79 // client link-layer address (RFC 6939)
 
 	StatusSuccess       uint16 = 0
 	StatusUnspecFail    uint16 = 1
@@ -242,3 +250,71 @@ func (m *Msg6) IAs() []IA {
 
 // DUIDLL is a DUID-LL (RFC 8415 11.4) for an Ethernet MAC.
 func DUIDLL(mac [6]byte) []byte { return append([]byte{0, 3, 0, 1}, mac[:]...) }
+
+// Relay6 is a Relay-forward or Relay-reply message (RFC 8415 9).
+type Relay6 struct {
+	Type       uint8
+	Hops       uint8
+	Link, Peer netip.Addr
+	Options    []Option6 // the relay message (Opt6RelayMsg) among them
+}
+
+func (r *Relay6) Get(code uint16) []byte { return (&Msg6{Options: r.Options}).Get(code) }
+
+func (r *Relay6) Encode() []byte {
+	b := []byte{r.Type, r.Hops}
+	l, p := r.Link.As16(), r.Peer.As16()
+	b = append(append(b, l[:]...), p[:]...)
+	return encodeOptions(b, r.Options)
+}
+
+func decodeRelay6(b []byte) (*Relay6, error) {
+	if len(b) < 34 || b[0] != MsgRelayForw && b[0] != MsgRelayRepl {
+		return nil, errNotDHCP
+	}
+	opts, err := decodeOptions(b[34:])
+	if err != nil {
+		return nil, err
+	}
+	return &Relay6{Type: b[0], Hops: b[1], Link: netip.AddrFrom16([16]byte(b[2:18])), Peer: netip.AddrFrom16([16]byte(b[18:34])), Options: opts}, nil
+}
+
+// maxRelayHops is HOP_COUNT_LIMIT (RFC 8415 7.6).
+const maxRelayHops = 8
+
+// Unwrap6 takes a message from the wire apart: the relays it passed,
+// outermost (the one that sent it to us) first, and the client's message.
+func Unwrap6(b []byte) ([]*Relay6, *Msg6, error) {
+	var relays []*Relay6
+	for len(b) > 0 && (b[0] == MsgRelayForw || b[0] == MsgRelayRepl) {
+		if len(relays) > maxRelayHops {
+			return nil, nil, errors.New("too many relays")
+		}
+		r, err := decodeRelay6(b)
+		if err != nil {
+			return nil, nil, err
+		}
+		relays = append(relays, r)
+		if b = r.Get(Opt6RelayMsg); b == nil {
+			return nil, nil, errors.New("relay message without a relay message option")
+		}
+	}
+	m, err := Decode6(b)
+	return relays, m, err
+}
+
+// Wrap6 puts a reply to a relayed message back in Relay-reply messages,
+// one per relay it passed (relays as Unwrap6 returns them), echoing each
+// relay's Interface-ID (RFC 8415 19.3).
+func Wrap6(relays []*Relay6, reply []byte) []byte {
+	for i := len(relays) - 1; i >= 0; i-- {
+		r := relays[i]
+		out := &Relay6{Type: MsgRelayRepl, Hops: r.Hops, Link: r.Link, Peer: r.Peer}
+		if id := r.Get(Opt6InterfaceID); id != nil {
+			out.Options = append(out.Options, Option6{Opt6InterfaceID, id})
+		}
+		out.Options = append(out.Options, Option6{Opt6RelayMsg, reply})
+		reply = out.Encode()
+	}
+	return reply
+}

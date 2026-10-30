@@ -118,8 +118,9 @@ Good to know:
 - **Emulated topologies** behind IS-IS and OSPF routers (grids, rings,
   custom graphs) with link and node failures.
 - **LLDP**.
-- **DHCP clients**: DHCPv4, and DHCPv6 with prefix delegation, leasing a
-  device's addresses and gateway.
+- **DHCP**: clients (DHCPv4, and DHCPv6 with prefix delegation) leasing a
+  device's addresses and gateway, and servers with a pool per client
+  subnet that answer through relays and show what each relay inserted.
 - **Traffic flows**: ICMP (ping or crafted packets), UDP, and raw L2
   streams for testing circuits without an IP stack, one way or echoed.
 - **Packet capture**: every frame the ports send and receive, live in the
@@ -157,7 +158,7 @@ Also at **https://clabgen.dev/**.
 - [Traffic flows](docs/flows.md) and [device groups](docs/device-groups.md)
 - Protocols: [CFM and Y.1731](docs/cfm.md), [IS-IS](docs/isis.md),
   [BGP](docs/bgp.md), [OSPF](docs/ospf.md), [LLDP](docs/lldp.md),
-  [DHCP clients](docs/dhcp.md)
+  [DHCP](docs/dhcp.md)
 - [CLI](docs/cli.md): `clabgenctl`
 - [API](docs/api.md)
 - [Python and pytest](docs/python.md): the `clabgen` package
