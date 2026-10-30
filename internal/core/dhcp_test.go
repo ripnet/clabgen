@@ -551,13 +551,21 @@ protocols:
 			t.Fatal(err)
 		}
 		h := v.Protocols[1].Health
-		return v.Protocols[0].Health["bound"] == 2 && h["bound"] == 1 && h["no prefix"] == 1
+		if v.Protocols[0].Health["bound"] != 2 || h["bound"] != 1 || h["no prefix"] != 1 {
+			return false
+		}
+		// A client is bound a moment before its address is on the device.
+		for _, m := range v.Members {
+			if len(m.Leased) < 2 {
+				return false
+			}
+		}
+		return true
 	})
 	pds := 0
 	for _, m := range v.Members {
-		// A v4 lease and a v6 address, not the link-local.
-		if len(m.Leased) != 2 || !strings.HasPrefix(m.Leased[0], "10.0.0.1") && !strings.HasPrefix(m.Leased[1], "10.0.0.1") ||
-			strings.Contains(strings.Join(m.Leased, ","), "fe80:") {
+		// The v4 lease, then the v6 address; not the link-local.
+		if len(m.Leased) != 2 || !strings.HasPrefix(m.Leased[0], "10.0.0.1") || !strings.HasPrefix(m.Leased[1], "2001:db8::1") {
 			t.Fatalf("member %d leased %v", m.Index, m.Leased)
 		}
 		if len(m.Delegated) == 1 && m.Delegated[0] == "2001:db8:100::/56" {

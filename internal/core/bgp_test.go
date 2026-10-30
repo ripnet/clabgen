@@ -375,9 +375,12 @@ func TestBGPBFD(t *testing.T) {
 	// b goes silent: a's BFD fails and takes the session down (hold time 30 s
 	// would take far longer).
 	bgpRun(t, b, "bfd-fail", `{"seconds":2}`)
+	var last map[string]any
 	eventuallyLong(t, "a's session down by BFD", func() bool {
-		p := bgpPeer(t, a, "10.0.0.2")
-		return num(p, "downs") >= 1 && strings.Contains(fmt.Sprint(p["last_down"]), "BFD")
+		last = bgpPeer(t, a, "10.0.0.2")
+		return num(last, "downs") >= 1 && strings.Contains(fmt.Sprint(last["last_down"]), "BFD")
+	}, func() any {
+		return fmt.Sprintf("a: downs %v, %v, last down %q, bfd %v; b's bfd %v", last["downs"], last["state"], last["last_down"], last["bfd"], bgpPeer(t, b, "10.0.0.1")["bfd"])
 	})
 	eventuallyLong(t, "back up with BFD", func() bool {
 		p := bgpPeer(t, a, "10.0.0.2")
