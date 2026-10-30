@@ -37,13 +37,17 @@ func bgpRun(t *testing.T, e *core.Engine, action, args string) map[string]any {
 
 func received(p map[string]any, fam string) float64 { return num(p["received"].(map[string]any), fam) }
 
-// eventuallyLong is eventually with more time (TCP, BGP timers).
-func eventuallyLong(t *testing.T, what string, f func() bool) {
+// eventuallyLong is eventually with more time (TCP, BGP timers). A last
+// argument describes the state when it times out.
+func eventuallyLong(t *testing.T, what string, f func() bool, last ...func() any) {
 	t.Helper()
 	for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
 		if f() {
 			return
 		}
+	}
+	if len(last) > 0 {
+		t.Fatalf("timed out: %s (%v)", what, last[0]())
 	}
 	t.Fatalf("timed out: %s", what)
 }
@@ -324,9 +328,12 @@ func TestBGPReconfigure(t *testing.T) {
 	}
 	// A new hold time resets that peer, which comes back with everything.
 	update(cfg(`,"description":"lab","hold_time":12`, `{"prefix":"203.0.113.0/24","count":2}`, ""))
+	var last map[string]any
 	eventuallyLong(t, "peer reset and back", func() bool {
-		p := at()
-		return num(p, "ups") == 2 && p["state"] == "established" && received(p, "ipv4-unicast") == 3
+		last = at()
+		return num(last, "ups") == 2 && last["state"] == "established" && received(last, "ipv4-unicast") == 3
+	}, func() any {
+		return fmt.Sprintf("ups %v, %v, received %v", last["ups"], last["state"], last["received"])
 	})
 	// Without the peer, the session goes and stays down.
 	update(json.RawMessage(`{"local_as":65000,"hold_time":9}`))
