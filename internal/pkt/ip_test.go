@@ -72,3 +72,16 @@ func TestIPv6Helpers(t *testing.T) {
 		t.Fatalf("option %s %v", ll, ok)
 	}
 }
+
+func TestMulticastMACIPv4(t *testing.T) {
+	for addr, want := range map[string]MAC{
+		"224.0.0.5":        {0x01, 0x00, 0x5e, 0x00, 0x00, 0x05}, // AllSPFRouters
+		"239.129.2.3":      {0x01, 0x00, 0x5e, 0x01, 0x02, 0x03}, // only the low 23 bits
+		"::ffff:224.0.0.6": {0x01, 0x00, 0x5e, 0x00, 0x00, 0x06},
+		"ff02::5":          {0x33, 0x33, 0x00, 0x00, 0x00, 0x05},
+	} {
+		if got := MulticastMAC(netip.MustParseAddr(addr)); got != want {
+			t.Errorf("%s: %s, want %s", addr, got, want)
+		}
+	}
+}

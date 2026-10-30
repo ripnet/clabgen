@@ -233,9 +233,14 @@ func SolicitedNode(a netip.Addr) netip.Addr {
 	return netip.AddrFrom16([16]byte{0xff, 0x02, 10: 0, 11: 1, 12: 0xff, 13: x[13], 14: x[14], 15: x[15]})
 }
 
-// MulticastMAC returns the Ethernet group address for an IPv6 multicast
-// address (33:33 + low 32 bits).
+// MulticastMAC returns the Ethernet group address for a multicast address:
+// 01:00:5e + the low 23 bits for IPv4 (RFC 1112), 33:33 + the low 32 bits
+// for IPv6 (RFC 2464).
 func MulticastMAC(a netip.Addr) MAC {
+	if a = a.Unmap(); a.Is4() {
+		x := a.As4()
+		return MAC{0x01, 0x00, 0x5e, x[1] & 0x7f, x[2], x[3]}
+	}
 	x := a.As16()
 	return MAC{0x33, 0x33, x[12], x[13], x[14], x[15]}
 }

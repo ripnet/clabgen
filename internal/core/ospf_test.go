@@ -76,6 +76,35 @@ func lsaSeqBy(t *testing.T, e *core.Engine, name, typ, id, adv string) string {
 	return ""
 }
 
+// OSPFv2's multicast goes to the IPv4 group MAC (01:00:5e:00:00:05):
+// routers that filter by destination MAC (SR Linux) drop anything else.
+func TestOSPFMulticastMAC(t *testing.T) {
+	a, _, wa, _ := ipPair(t)
+	macs := make(chan pkt.MAC, 16)
+	wa.mu.Lock()
+	wa.drop = func(b []byte) bool {
+		if f, err := pkt.Decode(b); err == nil && f.EtherType == pkt.EtherTypeIPv4 {
+			if ip, err := pkt.DecodeIPv4(f.Payload); err == nil && ip.Protocol == 89 {
+				select {
+				case macs <- f.Dst:
+				default:
+				}
+			}
+		}
+		return false
+	}
+	wa.mu.Unlock()
+	mkOSPF(t, a, "ospf", "d", `{"router_id": "192.0.2.1", "network": "point-to-point", `+ospfTimers+`}`)
+	select {
+	case m := <-macs:
+		if m != (pkt.MAC{0x01, 0x00, 0x5e, 0x00, 0x00, 0x05}) {
+			t.Fatalf("hello to %s", m)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no hello")
+	}
+}
+
 func TestOSPFPointToPoint(t *testing.T) {
 	a, b, _, _ := ipPair(t)
 	mkOSPF(t, a, "ospf", "d", `{"router_id": "192.0.2.1", "network": "point-to-point", `+ospfTimers+`,
