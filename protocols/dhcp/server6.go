@@ -30,8 +30,8 @@ type Pool6 struct {
 	PDLength  uint8        `json:"pd_length,omitempty" jsonschema:"maximum=128,description=Length of the delegated prefixes"`
 	DNS       []string     `json:"dns,omitempty" jsonschema:"description=DNS servers (option 23)"`
 	Domains   []string     `json:"domains,omitempty" jsonschema:"description=Domain search list (option 24)"`
-	Preferred uint32       `json:"preferred,omitempty" jsonschema:"description=Preferred lifetime in seconds for this pool (default: the server's)"`
-	Valid     uint32       `json:"valid,omitempty" jsonschema:"description=Valid lifetime in seconds for this pool (default: the server's)"`
+	Preferred uint32       `json:"preferred,omitempty" jsonschema:"description=Preferred lifetime in seconds for this pool (default: the server-wide preferred)"`
+	Valid     uint32       `json:"valid,omitempty" jsonschema:"description=Valid lifetime in seconds for this pool (default: the server-wide valid)"`
 	Options   []RawOption6 `json:"options,omitempty" jsonschema:"description=More options to give this pool's clients"`
 }
 

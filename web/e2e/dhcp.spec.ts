@@ -104,3 +104,18 @@ test("DHCP servers: pool use, and how each lease was relayed", async ({ page }) 
   // The relay nearest the client first.
   await expect(row.locator("td").last()).toHaveText("link 2001:db8:2::1 · interface ge-0/0/1.100 · remote 6527:cpe-7link :: · interface uplink");
 });
+
+test("DHCP server pools: a placeholder names the default", async ({ page }) => {
+  const p: Protocol = { name: "srv6", type: "dhcpv6-server", device: "srv", state: "running", config: { pools: [{ link: "2001:db8:1::/64" }] } };
+  await mockAgent(page, p, () => undefined);
+  await page.goto("./#/a/a1/p/srv6");
+  await page.getByRole("button", { name: "Edit config" }).click();
+  const modal = page.locator(".modal");
+  await modal.locator(".section-nav").getByRole("button", { name: /pools/ }).click();
+  await modal.locator(".obj-item-summary").first().click();
+  await modal.getByRole("button", { name: /show all options/ }).click();
+  const field = (label: RegExp) => modal.locator(".obj-item-body .field").filter({ has: page.locator(".field-label", { hasText: label }) }).locator("input");
+  // "(default: …)" without its closing parenthesis.
+  await expect(field(/^valid/)).toHaveAttribute("placeholder", "the server-wide valid");
+  await expect(field(/^preferred/)).toHaveAttribute("placeholder", "the server-wide preferred");
+});

@@ -297,7 +297,9 @@ export function diff(schema: Schema, a: Obj, b: Obj): Change[] {
 function defaultHint(s: Schema): string {
   if (s.default !== undefined) return String(s.default);
   const m = s.description?.match(/Default:?\s*([^.;]+)/i);
-  const hint = m ? m[1].trim() : "";
+  let hint = m ? m[1].trim() : "";
+  // "(default: …)" ends at its closing parenthesis.
+  while (hint.endsWith(")") && hint.split("(").length < hint.split(")").length) hint = hint.slice(0, -1).trim();
   // An enum's default is one of its values ("Default mpls (…)" → mpls).
   if (s.enum && hint)
     return String(s.enum.find((x) => hint.startsWith(String(x))) ?? "");

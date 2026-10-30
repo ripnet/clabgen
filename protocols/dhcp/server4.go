@@ -28,7 +28,7 @@ type Pool4 struct {
 	Router    string      `json:"router,omitempty" jsonschema:"description=The clients' router (option 3)"`
 	DNS       []string    `json:"dns,omitempty" jsonschema:"description=DNS servers (option 6)"`
 	Domain    string      `json:"domain,omitempty" jsonschema:"description=Domain name (option 15)"`
-	LeaseTime uint32      `json:"lease_time,omitempty" jsonschema:"description=Lease time in seconds for this pool (default: the server's)"`
+	LeaseTime uint32      `json:"lease_time,omitempty" jsonschema:"description=Lease time in seconds for this pool (default: the server-wide lease time)"`
 	Options   []RawOption `json:"options,omitempty" jsonschema:"description=More options to give this pool's clients"`
 }
 
