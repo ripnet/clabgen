@@ -310,10 +310,13 @@ func groupCmd() *cobra.Command {
 					}
 					ps = append(ps, fmt.Sprintf("%v:%v", p["name"], st))
 				}
+				// Configured addresses, then leased ones and delegated prefixes, tagged.
 				var addrs []string
-				al, _ := m["addresses"].([]any)
-				for _, a := range al {
-					addrs = append(addrs, fmt.Sprint(a))
+				for _, f := range []struct{ key, tag string }{{"addresses", ""}, {"leased", " (dhcp)"}, {"delegated", " (pd)"}} {
+					al, _ := m[f.key].([]any)
+					for _, a := range al {
+						addrs = append(addrs, fmt.Sprint(a)+f.tag)
+					}
 				}
 				fmt.Fprintf(w, "%v\t%v\t%v\t%s\t%s\n", m["index"], m["device"], m["vlans"], strings.Join(addrs, ","), strings.Join(ps, " "))
 			}

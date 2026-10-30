@@ -28,7 +28,25 @@ const toggleActions = [
 type Counts = Record<string, number>;
 type ProtoSummary = { name: string; type: string; states: Counts; health?: Counts; disabled?: boolean };
 type MemberProto = { name: string; state: string; health?: string; error?: string };
-type Member = { index: number; device: string; mac: string; vlans: string; addresses?: string[]; protocols?: MemberProto[] };
+type Member = {
+  index: number;
+  device: string;
+  mac: string;
+  vlans: string;
+  addresses?: string[];
+  leased?: string[];
+  delegated?: string[];
+  protocols?: MemberProto[];
+};
+
+// A member's addresses: configured, then leased (DHCP) and delegated
+// prefixes (DHCPv6 PD), tagged.
+const memberAddrs = (m: Member) => [
+  ...(m.addresses ?? []).map((a) => ({ a, tag: "" })),
+  ...(m.leased ?? []).map((a) => ({ a, tag: "dhcp" })),
+  ...(m.delegated ?? []).map((a) => ({ a, tag: "pd" })),
+];
+const tagTitle: Record<string, string> = { dhcp: "Leased by a DHCP client", pd: "Delegated to a DHCPv6 client" };
 
 const goodWords = /^(established|up|ok|running|passive|bound|\d+ neighbors?)$/;
 const idleWords = /^(stopped|idle|no peers|released)$/;
@@ -188,7 +206,7 @@ export function GroupDetail({ agentId, name }: { agentId: string; name: string }
       (m) =>
         m.device.toLowerCase().includes(f) ||
         m.vlans.includes(f) ||
-        (m.addresses ?? []).some((a) => a.includes(f)) ||
+        memberAddrs(m).some(({ a }) => a.includes(f)) ||
         (m.protocols ?? []).some((p) => (p.health || p.state).toLowerCase().includes(f)),
     );
   }, [s, filter]);
@@ -300,7 +318,20 @@ export function GroupDetail({ agentId, name }: { agentId: string; name: string }
                       <td className="mono strong">{m.device}</td>
                       <td className="mono">{m.vlans}</td>
                       <td className="mono">{m.mac || "—"}</td>
-                      <td className="mono">{(m.addresses ?? []).join(", ") || "—"}</td>
+                      <td className="mono">
+                        {memberAddrs(m).map(({ a, tag }, i) => (
+                          <span key={a}>
+                            {i > 0 && ", "}
+                            {a}
+                            {tag && (
+                              <span className="tag" title={tagTitle[tag]}>
+                                {tag}
+                              </span>
+                            )}
+                          </span>
+                        ))}
+                        {memberAddrs(m).length === 0 && "—"}
+                      </td>
                       {(m.protocols ?? []).map((p) => (
                         <td key={p.name}>
                           <a href={href({ page: "protocol", agent: agentId, protocol: p.name })} title={p.error || p.name}>

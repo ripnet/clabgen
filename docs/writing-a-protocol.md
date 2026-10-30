@@ -76,7 +76,12 @@ type Session interface {
 - Optional: `Brief() any` (`protocol.Briefer`) returns a smaller status for
   lists that poll often, and `Health() string` (`protocol.Healther`) sums
   up the state in one word (`established`, `up`, `ok`) for device group
-  summaries, which count members per word. Keep the set of words small.
+  summaries, which count members per word. Keep the set of words small,
+  and add a new healthy or idle word to the patterns in
+  `web/src/pages/GroupsTab.tsx` (others show as a warning).
+  `Delegated() []netip.Prefix` (`protocol.Delegator`) lists prefixes
+  delegated to the session, shown beside its device's addresses in group
+  member tables.
 
 ## 4. Use the Env
 

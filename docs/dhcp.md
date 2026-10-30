@@ -111,9 +111,11 @@ device_groups:
 ```
 
 The group's view counts its members by state (`bound`, `waiting`,
-`released`, and for DHCPv6 `partial`), so it shows at a glance whether
-every client got its address and prefix. `clabgenctl groups` prints the
-same.
+`released`, and for DHCPv6 `no address` or `no prefix`), so it shows at a
+glance whether every client got its address and prefix. Its member table
+lists each member's leased addresses (tagged `dhcp`) and delegated prefix
+(tagged `pd`), and its filter finds a member by either. `clabgenctl
+groups` and `clabgenctl group show` print the same.
 
 ## Servers
 

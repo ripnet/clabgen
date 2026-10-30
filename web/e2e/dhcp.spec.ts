@@ -121,11 +121,25 @@ test("DHCP server pools: a placeholder names the default", async ({ page }) => {
 });
 
 test("DHCP client groups: bound members are healthy", async ({ page }) => {
-  const group = { name: "clients", count: 3, specDisabled: false, disabled: new Set<number>(), health: "bound" };
+  const group = {
+    name: "clients",
+    count: 3,
+    specDisabled: false,
+    disabled: new Set<number>(),
+    health: "bound",
+    member: (i: number) => ({ leased: [`10.63.0.10${i}/24`, `2001:63::100${i}/128`], ...(i === 1 ? { delegated: ["2001:beef:100::/56"] } : {}) }),
+  };
   await mockAgent(page, { name: "x", type: "dhcp", device: "c", state: "running", config: {} }, () => undefined, { group });
   await page.goto("./#/a/a1/g/clients");
   await expect(page.locator(".group-proto")).toContainText("3 bound");
   await expect(page.locator(".group-proto .dot")).toHaveClass(/ok/);
   const rows = page.locator(".card", { has: page.getByRole("heading", { name: "Members" }) }).locator("tbody tr");
   await expect(rows.nth(0).locator(".dot")).toHaveClass(/ok/);
+  // Leases and the delegated prefix, tagged, beside the configured ones.
+  await expect(rows.nth(0)).toContainText("10.63.0.101/24dhcp, 2001:63::1001/128dhcp, 2001:beef:100::/56pd");
+  await expect(rows.nth(1)).toContainText("10.63.0.102/24dhcp, 2001:63::1002/128dhcp");
+  await expect(rows.nth(1)).not.toContainText("pd");
+  // The filter finds a member by its prefix.
+  await page.getByPlaceholder(/filter/i).fill("2001:beef");
+  await expect(rows).toHaveCount(1);
 });

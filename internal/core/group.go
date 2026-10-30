@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/netip"
 	"reflect"
 	"sort"
 	"strconv"
@@ -447,6 +448,8 @@ type GroupMemberView struct {
 	MAC       string                  `json:"mac"`
 	VLANs     string                  `json:"vlans"`
 	Addresses []string                `json:"addresses,omitempty"`
+	Leased    []string                `json:"leased,omitempty"`    // added by protocols (DHCP)
+	Delegated []string                `json:"delegated,omitempty"` // prefixes delegated to its protocols
 	Protocols []GroupMemberProtoState `json:"protocols,omitempty"`
 }
 
@@ -462,6 +465,16 @@ func health(sess protocol.Session) string {
 		return h.Health()
 	}
 	return ""
+}
+
+func delegated(sess protocol.Session) []string {
+	var out []string
+	if d, ok := sess.(protocol.Delegator); ok {
+		for _, p := range d.Delegated() {
+			out = append(out, p.String())
+		}
+	}
+	return out
 }
 
 // GetGroup summarises a group; with members, it lists each member too.
@@ -481,11 +494,21 @@ func (e *Engine) GetGroup(name string, members bool) (GroupView, error) {
 	}
 	refs := make([][]ref, len(g.members))
 	var macs []string
+	leased := make([][]string, len(g.members))
 	for i, m := range g.members {
 		mac := ""
 		if d, ok := e.devices[m.dev.Name]; ok && d.group == name {
 			v.Devices++
 			mac = d.mac.String()
+			if members {
+				// Not the link-local a DHCPv6 client adds: every member has one.
+				all, _, _ := d.ip.Dynamic()
+				for _, a := range all {
+					if p, err := netip.ParsePrefix(a); err == nil && !p.Addr().IsLinkLocalUnicast() {
+						leased[i] = append(leased[i], a)
+					}
+				}
+			}
 		}
 		macs = append(macs, mac)
 		refs[i] = make([]ref, len(m.protos))
@@ -506,12 +529,15 @@ func (e *Engine) GetGroup(name string, members bool) (GroupView, error) {
 	for i, m := range gm {
 		var mv GroupMemberView
 		if members {
-			mv = GroupMemberView{Index: i + 1, Device: m.dev.Name, MAC: macs[i], VLANs: vlanString(m.dev.VLANs), Addresses: m.dev.Addresses}
+			mv = GroupMemberView{Index: i + 1, Device: m.dev.Name, MAC: macs[i], VLANs: vlanString(m.dev.VLANs), Addresses: m.dev.Addresses, Leased: leased[i]}
 		}
 		for j, r := range refs[i] {
 			h := ""
 			if r.sess != nil {
 				h = health(r.sess)
+				if members {
+					mv.Delegated = append(mv.Delegated, delegated(r.sess)...)
+				}
 			}
 			s := &v.Protocols[j]
 			s.States[r.st]++

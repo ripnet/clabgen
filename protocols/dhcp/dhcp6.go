@@ -973,21 +973,35 @@ func (c *client6) Status() any {
 	return st
 }
 
-// Health implements protocol.Healther: bound (everything asked for),
-// partial (an address or a prefix missing), waiting or released.
+// Health implements protocol.Healther: bound (everything asked for), no
+// address or no prefix (one of them missing), waiting or released.
 func (c *client6) Health() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	switch c.state {
 	case stBound, stRenewing, stRebinding:
-		if c.cfg.IANA && len(c.addrs) == 0 || c.cfg.IAPD && len(c.prefixes) == 0 {
-			return "partial"
+		if c.cfg.IANA && len(c.addrs) == 0 {
+			return "no address"
+		}
+		if c.cfg.IAPD && len(c.prefixes) == 0 {
+			return "no prefix"
 		}
 		return "bound"
 	case stReleased:
 		return stReleased
 	}
 	return "waiting"
+}
+
+// Delegated implements protocol.Delegator: the prefixes held.
+func (c *client6) Delegated() []netip.Prefix {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var ps []netip.Prefix
+	for _, b := range c.prefixes {
+		ps = append(ps, b.prefix)
+	}
+	return ps
 }
 
 func (c *client6) Stop() {

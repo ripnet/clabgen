@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -520,4 +521,52 @@ func TestDHCPServers(t *testing.T) {
 		t.Fatal(err)
 	}
 	eventuallyLong(t, "bound again", func() bool { return flowStatus(t, a, "c0-v4")["state"] == "bound" })
+}
+
+// A group of clients lists each member's leases and delegated prefix; a
+// client the server gives no prefix says so.
+func TestDHCPGroupMembers(t *testing.T) {
+	a, b, _, _ := newPair()
+	if _, err := b.CreateDevice(core.DeviceSpec{Name: "srv", Port: "eth1", MAC: "02:00:00:00:0b:01", Addresses: []string{"10.0.0.1/24", "2001:db8::1/64"}}); err != nil {
+		t.Fatal(err)
+	}
+	mkProto(t, b, "srv4", "dhcp-server", "srv", `{"pools": [{"subnet": "10.0.0.0/24", "start": "10.0.0.100", "end": "10.0.0.199"}]}`)
+	// Room for one prefix only: the second client gets none.
+	mkProto(t, b, "srv6", "dhcpv6-server", "srv", `{"pools": [{"link": "2001:db8::/64", "start": "2001:db8::1000", "end": "2001:db8::1fff",
+		"pd_prefix": "2001:db8:100::/56", "pd_length": 56}]}`)
+	if _, err := a.CreateGroup(groupSpec(t, `
+name: cpe
+count: 2
+device: {port: eth1}
+protocols:
+  - {type: dhcp}
+  - {type: dhcpv6, config: {ia_pd: true, ra: false}}
+`)); err != nil {
+		t.Fatal(err)
+	}
+	var v core.GroupView
+	eventually(t, "one with a prefix, one without", func() bool {
+		var err error
+		if v, err = a.GetGroup("cpe", true); err != nil {
+			t.Fatal(err)
+		}
+		h := v.Protocols[1].Health
+		return v.Protocols[0].Health["bound"] == 2 && h["bound"] == 1 && h["no prefix"] == 1
+	})
+	pds := 0
+	for _, m := range v.Members {
+		// A v4 lease and a v6 address, not the link-local.
+		if len(m.Leased) != 2 || !strings.HasPrefix(m.Leased[0], "10.0.0.1") && !strings.HasPrefix(m.Leased[1], "10.0.0.1") ||
+			strings.Contains(strings.Join(m.Leased, ","), "fe80:") {
+			t.Fatalf("member %d leased %v", m.Index, m.Leased)
+		}
+		if len(m.Delegated) == 1 && m.Delegated[0] == "2001:db8:100::/56" {
+			pds++
+		} else if len(m.Delegated) != 0 {
+			t.Fatalf("member %d delegated %v", m.Index, m.Delegated)
+		}
+	}
+	if pds != 1 {
+		t.Fatalf("members %+v", v.Members)
+	}
 }

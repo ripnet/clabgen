@@ -153,6 +153,11 @@ type FrameCounter interface{ DataFrames() (tx, rx uint64) }
 // word are shown per group, so it should have few distinct values.
 type Healther interface{ Health() string }
 
+// Delegator may be implemented by a Session holding prefixes delegated to
+// it (DHCPv6 prefix delegation), listed beside its device's addresses in
+// group views.
+type Delegator interface{ Delegated() []netip.Prefix }
+
 // ConfigEtherTypes may be implemented by a Type whose ethertypes depend
 // on the instance's config (e.g. raw L2 streams); the result replaces
 // EtherTypes for that instance.
