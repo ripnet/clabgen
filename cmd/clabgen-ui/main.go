@@ -35,6 +35,7 @@ func main() {
 	image := flag.String("image", "clabgen", "regexp matched against container images during discovery")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	updateCheck := flag.Bool("update-check", true, "ask GitHub for newer releases (every 6 h) and offer them in the UI")
+	edgeshark := flag.String("edgeshark", "auto", "Edgeshark's packetflix, for the Capture tab's Open in Wireshark: auto (found through the Docker socket), off, or its URL as browsers' machines reach it (http://labhost:5001)")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version.Version)
@@ -77,6 +78,19 @@ func main() {
 	}
 
 	opt := webui.Options{AllowManual: true, Version: version.Version}
+	switch *edgeshark {
+	case "off":
+	case "auto":
+		if _, err := os.Stat(sock); err == nil {
+			opt.Edgeshark = webui.NewEdgeshark("", sock)
+		}
+	default:
+		if !strings.HasPrefix(*edgeshark, "http://") && !strings.HasPrefix(*edgeshark, "https://") {
+			log.Error("invalid -edgeshark: auto, off or an http(s):// URL")
+			os.Exit(2)
+		}
+		opt.Edgeshark = webui.NewEdgeshark(*edgeshark, "")
+	}
 	if *updateCheck {
 		opt.Updates = &webui.UpdateChecker{Repo: "ripnet/clabgen", Current: version.Version, Every: 6 * time.Hour, Log: log}
 		go opt.Updates.Run(ctx)

@@ -2,6 +2,7 @@ package webui
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -170,4 +171,46 @@ func TestCaptureFromOldAgent(t *testing.T) {
 		t.Errorf("old agent's page: %d", resp.StatusCode)
 	}
 	resp.Body.Close()
+}
+
+// Edgeshark's packetflix is found by its image and the port it publishes.
+func TestEdgesharkFound(t *testing.T) {
+	sock := filepath.Join(t.TempDir(), "docker.sock")
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := `[{"Image":"ghcr.io/siemens/ghostwire","Ports":[]},
+		{"Image":"ghcr.io/siemens/packetflix","Ports":[{"PrivatePort":5000,"Type":"tcp"},{"IP":"0.0.0.0","PrivatePort":5001,"PublicPort":5055,"Type":"tcp"}]}]`
+	mux := http.NewServeMux()
+	mux.HandleFunc("/containers/json", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, list) })
+	srv := &http.Server{Handler: mux}
+	go srv.Serve(l)
+	defer srv.Close()
+
+	ui := httptest.NewServer(Handler(NewRegistry(), Options{Edgeshark: NewEdgeshark("", sock)}))
+	defer ui.Close()
+	info := func() Info {
+		r, err := http.Get(ui.URL + "/api/info")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		var in Info
+		json.NewDecoder(r.Body).Decode(&in)
+		return in
+	}
+	if in := info(); in.Edgeshark == nil || in.Edgeshark.Port != 5055 {
+		t.Fatalf("info %+v", in.Edgeshark)
+	}
+	// Without packetflix (or Docker) there is nothing to offer.
+	if e := NewEdgeshark("", filepath.Join(t.TempDir(), "none.sock")).Info(context.Background()); e != nil {
+		t.Errorf("no docker: %+v", e)
+	}
+	if e := NewEdgeshark("http://labhost:5001/", "").Info(context.Background()); e == nil || e.URL != "http://labhost:5001" {
+		t.Errorf("given URL: %+v", e)
+	}
+	if in := (Options{}); in.Edgeshark.Info(context.Background()) != nil {
+		t.Error("nil Edgeshark")
+	}
 }

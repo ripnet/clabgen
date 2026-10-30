@@ -39,6 +39,7 @@ in the agent image):
 | `-docker mode` | `auto` | discovery through the Docker socket: `auto`, `on` or `off` |
 | `-image regexp` | `clabgen` | the container images that count as agents |
 | `-update-check=false` | | don't ask GitHub for newer releases |
+| `-edgeshark url` | `auto` | Edgeshark's capture service for **Open in Wireshark**: `auto` (found through the Docker socket), `off`, or its URL as your browser's machine reaches it (`http://labhost:5001`) |
 
 ## What's in it
 
@@ -125,11 +126,23 @@ decode each. Filter by port, device, direction or ethertype.
 
 - Click a frame for its layers and bytes.
 - **Build a flow from it** sends it again from the packet builder.
-- **Download .pcapng** saves the frames for Wireshark, or copy the
-  `curl … | wireshark -k -i -` line to watch the same capture live in
-  Wireshark.
-- With the [Wireshark plugin](cli.md#wireshark) installed, the agents'
-  ports are capture interfaces in Wireshark itself.
+- **Download .pcapng** saves the frames for Wireshark.
+
+To watch an agent's ports live in Wireshark instead:
+
+- **Open in Wireshark** opens it in one click, through
+  [Edgeshark](https://github.com/siemens/edgeshark). The button shows when
+  Edgeshark runs on the lab host and you have its Wireshark plugin
+  ([cshargextcap](https://github.com/siemens/cshargextcap), which registers
+  the `packetflix:` links the button opens) on your machine. It captures
+  the agent container's ports as the kernel sees them, so the direction
+  and ethertype choices don't apply, a device becomes a filter on its MAC,
+  and frames between devices on the same port aren't seen. Through an SSH
+  tunnel, tunnel Edgeshark's port (5001) too.
+- The `curl … | wireshark -k -i -` line does the same with the capture's
+  filters, from a terminal.
+- With clabgen's own [Wireshark plugin](cli.md#wireshark) installed, the
+  agents' ports are capture interfaces in Wireshark itself.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/capture-dark.png">

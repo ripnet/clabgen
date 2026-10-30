@@ -134,4 +134,6 @@ type Info struct {
 	Latest    string `json:"latest,omitempty"`
 	LatestURL string `json:"latest_url,omitempty"`
 	Update    bool   `json:"update_available"`
+	// Edgeshark: where a packetflix capture service is (see Edgeshark).
+	Edgeshark *EdgesharkInfo `json:"edgeshark,omitempty"`
 }

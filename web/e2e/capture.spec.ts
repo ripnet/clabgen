@@ -111,3 +111,36 @@ test("capture: an agent without capture says so", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Start/ })).toBeDisabled();
   await expect(page.locator(".ws-cmd")).toBeHidden();
 });
+
+test("capture: Open in Wireshark through Edgeshark", async ({ page }) => {
+  await mockAgent(page, { name: "pk", type: "packet", device: "d1", state: "running", config: {} }, () => undefined);
+  await page.route(`**/agents/a1/${svc}/ListPorts`, (r) => r.fulfill({ json: { ports: [{ name: "eth1" }, { name: "eth2" }] } }));
+  await page.route(`**/agents/a1/${svc}/ListDevices`, (r) => r.fulfill({ json: { devices: [{ name: "d1", port: "eth1", mac: "02:00:00:00:00:01", vlans: [] }] } }));
+  // Without Edgeshark (the mock's /api/info has none): no button.
+  await page.goto("./#/a/a1/capture");
+  await expect(page.getByText("● Start")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open in Wireshark" })).toHaveCount(0);
+
+  // A discovered container, and packetflix published on port 5001.
+  await page.route("**/api/agents", (r) => r.fulfill({ json: { agents: [{ id: "clab-lab-a1", name: "a1", lab: "lab", source: "docker" }], allow_manual: false } }));
+  await page.route("**/api/info", (r) => r.fulfill({ json: { version: "v1.0.0", update_available: false, edgeshark: { port: 5001 } } }));
+  await page.route(`**/agents/clab-lab-a1/${svc}/**`, (r) => {
+    const m = r.request().url().split("/").pop();
+    if (m === "ListPorts") return r.fulfill({ json: { ports: [{ name: "eth1" }, { name: "eth2" }] } });
+    if (m === "ListDevices") return r.fulfill({ json: { devices: [{ name: "d1", port: "eth1", mac: "02:00:00:00:00:01", vlans: [] }] } });
+    return r.fulfill({ json: {} });
+  });
+  await page.goto("./#/a/clab-lab-a1/capture");
+  await page.reload();
+  const link = page.getByRole("link", { name: "Open in Wireshark" });
+  const href = async () => decodeURIComponent((await link.getAttribute("href"))!);
+  await expect(link).toBeVisible();
+  // Every port, as the container on Edgeshark's host knows it.
+  expect(await href()).toBe('packetflix:ws://127.0.0.1:5001/capture?container={"name":"clab-lab-a1","type":"docker"}&nif=eth1/eth2');
+  // The ports picked.
+  await page.getByRole("checkbox", { name: "eth2" }).check();
+  await expect.poll(href).toBe('packetflix:ws://127.0.0.1:5001/capture?container={"name":"clab-lab-a1","type":"docker"}&nif=eth2');
+  // A device: its port, and its MAC as the filter.
+  await page.getByRole("combobox").first().selectOption("d1");
+  await expect.poll(href).toBe('packetflix:ws://127.0.0.1:5001/capture?container={"name":"clab-lab-a1","type":"docker"}&nif=eth1&filter=ether host 02:00:00:00:00:01');
+});

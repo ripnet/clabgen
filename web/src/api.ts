@@ -42,7 +42,14 @@ async function json<T>(r: Response): Promise<T> {
 }
 
 // UIInfo is /api/info: the version serving the UI and a newer release.
-export type UIInfo = { version: string; latest?: string; latest_url?: string; update_available: boolean };
+export type UIInfo = {
+  version: string;
+  latest?: string;
+  latest_url?: string;
+  update_available: boolean;
+  // Edgeshark's packetflix: a URL, or a port on the UI's own host.
+  edgeshark?: { url?: string; port?: number };
+};
 
 export const uiInfoApi = () => fetch("api/info").then((r) => json<UIInfo>(r));
 

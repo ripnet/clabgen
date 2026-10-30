@@ -196,6 +196,8 @@ type Options struct {
 	Version string
 	// Updates, when set, tells the UI about newer releases.
 	Updates *UpdateChecker
+	// Edgeshark, when set, offers Wireshark through Edgeshark's packetflix.
+	Edgeshark *Edgeshark
 }
 
 // Handler serves /api/info, /api/agents, /agents/{id}/... and the UI
@@ -203,7 +205,7 @@ type Options struct {
 func Handler(reg *Registry, opt Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/info", func(w http.ResponseWriter, r *http.Request) {
-		in := Info{Version: opt.Version}
+		in := Info{Version: opt.Version, Edgeshark: opt.Edgeshark.Info(r.Context())}
 		if v, u := opt.Updates.Latest(); Newer(v, opt.Version) {
 			in.Latest, in.LatestURL, in.Update = v, u, true
 		}

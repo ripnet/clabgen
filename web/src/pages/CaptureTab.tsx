@@ -50,7 +50,7 @@ export function CaptureTab({ agentId }: { agentId: string }) {
   const seq = useRef(0);
   const list = useRef<HTMLDivElement>(null);
   const toast = useToast();
-  const { info, ui } = useAgents();
+  const { info, ui, agents } = useAgents();
   // Does the agent capture at all? (DecodeFrame came with capture.)
   const [unsupported, setUnsupported] = useState(false);
   useEffect(() => {
@@ -170,6 +170,27 @@ export function CaptureTab({ agentId }: { agentId: string }) {
   }, [agentId, sel, device, direction, et]);
 
   const portNames = (ports.data?.ports ?? []).map((p) => p.name);
+
+  // Wireshark through Edgeshark, when the UI knows its packetflix: its
+  // Wireshark plugin opens packetflix: links and captures the agent's
+  // container on these ports. Only containers it discovered can be found.
+  const packetflix = useMemo(() => {
+    const es = ui?.edgeshark;
+    const a = agents.find((x) => x.id === agentId);
+    if (!es || !a || !(a.source === "docker" || a.source.startsWith("lab:"))) return undefined;
+    let base = `ws://${window.location.hostname}:${es.port}`;
+    if (es.url) {
+      const u = new URL(es.url);
+      base = `${u.protocol === "https:" ? "wss" : "ws"}://${u.host}`;
+    }
+    // A device: its port, and its MAC as the filter.
+    const dev = device ? devices.data?.devices.find((d) => d.name === device) : undefined;
+    const nifs = dev ? [dev.port] : sel.length ? sel : portNames;
+    const q = [`container=${encodeURIComponent(JSON.stringify({ name: agentId, type: "docker" }))}`, `nif=${encodeURIComponent(nifs.join("/"))}`];
+    if (dev?.mac) q.push(`filter=${encodeURIComponent("ether host " + dev.mac)}`);
+    return `packetflix:${base}/capture?${q.join("&")}`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ui, agents, agentId, sel, device, devices.data, ports.data]);
   const t0 = rows[0]?.t.getTime() ?? 0;
   return (
     <div className="card capture">
@@ -233,8 +254,23 @@ export function CaptureTab({ agentId }: { agentId: string }) {
           <button className="btn" disabled={!rows.length} onClick={download} title="These frames as a pcapng file for Wireshark">
             Download .pcapng
           </button>
+          {packetflix && (
+            <a
+              className="btn"
+              href={packetflix}
+              title="A live capture in Wireshark, through Edgeshark: needs its Wireshark plugin (cshargextcap) on this machine"
+            >
+              Open in Wireshark
+            </a>
+          )}
         </div>
       </div>
+      {packetflix && (
+        <div className="capture-ws muted small-note">
+          Open in Wireshark goes through Edgeshark (its Wireshark plugin must be installed here). It captures the container's ports as the kernel sees
+          them: the direction and ethertype choices don't apply, and a device becomes a filter on its MAC.
+        </div>
+      )}
       {!unsupported && (
       <div className="capture-ws muted small-note">
         Live in Wireshark:{" "}
