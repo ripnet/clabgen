@@ -640,9 +640,15 @@ type Device struct {
 	Gateway4  string   `protobuf:"bytes,7,opt,name=gateway4,proto3" json:"gateway4,omitempty"`
 	Gateway6  string   `protobuf:"bytes,8,opt,name=gateway6,proto3" json:"gateway6,omitempty"`
 	// Output only: the device group this device is a member of.
-	Group         string `protobuf:"bytes,9,opt,name=group,proto3" json:"group,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Group string `protobuf:"bytes,9,opt,name=group,proto3" json:"group,omitempty"`
+	// Output only: addresses and a default gateway per family that the
+	// device's protocols (DHCP clients) added. A gateway is listed only when
+	// none of its family is configured.
+	DynamicAddresses []string `protobuf:"bytes,10,rep,name=dynamic_addresses,json=dynamicAddresses,proto3" json:"dynamic_addresses,omitempty"`
+	DynamicGateway4  string   `protobuf:"bytes,11,opt,name=dynamic_gateway4,json=dynamicGateway4,proto3" json:"dynamic_gateway4,omitempty"`
+	DynamicGateway6  string   `protobuf:"bytes,12,opt,name=dynamic_gateway6,json=dynamicGateway6,proto3" json:"dynamic_gateway6,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *Device) Reset() {
@@ -734,6 +740,27 @@ func (x *Device) GetGateway6() string {
 func (x *Device) GetGroup() string {
 	if x != nil {
 		return x.Group
+	}
+	return ""
+}
+
+func (x *Device) GetDynamicAddresses() []string {
+	if x != nil {
+		return x.DynamicAddresses
+	}
+	return nil
+}
+
+func (x *Device) GetDynamicGateway4() string {
+	if x != nil {
+		return x.DynamicGateway4
+	}
+	return ""
+}
+
+func (x *Device) GetDynamicGateway6() string {
+	if x != nil {
+		return x.DynamicGateway6
 	}
 	return ""
 }
@@ -4441,7 +4468,7 @@ const file_clabgen_v1_agent_proto_rawDesc = "" +
 	"\aVlanTag\x12\x12\n" +
 	"\x04tpid\x18\x01 \x01(\rR\x04tpid\x12\x10\n" +
 	"\x03vid\x18\x02 \x01(\rR\x03vid\x12\x10\n" +
-	"\x03pcp\x18\x03 \x01(\rR\x03pcp\"\xfa\x01\n" +
+	"\x03pcp\x18\x03 \x01(\rR\x03pcp\"\xfd\x02\n" +
 	"\x06Device\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\tR\x04port\x12\x10\n" +
@@ -4452,7 +4479,11 @@ const file_clabgen_v1_agent_proto_rawDesc = "" +
 	"\taddresses\x18\x06 \x03(\tR\taddresses\x12\x1a\n" +
 	"\bgateway4\x18\a \x01(\tR\bgateway4\x12\x1a\n" +
 	"\bgateway6\x18\b \x01(\tR\bgateway6\x12\x14\n" +
-	"\x05group\x18\t \x01(\tR\x05group\"\x14\n" +
+	"\x05group\x18\t \x01(\tR\x05group\x12+\n" +
+	"\x11dynamic_addresses\x18\n" +
+	" \x03(\tR\x10dynamicAddresses\x12)\n" +
+	"\x10dynamic_gateway4\x18\v \x01(\tR\x0fdynamicGateway4\x12)\n" +
+	"\x10dynamic_gateway6\x18\f \x01(\tR\x0fdynamicGateway6\"\x14\n" +
 	"\x12ListDevicesRequest\"C\n" +
 	"\x13ListDevicesResponse\x12,\n" +
 	"\adevices\x18\x01 \x03(\v2\x12.clabgen.v1.DeviceR\adevices\"A\n" +

@@ -33,6 +33,7 @@ import (
 	// Protocol plugins register themselves.
 	_ "github.com/ripnet/clabgen/protocols/bgp"
 	_ "github.com/ripnet/clabgen/protocols/cfm"
+	_ "github.com/ripnet/clabgen/protocols/dhcp"
 	_ "github.com/ripnet/clabgen/protocols/icmp"
 	_ "github.com/ripnet/clabgen/protocols/isis"
 	_ "github.com/ripnet/clabgen/protocols/l2stream"

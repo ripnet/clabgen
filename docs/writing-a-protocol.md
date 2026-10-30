@@ -86,7 +86,7 @@ type Session interface {
 | `Emit(kind, msg, data)` | Publish an event (state changes, alarms) to `WatchEvents` subscribers. |
 | `InstanceName()` | The instance's name (e.g. to derive stable identifiers). |
 | `Device()` | MAC, VLANs, port name, port up/down. |
-| `IP()` | The device's IP stack: `Addresses()`, `Source(dst)`, `ResolveNextHop(ctx, dst)` (ARP/ND through the neighbor cache; off-link destinations resolve the gateway), and `ClaimFlow(id)` so a flow's own echoes aren't listed as received (`ipflow` does this). |
+| `IP()` | The device's IP stack: `Addresses()`, `Source(dst)`, `ResolveNextHop(ctx, dst)` (ARP/ND through the neighbor cache; off-link destinations resolve the gateway), `ClaimFlow(id)` so a flow's own echoes aren't listed as received (`ipflow` does this), `AddLocal(addr)` for an address answered from anywhere (a router's loopback), and `AddAddress(prefix, gateway)` for an address on the link and a default gateway (a DHCP lease). |
 | `Siblings()` | Other sessions of the same type on the same device (CFM uses this for MD-level demux). |
 | `Log()` | Structured logger tagged with the instance name. |
 

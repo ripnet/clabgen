@@ -14,6 +14,7 @@ import "./protocols/isis";
 import "./protocols/lldp";
 import "./protocols/bgp";
 import "./protocols/ospf";
+import "./protocols/dhcp";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

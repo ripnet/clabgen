@@ -46,6 +46,10 @@ type DeviceSpec struct {
 
 	MACDerived bool   `json:"-"` // set by Devices when MAC was not configured
 	Group      string `json:"-"` // set by Devices for group members
+	// Set by Devices: addresses and gateways protocols (DHCP clients) added.
+	DynamicAddresses []string `json:"-"`
+	DynamicGateway4  string   `json:"-"`
+	DynamicGateway6  string   `json:"-"`
 }
 
 // sameL2 reports whether two specs put the device on the same wire
@@ -554,6 +558,7 @@ func (e *Engine) Devices() []DeviceSpec {
 		s.MACDerived = s.MAC == ""
 		s.MAC = d.mac.String()
 		s.Group = d.group
+		s.DynamicAddresses, s.DynamicGateway4, s.DynamicGateway6 = d.ip.Dynamic()
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

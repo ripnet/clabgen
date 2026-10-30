@@ -398,3 +398,54 @@ func TestLocalAddress(t *testing.T) {
 		t.Fatal("answered after release")
 	}
 }
+
+func TestAddAddress(t *testing.T) {
+	w := &wire{}
+	a, _ := w.add(t, macA, Config{})
+	if a.Enabled() {
+		t.Fatal("enabled without addresses")
+	}
+	rel := a.AddAddress(netip.MustParsePrefix("10.0.0.5/24"), netip.MustParseAddr("10.0.0.1"))
+	if !a.Enabled() || fmt.Sprint(a.Addresses()) != "[10.0.0.5/24]" {
+		t.Fatalf("addresses %v", a.Addresses())
+	}
+	// Announced, and owned like a configured address.
+	if len(w.sent) != 1 || w.sent[0].EtherType != pkt.EtherTypeARP {
+		t.Fatalf("sent %v", w.sent)
+	}
+	arp := pkt.ARP{Op: pkt.ARPRequest, SHA: macB, SPA: netip.MustParseAddr("10.0.0.1"), TPA: netip.MustParseAddr("10.0.0.5")}
+	a.HandleRx(&pkt.Frame{Dst: pkt.Broadcast, Src: macB, EtherType: pkt.EtherTypeARP, Payload: arp.Encode()})
+	if len(w.sent) != 2 {
+		t.Fatal("ARP for the added address not answered")
+	}
+	if nh, err := a.NextHop(netip.MustParseAddr("192.0.2.1")); err != nil || nh.String() != "10.0.0.1" {
+		t.Fatalf("next hop %v %v", nh, err)
+	}
+	if addrs, gw4, _ := a.Dynamic(); fmt.Sprint(addrs) != "[10.0.0.5/24]" || gw4 != "10.0.0.1" {
+		t.Fatalf("dynamic %v %s", addrs, gw4)
+	}
+	// A config change keeps it; a configured gateway wins.
+	a.SetConfig(mustCfg(t, "10.0.1.254", "", "10.0.1.5/24"))
+	if fmt.Sprint(a.Addresses()) != "[10.0.1.5/24 10.0.0.5/24]" {
+		t.Fatalf("addresses %v", a.Addresses())
+	}
+	if nh, _ := a.NextHop(netip.MustParseAddr("192.0.2.1")); nh.String() != "10.0.1.254" {
+		t.Fatalf("next hop %v", nh)
+	}
+	if _, gw4, _ := a.Dynamic(); gw4 != "" || a.Status().Gateway4 != "10.0.1.254" {
+		t.Fatalf("gateway shown as dynamic %q, status %q", gw4, a.Status().Gateway4)
+	}
+	// An IPv6 address brings the link-local; a gateway alone adds no address.
+	rel6 := a.AddAddress(netip.MustParsePrefix("2001:db8::5/128"), netip.Addr{})
+	relGW := a.AddAddress(netip.Prefix{}, netip.MustParseAddr("fe80::1"))
+	if len(a.Addresses()) != 4 || a.Status().Gateway6 != "fe80::1" {
+		t.Fatalf("addresses %v, gateway6 %q", a.Addresses(), a.Status().Gateway6)
+	}
+	rel()
+	rel()
+	rel6()
+	relGW()
+	if fmt.Sprint(a.Addresses()) != "[10.0.1.5/24]" || a.Status().Gateway6 != "" {
+		t.Fatalf("released: %v %q", a.Addresses(), a.Status().Gateway6)
+	}
+}

@@ -7,7 +7,7 @@ const types = JSON.parse(readFileSync(new URL("./fixtures/protocol-types.json", 
 
 const svc = "clabgen.v1.AgentService";
 
-export type Protocol = { name: string; type: string; device: string; state: string; config: Record<string, unknown>; disabled?: boolean };
+export type Protocol = { name: string; type: string; device: string; state: string; config: Record<string, unknown>; disabled?: boolean; status?: Record<string, unknown> };
 
 export type MockOpts = {
   more?: Protocol[]; // further protocols on the agent

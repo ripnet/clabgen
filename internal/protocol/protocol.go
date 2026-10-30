@@ -58,6 +58,12 @@ type IP interface {
 	// owning it on the link (no ARP/ND, not in Addresses): a router's
 	// loopback reachable over any of its interfaces. Call release to stop.
 	AddLocal(addr netip.Addr) (release func())
+	// AddAddress gives the device an address on the link (prefix the
+	// on-link subnet), a default gateway, or both (either may be the zero
+	// value), as a DHCP client does with a lease. The device owns the
+	// address like a configured one (ARP/ND, Addresses) and announces it;
+	// a configured gateway wins over this one. Call release to remove them.
+	AddAddress(prefix netip.Prefix, gateway netip.Addr) (release func())
 	// DialTCP connects to remote from local (invalid: the device picks)
 	// with the TTL / hop limit ttl (0: 64).
 	DialTCP(ctx context.Context, remote netip.AddrPort, local netip.Addr, ttl int) (net.Conn, error)

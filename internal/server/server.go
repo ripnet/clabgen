@@ -158,7 +158,8 @@ func (s *Server) SetPortAdmin(ctx context.Context, r *connect.Request[v1.SetPort
 
 func devicePB(d core.DeviceSpec) *v1.Device {
 	out := &v1.Device{Name: d.Name, Port: d.Port, Mac: d.MAC, MacDerived: d.MACDerived, Group: d.Group,
-		Addresses: d.Addresses, Gateway4: d.Gateway4, Gateway6: d.Gateway6}
+		Addresses: d.Addresses, Gateway4: d.Gateway4, Gateway6: d.Gateway6,
+		DynamicAddresses: d.DynamicAddresses, DynamicGateway4: d.DynamicGateway4, DynamicGateway6: d.DynamicGateway6}
 	for _, t := range d.VLANs {
 		out.Vlans = append(out.Vlans, &v1.VlanTag{Tpid: uint32(t.TPID), Vid: uint32(t.VID), Pcp: uint32(t.PCP)})
 	}

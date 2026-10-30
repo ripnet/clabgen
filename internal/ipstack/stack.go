@@ -148,7 +148,9 @@ type Stack struct {
 
 	mu        sync.Mutex
 	cfg       Config
-	addrs     []netip.Prefix // cfg.Addresses plus the automatic link-local
+	dyn       []*dynamic     // addresses and gateways protocols added (AddAddress)
+	addrs     []netip.Prefix // cfg.Addresses, dyn's, and the automatic link-local
+	gw4, gw6  netip.Addr     // the configured gateways, else the first of dyn's
 	neighbors map[netip.Addr]*neighbor
 	flows     *flowrx.Table      // signed flow packets received
 	ownFlows  map[uint32]int     // flow IDs sent from this device (not recorded)
@@ -159,6 +161,12 @@ type Stack struct {
 	counters counters
 }
 
+// dynamic is one AddAddress call's address and gateway.
+type dynamic struct {
+	addr netip.Prefix
+	gw   netip.Addr
+}
+
 func New(mac pkt.MAC, cfg Config, send SendFunc, emit EmitFunc) *Stack {
 	s := &Stack{mac: mac, send: send, emit: emit, now: time.Now, neighbors: map[netip.Addr]*neighbor{}, flows: flowrx.New(), ownFlows: map[uint32]int{}, locals: map[netip.Addr]int{}}
 	s.SetConfig(cfg)
@@ -167,7 +175,33 @@ func New(mac pkt.MAC, cfg Config, send SendFunc, emit EmitFunc) *Stack {
 
 // SetConfig replaces the addresses and gateways. Learned neighbors are kept.
 func (s *Stack) SetConfig(cfg Config) {
-	addrs := append([]netip.Prefix(nil), cfg.Addresses...)
+	s.mu.Lock()
+	s.cfg = cfg
+	s.syncLocked()
+	s.mu.Unlock()
+}
+
+// syncLocked recomputes the effective addresses and gateways from the
+// config and the dynamic ones. Caller holds mu.
+func (s *Stack) syncLocked() {
+	addrs := append([]netip.Prefix(nil), s.cfg.Addresses...)
+	seen := map[netip.Addr]bool{}
+	for _, p := range addrs {
+		seen[p.Addr()] = true
+	}
+	s.gw4, s.gw6 = s.cfg.Gateway4, s.cfg.Gateway6
+	for _, d := range s.dyn {
+		if d.addr.IsValid() && !seen[d.addr.Addr()] {
+			seen[d.addr.Addr()] = true
+			addrs = append(addrs, d.addr)
+		}
+		if d.gw.Is4() && !s.gw4.IsValid() {
+			s.gw4 = d.gw
+		}
+		if d.gw.Is6() && !s.gw6.IsValid() {
+			s.gw6 = d.gw
+		}
+	}
 	has6, hasLL := false, false
 	for _, p := range addrs {
 		if p.Addr().Is6() {
@@ -178,10 +212,54 @@ func (s *Stack) SetConfig(cfg Config) {
 	if has6 && !hasLL {
 		addrs = append(addrs, netip.PrefixFrom(pkt.LinkLocal(s.mac), 64))
 	}
-	s.mu.Lock()
-	s.cfg, s.addrs = cfg, addrs
+	s.addrs = addrs
 	s.syncTCPAddrsLocked()
+}
+
+// Dynamic returns the addresses protocols added, and the gateways they
+// added that are in use (no gateway of that family is configured).
+func (s *Stack) Dynamic() (addrs []string, gw4, gw6 string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, d := range s.dyn {
+		if d.addr.IsValid() {
+			addrs = append(addrs, d.addr.String())
+		}
+	}
+	if s.gw4.IsValid() && !s.cfg.Gateway4.IsValid() {
+		gw4 = s.gw4.String()
+	}
+	if s.gw6.IsValid() && !s.cfg.Gateway6.IsValid() {
+		gw6 = s.gw6.String()
+	}
+	return
+}
+
+// AddAddress implements protocol.IP.
+func (s *Stack) AddAddress(p netip.Prefix, gateway netip.Addr) func() {
+	d := &dynamic{addr: p, gw: gateway.Unmap()}
+	s.mu.Lock()
+	_, had := s.own(p.Addr())
+	s.dyn = append(s.dyn, d)
+	s.syncLocked()
 	s.mu.Unlock()
+	if p.IsValid() && !had {
+		s.announce(p.Addr())
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.mu.Lock()
+			for i, x := range s.dyn {
+				if x == d {
+					s.dyn = append(s.dyn[:i:i], s.dyn[i+1:]...)
+					break
+				}
+			}
+			s.syncLocked()
+			s.mu.Unlock()
+		})
+	}
 }
 
 // Addresses returns the effective addresses, including the automatic
@@ -311,9 +389,9 @@ func (s *Stack) NextHop(dst netip.Addr) (netip.Addr, error) {
 			return dst, nil
 		}
 	}
-	gw := s.cfg.Gateway6
+	gw := s.gw6
 	if dst.Is4() {
-		gw = s.cfg.Gateway4
+		gw = s.gw4
 	}
 	if !gw.IsValid() {
 		return netip.Addr{}, fmt.Errorf("%s is not on-link and the device has no IPv%d gateway", dst, map[bool]int{true: 4, false: 6}[dst.Is4()])
@@ -800,15 +878,18 @@ func (s *Stack) Announce() {
 	addrs := append([]netip.Prefix(nil), s.addrs...)
 	s.mu.Unlock()
 	for _, p := range addrs {
-		a := p.Addr()
-		if a.Is4() {
-			g := pkt.ARP{Op: pkt.ARPRequest, SHA: s.mac, SPA: a, TPA: a}
-			if s.send(pkt.Broadcast, pkt.EtherTypeARP, g.Encode()) == nil {
-				s.counters.arpTxGratuitous.Add(1)
-			}
-		} else {
-			s.sendND(pkt.ICMPv6NeighborAdv, pkt.NAFlagOverride, a, a, allNodes, pkt.MulticastMAC(allNodes), pkt.NDOptTargetLLAddr)
+		s.announce(p.Addr())
+	}
+}
+
+func (s *Stack) announce(a netip.Addr) {
+	if a.Is4() {
+		g := pkt.ARP{Op: pkt.ARPRequest, SHA: s.mac, SPA: a, TPA: a}
+		if s.send(pkt.Broadcast, pkt.EtherTypeARP, g.Encode()) == nil {
+			s.counters.arpTxGratuitous.Add(1)
 		}
+	} else {
+		s.sendND(pkt.ICMPv6NeighborAdv, pkt.NAFlagOverride, a, a, allNodes, pkt.MulticastMAC(allNodes), pkt.NDOptTargetLLAddr)
 	}
 }
 
@@ -835,6 +916,7 @@ type Neighbor struct {
 type Status struct {
 	Addresses []string          `json:"addresses"`       // effective, incl. automatic link-local
 	Local     []string          `json:"local,omitempty"` // also answered for (router loopbacks)
+	Dynamic   []string          `json:"dynamic,omitempty"` // added by protocols (DHCP), also in Addresses
 	Gateway4  string            `json:"gateway4,omitempty"`
 	Gateway6  string            `json:"gateway6,omitempty"`
 	Neighbors []Neighbor        `json:"neighbors"`
@@ -851,7 +933,17 @@ func (s *Stack) Status() Status {
 		st.Local = append(st.Local, a.String())
 	}
 	sort.Strings(st.Local)
-	_, st.Gateway4, st.Gateway6 = s.cfg.Strings()
+	for _, d := range s.dyn {
+		if d.addr.IsValid() {
+			st.Dynamic = append(st.Dynamic, d.addr.String())
+		}
+	}
+	if s.gw4.IsValid() {
+		st.Gateway4 = s.gw4.String()
+	}
+	if s.gw6.IsValid() {
+		st.Gateway6 = s.gw6.String()
+	}
 	now := s.now()
 	for ip, n := range s.neighbors {
 		nb := Neighbor{IP: ip.String(), State: "incomplete"}

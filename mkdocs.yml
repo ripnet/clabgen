@@ -3,7 +3,7 @@
 site_name: clabgen
 site_description: >-
   Protocol emulator and traffic generator for containerlab: BGP, IS-IS, OSPF,
-  BFD, CFM/Y.1731, LLDP, traffic flows and a packet builder, with a web UI,
+  BFD, CFM/Y.1731, LLDP, DHCP clients, traffic flows and a packet builder, with a web UI,
   CLI, API and Python/pytest helpers.
 site_url: https://clabgen.dev/
 repo_url: https://github.com/ripnet/clabgen
@@ -23,6 +23,7 @@ nav:
       - BGP: bgp.md
       - OSPF: ospf.md
       - LLDP: lldp.md
+      - DHCP clients: dhcp.md
   - CLI: cli.md
   - Python and pytest: python.md
   - API: api.md

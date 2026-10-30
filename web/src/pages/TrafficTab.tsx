@@ -17,7 +17,8 @@ export function TrafficTab({ agentId }: { agentId: string }) {
   // first address of the destination's family.
   const guessSource = (device: string, dst?: string) => {
     const v6 = !!dst?.includes(":");
-    const addrs = devices.data?.devices.find((d) => d.name === device)?.addresses ?? [];
+    const d = devices.data?.devices.find((d) => d.name === device);
+    const addrs = [...(d?.addresses ?? []), ...(d?.dynamicAddresses ?? [])];
     return addrs.map((a) => a.split("/")[0]).find((a) => a.includes(":") === v6 && !a.startsWith("fe80:"));
   };
   const [creating, setCreating] = useState(false);

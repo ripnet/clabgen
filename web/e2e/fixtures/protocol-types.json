@@ -107,6 +107,72 @@
    "category": "protocol"
   },
   {
+   "name": "dhcp",
+   "description": "DHCPv4 client: leases an address and gateway for the device, renews and rebinds it",
+   "configSchema": "{\"$id\":\"https://github.com/ripnet/clabgen/protocols/dhcp/config4\",\"additionalProperties\":false,\"properties\":{\"broadcast\":{\"default\":false,\"description\":\"Ask for broadcast replies (the BOOTP broadcast flag), for servers and relays that can't unicast to a client without an address\",\"type\":\"boolean\"},\"client_id\":{\"description\":\"Client identifier (option 61): text, or hex as 0x…. Default: hardware type 1 and the device's MAC\",\"type\":\"string\"},\"gateway\":{\"default\":true,\"description\":\"Use the lease's router (option 3) as the device's IPv4 gateway (a configured gateway4 wins)\",\"type\":\"boolean\"},\"hostname\":{\"description\":\"Host name to send (option 12)\",\"type\":\"string\"},\"lease_time\":{\"description\":\"Lease time to ask for in seconds (option 51)\",\"type\":\"integer\"},\"options\":{\"description\":\"More options to send in every message\",\"items\":{\"additionalProperties\":false,\"properties\":{\"code\":{\"description\":\"Option code\",\"maximum\":254,\"minimum\":1,\"type\":\"integer\"},\"value\":{\"description\":\"Its value: text, or hex bytes as 0x…\",\"type\":\"string\"}},\"type\":\"object\",\"x-order\":[\"code\",\"value\"]},\"type\":\"array\"},\"rapid_commit\":{\"default\":false,\"description\":\"Ask for a two-message exchange (RFC 4039): an Ack straight after the Discover\",\"type\":\"boolean\"},\"release_on_stop\":{\"default\":true,\"description\":\"Release the lease when the protocol stops or is deleted\",\"type\":\"boolean\"},\"request_address\":{\"description\":\"Address to ask for (option 50)\",\"type\":\"string\"},\"vendor_class\":{\"description\":\"Vendor class identifier (option 60)\",\"type\":\"string\"}},\"type\":\"object\",\"x-order\":[\"client_id\",\"hostname\",\"vendor_class\",\"request_address\",\"lease_time\",\"broadcast\",\"rapid_commit\",\"gateway\",\"options\",\"release_on_stop\"]}",
+   "actions": [
+    {
+     "name": "renew",
+     "description": "Renew the lease now (unicast to the server)",
+     "argsSchema": "{}"
+    },
+    {
+     "name": "rebind",
+     "description": "Rebind now (broadcast, to any server)",
+     "argsSchema": "{}"
+    },
+    {
+     "name": "release",
+     "description": "Release the lease and stay without one until restart",
+     "argsSchema": "{}"
+    },
+    {
+     "name": "restart",
+     "description": "Release any lease and start again with a Discover",
+     "argsSchema": "{}"
+    },
+    {
+     "name": "clear",
+     "description": "Reset the message counters",
+     "argsSchema": "{}"
+    }
+   ],
+   "category": "protocol"
+  },
+  {
+   "name": "dhcpv6",
+   "description": "DHCPv6 client: leases an address and a delegated prefix, with the default gateway from router advertisements",
+   "configSchema": "{\"$id\":\"https://github.com/ripnet/clabgen/protocols/dhcp/config6\",\"additionalProperties\":false,\"properties\":{\"duid\":{\"description\":\"Client DUID in hex (0x…). Default: a DUID-LL from the device's MAC\",\"type\":\"string\"},\"ia_na\":{\"default\":true,\"description\":\"Ask for an address (IA_NA)\",\"type\":\"boolean\"},\"ia_pd\":{\"default\":false,\"description\":\"Ask for a delegated prefix (IA_PD)\",\"type\":\"boolean\"},\"options\":{\"description\":\"More options to send in every message\",\"items\":{\"additionalProperties\":false,\"properties\":{\"code\":{\"description\":\"Option code\",\"minimum\":1,\"type\":\"integer\"},\"value\":{\"description\":\"Its value: text, or hex bytes as 0x…\",\"type\":\"string\"}},\"type\":\"object\",\"x-order\":[\"code\",\"value\"]},\"type\":\"array\"},\"pd_addresses\":{\"description\":\"Addresses in the delegated prefix that the device answers for (ping and flows): hosts behind the CPE to test routing to the prefix\",\"items\":{\"additionalProperties\":false,\"properties\":{\"host\":{\"description\":\"The interface ID in that /64\",\"minimum\":1,\"type\":\"integer\"},\"subnet\":{\"description\":\"Which /64 of the delegated prefix: 0 is the first (for a prefix longer than /64, 0)\",\"type\":\"integer\"}},\"type\":\"object\",\"x-order\":[\"subnet\",\"host\"]},\"type\":\"array\"},\"pd_length\":{\"description\":\"Prefix length to ask for (a hint: 0 for none)\",\"maximum\":128,\"type\":\"integer\"},\"ra\":{\"default\":true,\"description\":\"Solicit and follow router advertisements: they give the default gateway (DHCPv6 doesn't) and the on-link prefix of the leased address\",\"type\":\"boolean\"},\"rapid_commit\":{\"default\":false,\"description\":\"Ask for a two-message exchange: a Reply straight after the Solicit\",\"type\":\"boolean\"},\"release_on_stop\":{\"default\":true,\"description\":\"Release the bindings when the protocol stops or is deleted\",\"type\":\"boolean\"}},\"type\":\"object\",\"x-order\":[\"ia_na\",\"ia_pd\",\"pd_length\",\"pd_addresses\",\"ra\",\"rapid_commit\",\"duid\",\"options\",\"release_on_stop\"]}",
+   "actions": [
+    {
+     "name": "renew",
+     "description": "Renew the bindings now",
+     "argsSchema": "{}"
+    },
+    {
+     "name": "rebind",
+     "description": "Rebind now (to any server)",
+     "argsSchema": "{}"
+    },
+    {
+     "name": "release",
+     "description": "Release the bindings and stay without them until restart",
+     "argsSchema": "{}"
+    },
+    {
+     "name": "restart",
+     "description": "Release any bindings and start again with a Solicit",
+     "argsSchema": "{}"
+    },
+    {
+     "name": "clear",
+     "description": "Reset the message counters",
+     "argsSchema": "{}"
+    }
+   ],
+   "category": "protocol"
+  },
+  {
    "name": "icmp",
    "description": "ICMP flow: echo (ping) or any crafted ICMP/ICMPv6 packet; continuous, counted or timed, with loss, outage and RTT",
    "configSchema": "{\"$id\":\"https://github.com/ripnet/clabgen/protocols/icmp/config\",\"additionalProperties\":false,\"properties\":{\"auto_start\":{\"description\":\"Start sending as soon as the flow is created (e.g. from a scenario)\",\"type\":\"boolean\"},\"checks\":{\"additionalProperties\":false,\"description\":\"Pass/fail limits on what the flow measures since it started or was cleared\",\"properties\":{\"max_jitter_ms\":{\"description\":\"Highest jitter (mean RTT change between packets) in ms\",\"minimum\":0,\"type\":\"number\"},\"max_loss_pct\":{\"description\":\"Highest loss in percent (replies missing)\",\"maximum\":100,\"minimum\":0,\"type\":\"number\"},\"max_outage_ms\":{\"description\":\"Longest outage (consecutive losses) in ms\",\"minimum\":0,\"type\":\"number\"},\"max_rtt_avg_ms\":{\"description\":\"Highest average round-trip time in ms\",\"minimum\":0,\"type\":\"number\"},\"max_rtt_ms\":{\"description\":\"Highest single round-trip time in ms\",\"minimum\":0,\"type\":\"number\"}},\"type\":\"object\",\"x-order\":[\"max_loss_pct\",\"max_outage_ms\",\"max_rtt_avg_ms\",\"max_rtt_ms\",\"max_jitter_ms\"]},\"count\":{\"description\":\"Packets to send in count mode\",\"type\":\"integer\"},\"destination\":{\"default\":\"\",\"description\":\"IPv4 or IPv6 address to send to\",\"type\":\"string\"},\"df\":{\"description\":\"IPv4 don't-fragment bit\",\"type\":\"boolean\"},\"dscp\":{\"maximum\":63,\"minimum\":0,\"type\":\"integer\"},\"dst_mac\":{\"description\":\"Destination MAC. Default: resolve the next hop (destination or gateway) with ARP/ND\",\"type\":\"string\"},\"duration\":{\"description\":\"How long to send in duration mode (e.g. 30s or 5m)\",\"type\":\"string\"},\"ecn\":{\"maximum\":3,\"minimum\":0,\"type\":\"integer\"},\"flow_label\":{\"description\":\"IPv6 flow label\",\"maximum\":1048575,\"minimum\":0,\"type\":\"integer\"},\"icmp_checksum\":{\"default\":\"correct\",\"enum\":[\"correct\",\"zero\",\"invalid\"],\"type\":\"string\"},\"icmp_code\":{\"maximum\":255,\"minimum\":0,\"type\":\"integer\"},\"icmp_type\":{\"description\":\"Default: echo request (8; 128 for IPv6). Other types are sent without reply tracking\",\"maximum\":255,\"minimum\":0,\"type\":\"integer\"},\"identifier\":{\"description\":\"Echo identifier. Default: derived from the flow name\",\"type\":\"integer\"},\"ip_checksum\":{\"default\":\"correct\",\"description\":\"IPv4 header checksum\",\"enum\":[\"correct\",\"zero\",\"invalid\"],\"type\":\"string\"},\"ip_id\":{\"description\":\"Fixed IPv4 identification. Default: increments per packet\",\"type\":\"integer\"},\"mode\":{\"default\":\"continuous\",\"enum\":[\"continuous\",\"count\",\"duration\"],\"type\":\"string\"},\"payload_data\":{\"description\":\"Text or hex digits for the text and hex patterns; repeated to fill the payload\",\"type\":\"string\"},\"payload_pattern\":{\"default\":\"increment\",\"enum\":[\"increment\",\"zeros\",\"random\",\"text\",\"hex\"],\"type\":\"string\"},\"payload_size\":{\"default\":56,\"description\":\"Data bytes after the transport header (the signature counts)\",\"maximum\":9000,\"minimum\":0,\"type\":\"integer\"},\"rate\":{\"default\":1,\"description\":\"Packets per second\",\"maximum\":100000,\"minimum\":0.01,\"type\":\"number\"},\"seq_mode\":{\"default\":\"increment\",\"enum\":[\"increment\",\"fixed\"],\"type\":\"string\"},\"seq_start\":{\"description\":\"First echo sequence number\",\"type\":\"integer\"},\"signature\":{\"default\":true,\"description\":\"Start the payload with a 24-byte signature (flow ID; sequence; send time) for matching; RTT and one-way stats at clabgen receivers\",\"type\":\"boolean\"},\"source\":{\"description\":\"Source address. Default: the device's address on the destination's subnet; else its first address of that family\",\"type\":\"string\"},\"timeout\":{\"default\":\"1s\",\"description\":\"How long to wait for a reply before counting a packet lost\",\"type\":\"string\"},\"ttl\":{\"default\":64,\"description\":\"IPv4 TTL or IPv6 hop limit\",\"maximum\":255,\"minimum\":0,\"type\":\"integer\"},\"vlan_pcp\":{\"description\":\"PCP on every VLAN tag. Default: the device's\",\"maximum\":7,\"minimum\":0,\"type\":\"integer\"}},\"required\":[\"destination\"],\"type\":\"object\",\"x-order\":[\"destination\",\"mode\",\"count\",\"duration\",\"rate\",\"timeout\",\"auto_start\",\"source\",\"dst_mac\",\"vlan_pcp\",\"ttl\",\"dscp\",\"ecn\",\"df\",\"ip_id\",\"flow_label\",\"ip_checksum\",\"icmp_type\",\"icmp_code\",\"identifier\",\"seq_start\",\"seq_mode\",\"icmp_checksum\",\"payload_size\",\"payload_pattern\",\"payload_data\",\"signature\",\"checks\"]}",

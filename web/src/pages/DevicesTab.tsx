@@ -64,6 +64,8 @@ export function DevicesTab({ agentId }: { agentId: string }) {
             <tbody>
               {list.map((d) => {
                 const u = using(d.name);
+                const hasIP = d.addresses.length > 0 || d.dynamicAddresses.length > 0;
+                const gws = [d.gateway4 || d.dynamicGateway4, d.gateway6 || d.dynamicGateway6].filter(Boolean);
                 return (
                   <tr key={d.name}>
                     <td className="mono strong">{d.name}</td>
@@ -78,15 +80,26 @@ export function DevicesTab({ agentId }: { agentId: string }) {
                     </td>
                     <td className="mono">{vlanText(d.vlans)}</td>
                     <td className="mono addr-cell">
-                      {d.addresses.length ? d.addresses.map((a) => <div key={a}>{a}</div>) : "—"}
-                      {(d.gateway4 || d.gateway6) && <div className="muted">gw {[d.gateway4, d.gateway6].filter(Boolean).join(", ")}</div>}
+                      {d.addresses.map((a) => (
+                        <div key={a}>{a}</div>
+                      ))}
+                      {d.dynamicAddresses.map((a) => (
+                        <div key={a}>
+                          {a}
+                          <span className="tag" title="Leased by a DHCP client on this device">
+                            dhcp
+                          </span>
+                        </div>
+                      ))}
+                      {!hasIP && "—"}
+                      {gws.length > 0 && <div className="muted">gw {gws.join(", ")}</div>}
                     </td>
                     <td className="mono">{u.join(", ") || "—"}</td>
                     <td className="actions">
-                      <button className="btn small" disabled={!d.addresses.length} title={d.addresses.length ? "Neighbors, counters and resolve" : "No IP addresses"} onClick={() => setIpOf(d.name)}>
+                      <button className="btn small" disabled={!hasIP} title={hasIP ? "Neighbors, counters and resolve" : "No IP addresses"} onClick={() => setIpOf(d.name)}>
                         IP
                       </button>
-                      <button className="btn small" disabled={!d.addresses.length} title={d.addresses.length ? "Start an ICMP flow from this device" : "No IP addresses"} onClick={() => setPingFrom(d)}>
+                      <button className="btn small" disabled={!hasIP} title={hasIP ? "Start an ICMP flow from this device" : "No IP addresses"} onClick={() => setPingFrom(d)}>
                         Ping…
                       </button>
                       <button className="btn small" title="A device group of devices like this one, with its protocols" onClick={() => setGroupFrom(d)}>
@@ -122,7 +135,7 @@ export function DevicesTab({ agentId }: { agentId: string }) {
             title: `Ping from ${pingFrom.name}`,
             device: pingFrom.name,
             name: uniqueName(`ping-${pingFrom.name}`, protos.data?.protocols.map((p) => p.name) ?? []),
-            config: { auto_start: true, destination: pingFrom.gateway4 || pingFrom.gateway6 || "" },
+            config: { auto_start: true, destination: pingFrom.gateway4 || pingFrom.gateway6 || pingFrom.dynamicGateway4 || pingFrom.dynamicGateway6 || "" },
           }}
           onClose={() => setPingFrom(undefined)}
           onDone={protos.refresh}

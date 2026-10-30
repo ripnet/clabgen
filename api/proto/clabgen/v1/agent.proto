@@ -164,6 +164,12 @@ message Device {
   string gateway6 = 8;
   // Output only: the device group this device is a member of.
   string group = 9;
+  // Output only: addresses and a default gateway per family that the
+  // device's protocols (DHCP clients) added. A gateway is listed only when
+  // none of its family is configured.
+  repeated string dynamic_addresses = 10;
+  string dynamic_gateway4 = 11;
+  string dynamic_gateway6 = 12;
 }
 
 message ListDevicesRequest {}
