@@ -13,3 +13,5 @@ __pycache__/
 python/build/
 python/dist/
 /site/
+web/src/**/*.js
+web/tsconfig.tsbuildinfo
