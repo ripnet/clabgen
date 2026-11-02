@@ -3,6 +3,7 @@ parts), light/dark screenshots and UI/YAML tabs written so GitHub shows
 them too become Material's, and links that leave docs/ (examples, the
 Python package, the license) point at GitHub."""
 
+import posixpath
 import re
 import textwrap
 from pathlib import Path
@@ -64,5 +65,12 @@ def on_page_markdown(markdown, page, config, files):
         markdown = re.sub(r"\]\((?!https?:|#|[a-z-]+\.md|images/)([^)]+)\)", lambda m: f"]({REPO}{m.group(1)})", markdown)
         return markdown
     markdown = tabs(light_dark(markdown))
-    # ../examples, ../python, ../.github, …: on GitHub.
-    return re.sub(r"\]\(\.\./([^)]+)\)", lambda m: f"]({REPO}{m.group(1)})", markdown)
+    # ../examples, ../python, ../.github, …: on GitHub. Relative to the
+    # page, which may be in a folder (examples/dhcp.md: ../../examples/…).
+    here = posixpath.dirname(page.file.src_uri)
+
+    def outside(m):
+        path = posixpath.normpath(posixpath.join(here, m.group(1)))
+        return f"]({REPO}{path[3:]})" if path.startswith("../") else m.group(0)
+
+    return re.sub(r"\]\((\.\./[^)]+)\)", outside, markdown)

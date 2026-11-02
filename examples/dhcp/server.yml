@@ -1,0 +1,26 @@
+devices:
+  - name: server
+    port: eth1
+    addresses: [10.0.200.10/24, 2001:db8:200::10/64]
+    gateway4: 10.0.200.1
+    gateway6: 2001:db8:200::1
+protocols:
+  - name: dhcp4
+    type: dhcp-server
+    device: server
+    config:
+      lease_time: 3600
+      pools:
+        # Picked by the relay's gateway address (gi-address 10.0.100.1).
+        - {subnet: 10.0.100.0/24, start: 10.0.100.100, end: 10.0.100.250, router: 10.0.100.1, domain: example.net}
+  - name: dhcp6
+    type: dhcpv6-server
+    device: server
+    config:
+      preferred: 3600
+      valid: 7200
+      pools:
+        # Picked by the relay's link-address (in 2001:db8:100::/64); a /56 each
+        # out of 2001:db8:1000::/48.
+        - {link: 2001:db8:100::/64, start: "2001:db8:100::1000", end: "2001:db8:100::1fff",
+           pd_prefix: 2001:db8:1000::/48, pd_length: 56}

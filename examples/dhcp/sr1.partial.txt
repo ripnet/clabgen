@@ -1,0 +1,24 @@
+/configure card 1 card-type iom-1
+/configure card 1 mda 1 mda-type me6-100gb-qsfp28
+/configure port 1/1/c1 admin-state enable
+/configure port 1/1/c1 connector breakout c1-100g
+/configure port 1/1/c1/1 admin-state enable
+/configure port 1/1/c1/1 ethernet mode access
+/configure port 1/1/c2 admin-state enable
+/configure port 1/1/c2 connector breakout c1-100g
+/configure port 1/1/c2/1 admin-state enable
+/configure port 1/1/c2/1 ethernet mode network
+/configure router "Base" interface "to-server" port 1/1/c2/1
+/configure router "Base" interface "to-server" ipv4 primary address 10.0.200.1 prefix-length 24
+/configure router "Base" interface "to-server" ipv6 address 2001:db8:200::1 prefix-length 64
+/configure service ies "subscribers" admin-state enable service-id 100 customer "1"
+/configure service ies "subscribers" interface "subscribers" admin-state enable
+/configure service ies "subscribers" interface "subscribers" sap 1/1/c1/1
+/configure service ies "subscribers" interface "subscribers" ipv4 primary address 10.0.100.1 prefix-length 24
+/configure service ies "subscribers" interface "subscribers" ipv4 dhcp admin-state enable server [10.0.200.10] gi-address 10.0.100.1
+/configure service ies "subscribers" interface "subscribers" ipv6 address 2001:db8:100::1 prefix-length 64
+/configure service ies "subscribers" interface "subscribers" ipv6 dhcp6 relay admin-state enable source-address 2001:db8:100::1 server ["2001:db8:200::10"]
+/configure service ies "subscribers" interface "subscribers" ipv6 dhcp6 relay lease-populate max-nbr-of-leases 1000 route-populate pd
+/configure router "Base" ipv6 router-advertisement interface "subscribers" admin-state enable
+/configure router "Base" ipv6 router-advertisement interface "subscribers" managed-configuration true
+/configure router "Base" ipv6 router-advertisement interface "subscribers" other-stateful-configuration true

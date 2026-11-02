@@ -1,0 +1,21 @@
+devices:
+  - {name: client1, port: eth1}   # no addresses: DHCP leases them
+protocols:
+  - name: client1-v4
+    type: dhcp
+    device: client1
+    config: {hostname: client1}
+  - name: client1-v6
+    type: dhcpv6
+    device: client1
+    # A host in the delegated prefix (::1 in its second /64), as a CPE's LAN
+    # would have: reachable only if the router routes the prefix to us.
+    config: {ia_na: true, ia_pd: true, pd_addresses: [{subnet: 1, host: 1}]}
+device_groups:
+  # Ten more subscribers, each its own device (own MAC) with both clients.
+  - name: subscribers
+    count: 10
+    device: {port: eth1}
+    protocols:
+      - {name: v4, type: dhcp}
+      - {name: v6, type: dhcpv6, config: {ia_na: true, ia_pd: true}}

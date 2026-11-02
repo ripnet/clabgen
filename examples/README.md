@@ -10,10 +10,15 @@
   SRv6, BFD), OSPFv2/v3 (areas, NSSA, segment routing), BGP (unicast,
   VPNv4/v6, EVPN, L2VPN, a group of eight CEs) flows routed by the SR
   and raw L2 streams across a VPLS.
+- [`dhcp`](dhcp): DHCPv4 and DHCPv6 subscribers (one client and a group
+  of ten, with prefix delegation) behind a Nokia SR-SIM relay, served by
+  a clabgen DHCP server. Walked through in the docs'
+  [DHCP subscribers](../docs/examples/dhcp.md) example.
 
-Both bind their topology's folder into the clabgen nodes (`.:/clab`), so
+Each binds its topology's folder into the clabgen nodes (`.:/clab`), so
 what you change in a running lab is saved in `clab-<lab>/<node>/clabgen.yml`
-and comes back after a restart; the `gen*.yml` files only seed a fresh lab
+and comes back after a restart; the scenario files (`gen*.yml`,
+`client.yml`, `server.yml`) only seed a fresh lab
 ([saved config](../docs/configuration.md#saved-config)).
   The topology file lists every VLAN and what runs on it.
 
@@ -22,8 +27,9 @@ cd b2b && containerlab deploy -t b2b.clab.yml
 ```
 
 SR-SIM needs its image and a license: add `license: <file>` to the `sr1`
-node in `srsim/srsim.clab.yml` before deploying. Each agent's scenario is
-in its `gen*.yml`; `sr1.partial.txt` is the SR's configuration.
+node in `srsim/srsim.clab.yml` (or `dhcp/dhcp.clab.yml`) before deploying.
+Each agent's scenario is in its own YAML file; `sr1.partial.txt` is the
+SR's configuration.
 
 To run a local build of clabgen instead of the latest release, set
 `CLABGEN_IMAGE=ghcr.io/ripnet/clabgen:dev` (see

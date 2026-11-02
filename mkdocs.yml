@@ -24,6 +24,9 @@ nav:
       - OSPF: ospf.md
       - LLDP: lldp.md
       - DHCP: dhcp.md
+  - Examples:
+      - examples/index.md
+      - DHCP subscribers: examples/dhcp.md
   - CLI: cli.md
   - Python and pytest: python.md
   - API: api.md

@@ -1,0 +1,29 @@
+# DHCP subscribers behind a relay: clabgen clients and a clabgen server
+# either side of a Nokia SR-SIM.
+#   client:eth1 -- sr1:1/1/c1/1 (access, untagged): IES "subscribers", interface
+#     10.0.100.1/24, 2001:db8:100::1/64, relaying DHCPv4 and DHCPv6 to the
+#     server and sending router advertisements; one client (client1) and a
+#     group of ten (subscribers), each with a DHCPv4 and a DHCPv6 client
+#     (address and a delegated /56)
+#   server:eth1 -- sr1:1/1/c2/1 (network): Base router interface 10.0.200.1/24,
+#     2001:db8:200::1/64; the DHCPv4 and DHCPv6 servers at .10 / ::10
+name: dhcp
+topology:
+  nodes:
+    sr1:
+      kind: nokia_srsim
+      image: nokia_srsim:26.10.R1
+      startup-config: sr1.partial.txt
+    client:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]   # the topology folder: the scenario, and the saved config in clab-<lab>/client/
+      env: {CLABGEN_SCENARIO: client.yml}
+    server:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: server.yml}
+  links:
+    - endpoints: [client:eth1, sr1:1/1/c1/1]
+    - endpoints: [server:eth1, sr1:1/1/c2/1]

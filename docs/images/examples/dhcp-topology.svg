@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1210 390" width="1210" height="390" role="img" aria-label="client agent, SR-SIM sr1, server agent; DHCP relayed by sr1">
+<style>
+  .box { fill: #f6f8fa; stroke-width: 2.5; }
+  .agent { stroke: #2563eb; }
+  .router { stroke: #0f766e; }
+  .title { font: 600 26px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #1f2328; }
+  .kind { font: 17px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #59636e; }
+  .line { font: 19px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #1f2328; }
+  .addr { font: 16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #1f2328; }
+  .port { font: 16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #59636e; }
+  .flowtxt { font: 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #59636e; }
+  .wire { stroke: #8c959f; stroke-width: 3; }
+  .flow { stroke: #d97706; stroke-width: 2.5; fill: none; stroke-dasharray: 8 5; }
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d97706"/></marker></defs>
+<rect x="20" y="40" width="240" height="190" rx="10" class="box agent"/>
+<text x="140.0" y="80" class="title" text-anchor="middle">client</text>
+<text x="140.0" y="106" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="140.0" y="148" class="line" text-anchor="middle">client1</text>
+<text x="140.0" y="176" class="line" text-anchor="middle">subscribers ×10</text>
+<text x="140.0" y="204" class="line" text-anchor="middle">DHCPv4 + DHCPv6</text>
+<rect x="450" y="40" width="300" height="190" rx="10" class="box router"/>
+<text x="600.0" y="80" class="title" text-anchor="middle">sr1</text>
+<text x="600.0" y="106" class="kind" text-anchor="middle">Nokia SR-SIM</text>
+<text x="600.0" y="148" class="line" text-anchor="middle">DHCP relay v4 + v6</text>
+<text x="600.0" y="176" class="line" text-anchor="middle">router advertisements</text>
+<text x="600.0" y="204" class="line" text-anchor="middle">routes to each /56</text>
+<rect x="940" y="40" width="250" height="190" rx="10" class="box agent"/>
+<text x="1065.0" y="80" class="title" text-anchor="middle">server</text>
+<text x="1065.0" y="106" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="1065.0" y="148" class="line" text-anchor="middle">10.0.200.10</text>
+<text x="1065.0" y="176" class="line" text-anchor="middle">2001:db8:200::10</text>
+<text x="1065.0" y="204" class="line" text-anchor="middle">DHCP servers v4 + v6</text>
+<line x1="260" y1="135.0" x2="450" y2="135.0" class="wire"/>
+<text x="268" y="123.0" class="port" text-anchor="start">eth1</text>
+<text x="442" y="123.0" class="port" text-anchor="end">1/1/c1/1</text>
+<text x="355.0" y="165.0" class="addr" text-anchor="middle">10.0.100.0/24</text>
+<text x="355.0" y="189.0" class="addr" text-anchor="middle">2001:db8:100::/64</text>
+<line x1="750" y1="135.0" x2="940" y2="135.0" class="wire"/>
+<text x="758" y="123.0" class="port" text-anchor="start">1/1/c2/1</text>
+<text x="932" y="123.0" class="port" text-anchor="end">eth1</text>
+<text x="845.0" y="165.0" class="addr" text-anchor="middle">10.0.200.0/24</text>
+<text x="845.0" y="189.0" class="addr" text-anchor="middle">2001:db8:200::/64</text>
+<path d="M140.0,238 V300 H550.0 V240" class="flow" marker-end="url(#arrow)"/>
+<path d="M650.0,238 V300 H1065.0 V240" class="flow" marker-end="url(#arrow)"/>
+<text x="345.0" y="332" class="flowtxt" text-anchor="middle">Discover, Solicit</text>
+<text x="345.0" y="356" class="flowtxt" text-anchor="middle">(broadcast, multicast)</text>
+<text x="857.5" y="332" class="flowtxt" text-anchor="middle">relayed by unicast; giaddr or</text>
+<text x="857.5" y="356" class="flowtxt" text-anchor="middle">link-address picks the pool</text>
+</svg>
