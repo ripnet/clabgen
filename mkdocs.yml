@@ -22,6 +22,7 @@ nav:
       - IS-IS: isis.md
       - BGP: bgp.md
       - OSPF: ospf.md
+      - LDP: ldp.md
       - LLDP: lldp.md
       - DHCP: dhcp.md
   - Examples:
@@ -29,6 +30,7 @@ nav:
       - DHCP subscribers: examples/dhcp.md
       - Link failure convergence: examples/convergence.md
       - Traffic to BGP routes: examples/bgp-routes.md
+      - LDP with traffic in the LSPs: examples/ldp.md
   - CLI: cli.md
   - Python and pytest: python.md
   - API: api.md

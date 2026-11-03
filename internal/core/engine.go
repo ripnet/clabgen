@@ -246,7 +246,7 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 	var targets []protocol.Session
 	var tapRx []func(*pkt.Frame)
 	var stacks, l2 []*ipstack.Stack
-	isIP := f.EtherType == pkt.EtherTypeARP || f.EtherType == pkt.EtherTypeIPv4 || f.EtherType == pkt.EtherTypeIPv6
+	isIP := f.EtherType == pkt.EtherTypeARP || f.EtherType == pkt.EtherTypeIPv4 || f.EtherType == pkt.EtherTypeIPv6 || f.EtherType == pkt.EtherTypeMPLS
 	e.mu.RLock()
 	for _, d := range e.byPort[port] {
 		if d == from {

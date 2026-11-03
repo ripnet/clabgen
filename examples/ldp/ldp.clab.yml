@@ -1,0 +1,24 @@
+# LDP between a Nokia SR-SIM and a clabgen router, with traffic in the LSPs.
+#   sender:eth1 -- sr1:1/1/c1/1: 10.0.1.2/24, flows to the FEC prefixes
+#   router:eth1 -- sr1:1/1/c2/1: 10.0.2.2/30, IS-IS and LDP, LSR ID 192.0.2.2,
+#     labels for 10 prefixes; the SR pushes them, and clabgen takes them off
+name: ldp
+topology:
+  nodes:
+    sr1:
+      kind: nokia_srsim
+      image: nokia_srsim:26.10.R1
+      startup-config: sr1.partial.txt
+    sender:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]   # the topology folder: the scenario, and the saved config in clab-<lab>/sender/
+      env: {CLABGEN_SCENARIO: sender.yml}
+    router:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: router.yml}
+  links:
+    - endpoints: [sender:eth1, sr1:1/1/c1/1]
+    - endpoints: [router:eth1, sr1:1/1/c2/1]

@@ -158,6 +158,7 @@ type Stack struct {
 	ownFlows  map[uint32]int     // flow IDs sent from this device (not recorded)
 	locals    map[netip.Addr]int // AddLocal addresses (reference counts)
 	localSets []*prefixset.Set   // AddLocalPrefixes sets
+	labels    map[uint32]int     // AddLocalLabel labels (reference counts)
 	tcp       *tcpStack          // netstack for TCP (created on first use)
 
 	ipID     atomic.Uint32
@@ -441,8 +442,70 @@ func (s *Stack) HandleRx(f *pkt.Frame) bool {
 		return s.rxIPv4(f)
 	case pkt.EtherTypeIPv6:
 		return s.rxIPv6(f)
+	case pkt.EtherTypeMPLS:
+		return s.rxMPLS(f)
 	}
 	return false
+}
+
+// rxMPLS pops a label stack whose top label is ours and handles the IP
+// packet inside. There is no label switching: it's the end of the LSP.
+func (s *Stack) rxMPLS(f *pkt.Frame) bool {
+	b := f.Payload
+	if len(b) < 4 {
+		return false
+	}
+	top := binary.BigEndian.Uint32(b) >> 12
+	s.mu.Lock()
+	ours := s.labels[top] > 0
+	s.mu.Unlock()
+	if !ours {
+		return false
+	}
+	for {
+		if len(b) < 4 {
+			return false
+		}
+		bottom := b[2]&1 != 0
+		b = b[4:]
+		if bottom {
+			break
+		}
+	}
+	if len(b) == 0 {
+		return false
+	}
+	inner := *f
+	inner.Payload = b
+	switch b[0] >> 4 {
+	case 4:
+		inner.EtherType = pkt.EtherTypeIPv4
+		return s.rxIPv4(&inner)
+	case 6:
+		inner.EtherType = pkt.EtherTypeIPv6
+		return s.rxIPv6(&inner)
+	}
+	return false
+}
+
+// AddLocalLabel implements protocol.IP.
+func (s *Stack) AddLocalLabel(label uint32) func() {
+	s.mu.Lock()
+	if s.labels == nil {
+		s.labels = map[uint32]int{}
+	}
+	s.labels[label]++
+	s.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.mu.Lock()
+			if s.labels[label]--; s.labels[label] <= 0 {
+				delete(s.labels, label)
+			}
+			s.mu.Unlock()
+		})
+	}
 }
 
 // learn records ip → mac. With create false it only refreshes an existing

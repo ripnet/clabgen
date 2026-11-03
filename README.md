@@ -109,6 +109,9 @@ Good to know:
   linktrace, delay (DMM, 1DM), loss (SLM, LMM), test signal, AIS/LCK/CSF,
   proactive measurement sessions and fault injection; groups of MEPs (a
   hundred remote MEPs in one VPLS, say).
+- **LDP**: link and targeted sessions, labels both ways, and traffic in the
+  LSPs measured at clabgen; end sessions, go silent or withdraw labels
+  ([docs](docs/ldp.md)).
 - **IS-IS**: point-to-point and LAN, L1/L2, multi-topology, SR-MPLS,
   SRv6 and flex-algo, keychain authentication, BFD, graceful restart.
 - **OSPFv2 / OSPFv3**: areas (stub, NSSA, virtual links), segment routing,

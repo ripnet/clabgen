@@ -65,6 +65,10 @@ type IP interface {
 	// as AddLocal does, for as long as the set says so: a router's advertised
 	// routes. Call release to stop.
 	AddLocalPrefixes(set *prefixset.Set) (release func())
+	// AddLocalLabel makes the device take MPLS packets with this top label:
+	// it pops the stack and handles the IP packet inside (for it, as usual).
+	// Call release to stop.
+	AddLocalLabel(label uint32) (release func())
 	// IsLocal reports whether packets to addr are for this device: one of its
 	// addresses, a local address, or one in a local prefix set.
 	IsLocal(addr netip.Addr) bool

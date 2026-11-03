@@ -11,6 +11,7 @@ const (
 	EtherTypeIPv4 uint16 = 0x0800
 	EtherTypeARP  uint16 = 0x0806
 	EtherTypeIPv6 uint16 = 0x86dd
+	EtherTypeMPLS uint16 = 0x8847
 
 	ProtoICMP   uint8 = 1
 	ProtoTCP    uint8 = 6

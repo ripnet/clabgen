@@ -13,6 +13,7 @@ import "./protocols/packet";
 import "./protocols/isis";
 import "./protocols/lldp";
 import "./protocols/bgp";
+import "./protocols/ldp";
 import "./protocols/ospf";
 import "./protocols/dhcp";
 

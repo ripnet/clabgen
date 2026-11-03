@@ -1,0 +1,11 @@
+# Traffic to the FEC prefixes: 200 packets a second over 10 prefixes.
+devices:
+  - {name: sender, port: eth1, addresses: [10.0.1.2/24], gateway4: 10.0.1.1}
+protocols:
+  - name: to-fecs
+    type: icmp
+    device: sender
+    config:
+      destinations: [{prefix: 198.51.0.0/24, count: 10}]
+      rate: 200
+      auto_start: true

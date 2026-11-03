@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1210 380" width="1210" height="380" role="img" aria-label="sender agent, SR-SIM sr1, router agent with IS-IS and LDP">
+<style>
+  .box { fill: #22272e; stroke-width: 2.5; }
+  .agent { stroke: #4c8dff; }
+  .router { stroke: #2dd4bf; }
+  .title { font: 600 26px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #e6edf3; }
+  .kind { font: 17px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #9198a1; }
+  .line { font: 19px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #e6edf3; }
+  .port { font: 16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #9198a1; }
+  .note { font: 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #9198a1; }
+  .wire { stroke: #768390; stroke-width: 3; }
+  .flow { stroke: #f59e0b; stroke-width: 2.5; fill: none; stroke-dasharray: 8 5; }
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/></marker></defs>
+<rect x="20" y="30" width="260" height="220" rx="10" class="box agent"/>
+<text x="150.0" y="74" class="title" text-anchor="middle">sender</text>
+<text x="150.0" y="100" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="150.0" y="154" class="line" text-anchor="middle">one flow to</text>
+<text x="150.0" y="184" class="line" text-anchor="middle">10 prefixes</text>
+<rect x="475" y="30" width="260" height="220" rx="10" class="box router"/>
+<text x="605.0" y="74" class="title" text-anchor="middle">sr1</text>
+<text x="605.0" y="100" class="kind" text-anchor="middle">Nokia SR-SIM</text>
+<text x="605.0" y="154" class="line" text-anchor="middle">pushes the labels</text>
+<text x="605.0" y="184" class="line" text-anchor="middle">it learned</text>
+<rect x="930" y="30" width="260" height="220" rx="10" class="box agent"/>
+<text x="1060.0" y="74" class="title" text-anchor="middle">router</text>
+<text x="1060.0" y="100" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="1060.0" y="154" class="line" text-anchor="middle">IS-IS and LDP</text>
+<text x="1060.0" y="184" class="line" text-anchor="middle">labels for 10 prefixes,</text>
+<text x="1060.0" y="214" class="line" text-anchor="middle">takes them off</text>
+<line x1="280" y1="140.0" x2="475" y2="140.0" class="wire"/>
+<text x="288" y="128.0" class="port" text-anchor="start">eth1</text>
+<text x="467" y="128.0" class="port" text-anchor="end">1/1/c1/1</text>
+<line x1="735" y1="140.0" x2="930" y2="140.0" class="wire"/>
+<text x="743" y="128.0" class="port" text-anchor="start">1/1/c2/1</text>
+<text x="922" y="128.0" class="port" text-anchor="end">eth1</text>
+<text x="832.5" y="170.0" class="note" text-anchor="middle">IS-IS, LDP</text>
+<path d="M150.0,258 V294 H1060.0 V260" class="flow" marker-end="url(#arrow)"/>
+<text x="605.0" y="326" class="note" text-anchor="middle">labelled by sr1 on the way, with the labels clabgen advertised</text>
+</svg>

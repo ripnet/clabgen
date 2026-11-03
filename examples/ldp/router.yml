@@ -1,0 +1,23 @@
+# An IS-IS and LDP router. IS-IS gives the SR routes to its loopback and the
+# prefixes; LDP gives it labels for them.
+devices:
+  - {name: core, port: eth1, addresses: [10.0.2.2/30], gateway4: 10.0.2.1}
+protocols:
+  - name: isis
+    type: isis
+    device: core
+    config:
+      system_id: 0000.0000.0002
+      hostname: router
+      level: L2
+      areas: ["49.0001"]
+      loopbacks: [192.0.2.2/32]
+      prefixes: [{prefix: 198.51.0.0/24, count: 10}]
+  - name: ldp
+    type: ldp
+    device: core
+    config:
+      router_id: 192.0.2.2
+      fecs:
+        - {prefix: 192.0.2.2/32, mode: implicit-null}
+        - {prefix: 198.51.0.0/24, count: 10}
