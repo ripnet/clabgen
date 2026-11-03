@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	"github.com/ripnet/clabgen/internal/events"
 	"github.com/ripnet/clabgen/internal/flowrx"
 	"github.com/ripnet/clabgen/internal/ipstack"
+	"github.com/ripnet/clabgen/internal/outage"
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/protocol"
 )
@@ -958,6 +960,79 @@ func (e *Engine) ReceivedFlows(name string) ([]ReceivedFlow, error) {
 		}
 	}
 	return out, nil
+}
+
+// ConvergenceFlow is one flow's report from one side of it.
+type ConvergenceFlow struct {
+	Side   string `json:"side"`           // "sender" or "receiver"
+	Name   string `json:"name,omitempty"` // the sender's protocol instance
+	Device string `json:"device"`
+	outage.Flow
+}
+
+// Convergence reports what this agent's flows and the flows its devices
+// receive lost since a moment; ids, if not empty, narrows it to those flows.
+func (e *Engine) Convergence(since, now time.Time, ids []string) []ConvergenceFlow {
+	wanted := func(id string) bool { return len(ids) == 0 || slices.Contains(ids, id) }
+	e.mu.RLock()
+	var senders []*instance
+	for _, in := range e.insts {
+		if _, ok := in.sess.(protocol.FlowMeasurer); ok {
+			senders = append(senders, in)
+		}
+	}
+	devs := make([]*device, 0, len(e.devices))
+	for _, d := range e.devices {
+		devs = append(devs, d)
+	}
+	e.mu.RUnlock()
+	out := []ConvergenceFlow{}
+	for _, in := range senders {
+		e.mu.RLock()
+		sess, spec := in.sess, in.spec
+		e.mu.RUnlock()
+		if m, ok := sess.(protocol.FlowMeasurer); ok {
+			if f := m.Convergence(since, now); wanted(f.FlowID) {
+				out = append(out, ConvergenceFlow{Side: "sender", Name: spec.Name, Device: spec.Device, Flow: f})
+			}
+		}
+	}
+	sort.Slice(devs, func(i, j int) bool { return devs[i].name < devs[j].name })
+	type seen struct {
+		device string
+		rx     flowrx.Received
+	}
+	received := map[string][]seen{}
+	for _, d := range devs {
+		for _, f := range d.ip.Convergence(since, now) {
+			if wanted(f.FlowID) {
+				received[f.FlowID] = append(received[f.FlowID], seen{d.name, f})
+			}
+		}
+	}
+	for id, list := range received {
+		// Several devices: the traffic moved between them, or was flooded.
+		if len(list) > 1 {
+			ws := make([]outage.Window, len(list))
+			names := make([]string, len(list))
+			for i, r := range list {
+				ws[i], names[i] = r.rx.Window, r.device
+			}
+			if r, moved := outage.Combine(ws, since, now, now.Add(-flowrx.SettleTime)); moved {
+				out = append(out, ConvergenceFlow{Side: "receiver", Device: strings.Join(names, ", "),
+					Flow: outage.Flow{FlowID: id, OneWay: true, Running: true, Report: r}})
+				continue
+			}
+		}
+		for _, r := range list {
+			out = append(out, ConvergenceFlow{Side: "receiver", Device: r.device, Flow: r.rx.Flow})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		return a.FlowID+a.Side+a.Device < b.FlowID+b.Side+b.Device
+	})
+	return out
 }
 
 // ClearReceivedFlows forgets received flows on one device (or all, if

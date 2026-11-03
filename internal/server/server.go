@@ -285,6 +285,28 @@ func (s *Server) ClearReceivedFlows(ctx context.Context, r *connect.Request[v1.C
 	return connect.NewResponse(&v1.ClearReceivedFlowsResponse{}), connectErr(s.eng.ClearReceivedFlows(r.Msg.Device, id))
 }
 
+func (s *Server) GetConvergence(ctx context.Context, r *connect.Request[v1.GetConvergenceRequest]) (*connect.Response[v1.GetConvergenceResponse], error) {
+	now := time.Now()
+	since := now.Add(-5 * time.Second)
+	if r.Msg.Since != nil {
+		since = r.Msg.Since.AsTime()
+	}
+	out := &v1.GetConvergenceResponse{Now: timestamppb.New(now)}
+	for _, f := range s.eng.Convergence(since, now, r.Msg.FlowIds) {
+		st, err := toStruct(f)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+		out.Flows = append(out.Flows, st)
+	}
+	if r.Msg.Since != nil {
+		for _, e := range s.eng.Events().Since(since) {
+			out.Events = append(out.Events, eventPB(e))
+		}
+	}
+	return connect.NewResponse(out), nil
+}
+
 func (s *Server) ListProtocolTypes(ctx context.Context, _ *connect.Request[v1.ListProtocolTypesRequest]) (*connect.Response[v1.ListProtocolTypesResponse], error) {
 	out := &v1.ListProtocolTypesResponse{}
 	for _, t := range protocol.Types() {

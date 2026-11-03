@@ -198,3 +198,59 @@ started or was last cleared. Any limit can be left out.
 The Flows page shows every agent's flows with their verdicts, and starts,
 stops or clears them all. `clabgenctl protocols` adds `checks=pass` or
 `checks=fail (…)`, and the status has the measured value of each check.
+
+## Convergence tests
+
+A convergence test measures what a failure costs running flows: for each
+flow its **loss duration**, the lost packets × the send interval, with the
+time from the failure to its first and last lost packet. An example:
+[Link failure convergence](examples/convergence.md).
+
+On the **Flows** page, **Convergence test** covers the flows listed (the
+filter narrows them). Pick the failure and optionally its repair, each one
+of a port going down or up, a protocol action, or a group action, or say
+you'll make the failure yourself, on the router for instance. The same from
+the CLI, where the failure and repair are shell commands, and from Python:
+
+```sh
+clabgenctl --lab b2b convergence --trigger 'clabgenctl -s gen2 port down eth1' \
+                                 --restore 'clabgenctl -s gen2 port up eth1'
+```
+```python
+with lab.convergence() as c:
+    lab["gen2"].port_down("eth1")
+c.assert_restored(max_ms=500)
+print(c["ping1"].loss_ms, c.worst_ms, c.median_ms, c.p95_ms)
+```
+
+The test first checks the flows are clean (running, and nothing lost in the
+last 5 s), since it couldn't tell earlier loss from what the failure costs.
+It then runs the step and waits for every flow to stay clean for a while, or
+gives up and reports what it has. Statistics and checks are left alone.
+
+| Result | |
+|---|---|
+| `no impact` | nothing lost |
+| `restored` | lost traffic, and it has come back |
+| `not restored` | still losing traffic when the test gave up |
+| `stopped` | the flow stopped sending; it isn't counted |
+| `no receiver` | a one-way flow that no agent receives, so it can't be measured |
+
+What to keep in mind:
+
+- **Resolution** is the send interval: 200 packets a second measures to
+  5 ms. Faster is finer, within what the router under test forwards.
+- **Clean for** (`--settle`, `settle=`) must be longer than the failure takes
+  to reach traffic. A silent failure that a 90 s hold timer detects needs
+  more than 90 s, or the test reports `no impact` before anything is lost. It
+  must also cover traffic moving back after a repair.
+- **Partial loss** shows as a last loss much later than the loss duration:
+  one of four ECMP paths down for 400 ms loses about 100 ms of a flow spread
+  across them, over 400 ms.
+- **An echo flow** is measured by its sender and can't say which direction
+  failed. **A one-way flow** is measured by the device that receives it, so
+  gives you one direction. If its traffic moves to another device on the same
+  agent, the devices' views are combined. If it moves to another agent, the
+  first shows `not restored`: use an echo flow for that.
+- **The events** from each agent during the test are reported alongside, in
+  time order, so you can see what the protocols did and when.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import time
 import urllib.request
@@ -88,6 +89,107 @@ class FlowsFailed(AssertionError):
         super().__init__("\n".join(lines))
         self.failed = failed
         self.results = results
+
+
+NO_RECEIVER = "no_receiver"
+
+
+def _merge_convergence(rows: list[dict]) -> list[dict]:
+    """Each flow's measurement: an echo flow's from its sender, a one-way
+    flow's from its receivers (it can't know its own loss)."""
+    senders = {r["flow_id"]: r for r in rows if r.get("side") == "sender"}
+    received = {r["flow_id"] for r in rows if r.get("side") == "receiver"}
+    out = []
+    for r in rows:
+        s = senders.get(r["flow_id"])
+        if r.get("side") == "sender":
+            if not r.get("one_way"):
+                out.append(r)
+            elif r["flow_id"] not in received:
+                out.append({**r, "status": NO_RECEIVER} if r.get("running") else r)
+        elif s is None:
+            out.append(r)
+        elif s.get("one_way"):
+            out.append({**r, "name": s.get("name", ""), **({} if s.get("running") else {"status": "stopped"})})
+    return sorted(out, key=lambda f: (f.get("name", ""), f.get("agent", ""), f.get("device", "")))
+
+
+@dataclass
+class ConvergenceFlow:
+    """One flow's result. loss_ms is the loss duration: lost packets × send
+    interval (resolution_ms). first_loss_ms and last_loss_ms are from the
+    start of the measurement, when known; a much longer time between them
+    than loss_ms means partial loss, such as one ECMP path failing."""
+
+    name: str
+    agent: str
+    device: str
+    flow_id: str
+    status: str
+    loss_ms: float
+    lost: int
+    first_loss_ms: float | None
+    last_loss_ms: float | None
+    resolution_ms: float
+    truncated: bool
+    outages: list[dict] = field(repr=False, default_factory=list)
+
+    @classmethod
+    def _of(cls, r: dict) -> "ConvergenceFlow":
+        return cls(name=r.get("name") or r.get("flow_id", ""), agent=r.get("agent", ""), device=r.get("device", ""), flow_id=r.get("flow_id", ""),
+                   status=r.get("status", ""), loss_ms=r.get("loss_ms", 0.0), lost=int(r.get("lost", 0)),
+                   first_loss_ms=r.get("first_loss_ms"), last_loss_ms=r.get("last_loss_ms"),
+                   resolution_ms=r.get("resolution_ms", 0.0), truncated=bool(r.get("truncated")), outages=r.get("outages", []))
+
+    def summary(self) -> str:
+        return f"{self.name} ({self.agent}/{self.device}): {self.status.replace('_', ' ')}, loss {self.loss_ms:g} ms, {self.lost} packets"
+
+
+class ConvergenceFailed(AssertionError):
+    pass
+
+
+class Convergence:
+    """What Lab.convergence() measured; flows and events are set when the
+    with block ends and the flows have settled."""
+
+    def __init__(self) -> None:
+        self.flows: list[ConvergenceFlow] = []
+        self.events: list[dict] = []
+
+    def __getitem__(self, flow: str) -> ConvergenceFlow:
+        m = [f for f in self.flows if flow in (f.name, f"{f.agent}/{f.name}", f.flow_id)]
+        if len(m) != 1:
+            raise KeyError(f"{flow!r}: {'no flow' if not m else 'more than one, use agent/name'}")
+        return m[0]
+
+    @property
+    def measured(self) -> list[ConvergenceFlow]:
+        return [f for f in self.flows if f.status not in ("stopped", NO_RECEIVER)]
+
+    def _rank(self, p: float) -> float:
+        loss = sorted(f.loss_ms for f in self.measured)
+        return loss[max(0, math.ceil(p * len(loss)) - 1)] if loss else 0.0
+
+    @property
+    def worst_ms(self) -> float:
+        return self._rank(1)
+
+    @property
+    def median_ms(self) -> float:
+        return self._rank(0.5)
+
+    @property
+    def p95_ms(self) -> float:
+        return self._rank(0.95)
+
+    def assert_restored(self, max_ms: float | None = None) -> None:
+        """Raise ConvergenceFailed if a flow never recovered, or lost more
+        than max_ms of traffic."""
+        bad = [f for f in self.measured if f.status == "not_restored" or (max_ms is not None and f.loss_ms > max_ms)]
+        if bad:
+            limit = f" (limit {max_ms:g} ms)" if max_ms is not None else ""
+            raise ConvergenceFailed(f"{len(bad)} of {len(self.measured)} flows{limit}:\n" + "\n".join("  " + f.summary() for f in bad))
 
 
 class Measurement:
@@ -284,6 +386,56 @@ class Lab(Mapping[str, Agent]):
         yield m
         time.sleep(settle)
         m.results = self.flow_results(names) if sel else []
+
+    def _convergence_rows(self, since: dict[str, str] | None, ids: list[str]) -> dict[str, dict]:
+        return self._each(lambda a: a.convergence(since[a.name] if since else None, ids))
+
+    @contextmanager
+    def convergence(self, flows: Iterable[str] | None = None, settle: float = 5.0, timeout: float = 60.0,
+                    force: bool = False) -> Iterator[Convergence]:
+        """Measure what the with block's failure costs running flows: loss
+        duration per flow, without touching their statistics or checks. For
+        the repair, measure again in another with block.
+
+            with lab.convergence() as c:
+                lab["gen2"].port_down("eth1")
+            c.assert_restored(max_ms=500)
+            print(c["ping1"].loss_ms, c.worst_ms)
+
+        It raises ClabgenError if flows aren't clean to start with, unless
+        force. settle is how long flows must stay clean afterwards, and must
+        be longer than the failure takes to reach traffic; timeout gives up
+        waiting and reports what it has.
+        """
+        sel = set(self._select(flows))
+        first = self._convergence_rows(None, [])
+        names = {(f.get("name"), n): f["flow_id"] for n, r in first.items() for f in r.get("flows", []) if f.get("side") == "sender"}
+        ids = [i for (name, n), i in names.items() if (n, name) in sel] if flows is not None else []
+        rows = [{**f, "agent": n} for n, r in first.items() for f in r.get("flows", []) if not ids or f["flow_id"] in ids]
+        merged = _merge_convergence(rows)
+        live = [f for f in merged if f["status"] != "stopped"]
+        if not live:
+            raise ClabgenError("failed_precondition", "no flows running: start them first")
+        bad = [f"{f.get('name') or f['flow_id']} has no receiver in this lab" if f["status"] == NO_RECEIVER
+               else f"{f.get('name') or f['flow_id']} lost {f.get('lost')} packets in the last 5 s"
+               for f in live if f["status"] == NO_RECEIVER or int(f.get("lost", 0)) > 0]
+        if bad and not force:
+            raise ClabgenError("failed_precondition", "flows aren't clean (force=True measures anyway): " + "; ".join(bad))
+        marks = self._convergence_rows(None, ids)
+        since = {n: marks[n]["now"] for n in self.agents}
+        c = Convergence()
+        yield c
+        end = time.monotonic() + timeout
+        while True:
+            got = self._convergence_rows(since, ids)
+            merged = _merge_convergence([{**f, "agent": n} for n, r in got.items() for f in r.get("flows", [])])
+            settled = all(f["status"] in ("stopped", NO_RECEIVER) or (f["status"] != "not_restored" and f.get("clean_ms", 0) >= settle * 1000)
+                          for f in merged)
+            if settled or time.monotonic() >= end:
+                c.flows = [ConvergenceFlow._of(f) for f in merged]
+                c.events = sorted(({**e, "agent": n} for n, r in got.items() for e in r.get("events", [])), key=lambda e: e.get("time", ""))
+                return
+            time.sleep(0.25)
 
     def wait_flows_pass(self, flows: Iterable[str] | None = None, timeout: float = 60, interval: float = 1) -> list[FlowResult]:
         """Wait until every flow with checks passes, e.g. while a lab

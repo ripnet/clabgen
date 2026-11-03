@@ -14,6 +14,9 @@
   of ten, with prefix delegation) behind a Nokia SR-SIM relay, served by
   a clabgen DHCP server. Walked through in the docs'
   [DHCP subscribers](../docs/examples/dhcp.md) example.
+- [`convergence`](convergence): what a link failure costs traffic across a
+  Nokia SR-SIM, with and without BFD. Walked through in the docs'
+  [Link failure convergence](../docs/examples/convergence.md) example.
 
 Each binds its topology's folder into the clabgen nodes (`.:/clab`), so
 what you change in a running lab is saved in `clab-<lab>/<node>/clabgen.yml`
@@ -27,7 +30,7 @@ cd b2b && containerlab deploy -t b2b.clab.yml
 ```
 
 SR-SIM needs its image and a license: add `license: <file>` to the `sr1`
-node in `srsim/srsim.clab.yml` (or `dhcp/dhcp.clab.yml`) before deploying.
+node in `srsim/srsim.clab.yml` (or `dhcp/dhcp.clab.yml`, `convergence/convergence.clab.yml`) before deploying.
 Each agent's scenario is in its own YAML file; `sr1.partial.txt` is the
 SR's configuration.
 

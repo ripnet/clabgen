@@ -107,3 +107,48 @@ func TestRecentRing(t *testing.T) {
 		t.Fatalf("formatted %d details, want %d", calls, recentLen)
 	}
 }
+
+// Outages are dated by when the packets were sent, and a run still open is
+// an outage going on.
+func TestTrackerOutages(t *testing.T) {
+	tr := New(10*time.Millisecond, 100*time.Millisecond)
+	t0 := time.Unix(1_000_000, 0)
+	at := func(i int) time.Time { return t0.Add(time.Duration(i) * 10 * time.Millisecond) }
+	for i := 0; i < 100; i++ { // 20..49 lost: 300 ms, from +200 ms
+		tr.Sent(uint64(i), at(i))
+		if i < 20 || i >= 50 {
+			tr.Received(uint64(i), at(i).Add(time.Millisecond), time.Time{}, nil)
+		}
+		if i == 49 {
+			tr.Expire(at(49).Add(100*time.Millisecond), false)
+		}
+	}
+	r := tr.Outages(t0, at(150))
+	if r.Status != "restored" || r.Lost != 30 || r.LossMs != 300 || *r.FirstLossMs != 200 || *r.LastLossMs != 500 {
+		t.Fatalf("%+v", r)
+	}
+	if r.CleanMs != 900 { // now (1500) - timeout (100) - last loss (500)
+		t.Fatalf("clean %v", r.CleanMs)
+	}
+	if r := tr.Outages(at(60), at(150)); r.Status != "no_impact" || r.Lost != 0 {
+		t.Fatalf("later moment: %+v", r)
+	}
+	tr.Sent(100, at(100))
+	tr.Expire(at(120), false)
+	if r := tr.Outages(t0, at(120)); r.Status != "not_restored" || r.Lost != 31 || r.CleanMs != 0 {
+		t.Fatalf("open: %+v", r)
+	}
+}
+
+// A one-way flow's tracker only learns of failed sends.
+func TestTrackerOutagesLocalFailure(t *testing.T) {
+	tr := New(10*time.Millisecond, 100*time.Millisecond)
+	t0 := time.Unix(1_000_000, 0)
+	tr.SentNoReply(t0)
+	tr.TxError(1, t0.Add(10*time.Millisecond), errors.New("down"))
+	tr.TxError(2, t0.Add(20*time.Millisecond), errors.New("down"))
+	tr.SentNoReply(t0.Add(30 * time.Millisecond))
+	if r := tr.Outages(t0, t0.Add(time.Second)); r.Lost != 2 || *r.FirstLossMs != 10 || *r.LastLossMs != 30 {
+		t.Fatalf("%+v", r)
+	}
+}

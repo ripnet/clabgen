@@ -13,6 +13,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/ripnet/clabgen/internal/outage"
 )
 
 const (
@@ -29,6 +31,8 @@ const (
 type gap struct {
 	lo, hi uint64
 	opened time.Time
+	// Send times: the packet expected first, and the one that showed the gap.
+	from, to time.Time
 }
 
 // Signature layout, at the start of a flow packet's payload: magic
@@ -77,6 +81,7 @@ type entry struct {
 	dport     uint16
 	first     time.Time
 	last      time.Time
+	firstSent time.Time
 	lastSent  time.Time
 	interval  float64 // EWMA of send-time spacing, seconds
 	base, max uint64
@@ -99,6 +104,7 @@ type entry struct {
 	recentRx  [10]uint64 // per-second ring for the current rate
 	recentT   [10]int64
 	gaps      []gap
+	log       outage.Log
 }
 
 // fill removes seq from the open gaps (a reordered packet arrived).
@@ -134,8 +140,18 @@ func (e *entry) settle(now time.Time) {
 		e.outages++
 		e.outLast, e.outTotal = ms, e.outTotal+ms
 		e.outMax = math.Max(e.outMax, ms)
+		e.log.Add(outage.Outage{Start: g.from, End: g.to, Lost: g.hi - g.lo + 1}, e.sendInterval(g))
 	}
 	e.gaps = keep
+}
+
+// sendInterval is the flow's packet spacing, or if it isn't known yet
+// (no two consecutive packets so far) an estimate from a gap.
+func (e *entry) sendInterval(g gap) time.Duration {
+	if e.interval > 0 {
+		return time.Duration(e.interval * float64(time.Second))
+	}
+	return g.to.Sub(g.from) / time.Duration(g.hi-g.lo+1)
 }
 
 // Table is one device's received-flow table. Safe for concurrent use.
@@ -162,14 +178,17 @@ func (t *Table) Record(p Packet) {
 		e = &entry{key: k, first: p.Rx, base: p.Seq, max: p.Seq, latMin: math.Inf(1)}
 		t.m[k] = e
 		e.seen[p.Seq%window] = p.Seq + 1
-		e.lastSent = p.Sent
+		e.firstSent, e.lastSent = p.Sent, p.Sent
 	} else {
 		switch {
 		case p.Seq > e.max:
 			if missing := p.Seq - e.max - 1; missing > 0 {
 				e.lost += missing
 				if len(e.gaps) < 256 {
-					e.gaps = append(e.gaps, gap{lo: e.max + 1, hi: p.Seq - 1, opened: p.Rx})
+					from := p.Sent.Add(-time.Duration(float64(p.Sent.Sub(e.lastSent)) * float64(missing) / float64(missing+1)))
+					e.gaps = append(e.gaps, gap{lo: e.max + 1, hi: p.Seq - 1, opened: p.Rx, from: from, to: p.Sent})
+				} else {
+					e.log.Dropped(p.Sent)
 				}
 			} else if d := p.Sent.Sub(e.lastSent).Seconds(); d > 0 {
 				if e.interval == 0 {
@@ -304,6 +323,49 @@ func (t *Table) Snapshot(now time.Time) []Flow {
 		out = append(out, f)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Last > out[j].Last })
+	return out
+}
+
+// SettleTime is how long after a packet its gaps are known for certain.
+const SettleTime = settleAfter
+
+// Received is one flow's report from this table, and what it saw of the flow
+// for combining with other receivers' views.
+type Received struct {
+	outage.Flow
+	Window outage.Window
+}
+
+// silentAfter is how long a flow may go quiet, in send intervals (and at
+// least minSilence), before it counts as an outage going on: a receiver
+// only sees a gap once packets return.
+const (
+	silentAfter = 5
+	minSilence  = 200 * time.Millisecond
+)
+
+// Convergence reports what each flow lost since a moment, leaving out flows
+// that had gone quiet well before it.
+func (t *Table) Convergence(since, now time.Time) []Received {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([]Received, 0, len(t.m))
+	for _, e := range t.m {
+		if e.last.Before(since.Add(-time.Second)) {
+			continue
+		}
+		e.settle(now)
+		iv := time.Duration(e.interval * float64(time.Second))
+		var open *outage.Outage
+		if idle := now.Sub(e.last); iv > 0 && idle > max(silentAfter*iv, minSilence) {
+			open = &outage.Outage{Start: e.lastSent.Add(iv), End: now, Lost: uint64(idle / iv)}
+		}
+		out = append(out, Received{
+			Flow:   outage.Flow{FlowID: flowID(e.key.FlowID), OneWay: true, Running: true, Report: e.log.Report(since, now.Add(-settleAfter), iv, open)},
+			Window: outage.Window{First: e.firstSent, Last: e.lastSent, Interval: iv, Outages: e.log.Since(since)},
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].FlowID < out[j].FlowID })
 	return out
 }
 

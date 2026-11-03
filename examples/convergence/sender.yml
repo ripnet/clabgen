@@ -1,0 +1,19 @@
+# The traffic, 200 packets a second per flow, so a loss duration is good to
+# 5 ms. (SR-SIM starts dropping above a few hundred packets a second.)
+devices:
+  - {name: sender, port: eth1, addresses: [10.0.1.2/24], gateway4: 10.0.1.1}
+protocols:
+  # Echo flows: the sender measures them, from the replies.
+  - name: ping-bfd
+    type: icmp
+    device: sender
+    config: {destination: 192.0.2.10, rate: 200, auto_start: true}
+  - name: ping-plain
+    type: icmp
+    device: sender
+    config: {destination: 192.0.2.20, rate: 200, auto_start: true}
+  # A one-way flow: the far device measures it, from the gaps.
+  - name: stream-plain
+    type: udp
+    device: sender
+    config: {destination: 192.0.2.20, dst_port: 5001, rate: 200, auto_start: true}

@@ -1,0 +1,43 @@
+/configure card 1 card-type iom-1
+/configure card 1 mda 1 mda-type me6-100gb-qsfp28
+/configure port 1/1/c1 admin-state enable
+/configure port 1/1/c1 connector breakout c1-100g
+/configure port 1/1/c1/1 admin-state enable
+/configure port 1/1/c1/1 ethernet mode network
+/configure port 1/1/c2 admin-state enable
+/configure port 1/1/c2 connector breakout c1-100g
+/configure port 1/1/c2/1 admin-state enable
+/configure port 1/1/c2/1 ethernet mode network
+/configure port 1/1/c2/1 ethernet encap-type dot1q
+/configure port 1/1/c3 admin-state enable
+/configure port 1/1/c3 connector breakout c1-100g
+/configure port 1/1/c3/1 admin-state enable
+/configure port 1/1/c3/1 ethernet mode network
+/configure port 1/1/c3/1 ethernet encap-type dot1q
+/configure router "Base" interface "system" ipv4 primary address 192.0.2.1 prefix-length 32
+/configure router "Base" interface "to-sender" port 1/1/c1/1
+/configure router "Base" interface "to-sender" ipv4 primary address 10.0.1.1 prefix-length 24
+/configure router "Base" interface "bfd-primary" port 1/1/c2/1:10
+/configure router "Base" interface "bfd-primary" ipv4 primary address 10.0.10.1 prefix-length 30
+/configure router "Base" interface "bfd-primary" ipv4 bfd admin-state enable
+/configure router "Base" interface "bfd-primary" ipv4 bfd transmit-interval 100
+/configure router "Base" interface "bfd-primary" ipv4 bfd receive 100
+/configure router "Base" interface "bfd-primary" ipv4 bfd multiplier 3
+/configure router "Base" interface "bfd-backup" port 1/1/c3/1:10
+/configure router "Base" interface "bfd-backup" ipv4 primary address 10.0.11.1 prefix-length 30
+/configure router "Base" interface "plain-primary" port 1/1/c2/1:20
+/configure router "Base" interface "plain-primary" ipv4 primary address 10.0.20.1 prefix-length 30
+/configure router "Base" interface "plain-backup" port 1/1/c3/1:20
+/configure router "Base" interface "plain-backup" ipv4 primary address 10.0.21.1 prefix-length 30
+/configure router "Base" isis 0 admin-state enable
+/configure router "Base" isis 0 area-address [49.0001]
+/configure router "Base" isis 0 level-capability 2
+/configure router "Base" isis 0 level 2 wide-metrics-only true
+/configure router "Base" isis 0 interface "system" passive true
+/configure router "Base" isis 0 interface "bfd-primary" interface-type point-to-point
+/configure router "Base" isis 0 interface "bfd-primary" bfd-liveness ipv4 include-bfd-tlv true
+/configure router "Base" isis 0 interface "bfd-backup" interface-type point-to-point
+/configure router "Base" isis 0 interface "plain-primary" interface-type point-to-point
+/configure router "Base" isis 0 interface "plain-backup" interface-type point-to-point
+/configure router "Base" isis 0 interface "bfd-backup" level 2 metric 20
+/configure router "Base" isis 0 interface "plain-backup" level 2 metric 20

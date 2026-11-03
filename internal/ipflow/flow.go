@@ -20,6 +20,7 @@ import (
 
 	"github.com/ripnet/clabgen/internal/flowrx"
 	"github.com/ripnet/clabgen/internal/flowstats"
+	"github.com/ripnet/clabgen/internal/outage"
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/protocol"
 )
@@ -468,6 +469,23 @@ func (f *Flow) BaseStatus() Base {
 		s.Elapsed = end.Sub(f.started).Seconds()
 	}
 	return s
+}
+
+// Convergence reports what the flow lost since a moment.
+func (f *Flow) Convergence(since, now time.Time) outage.Flow {
+	f.mu.Lock()
+	running := f.state == StateRunning
+	f.mu.Unlock()
+	return Convergence(f.FlowID, f.Echo, running, f.Tracker(), since, now)
+}
+
+// Convergence is a flow's report from its tracker, for flow types with one.
+func Convergence(id uint32, echo, running bool, tr *flowstats.Tracker, since, now time.Time) outage.Flow {
+	r := tr.Outages(since, now)
+	if !running {
+		r.Status = outage.Stopped
+	}
+	return outage.Flow{FlowID: FlowIDString(id), OneWay: !echo, Running: running, Report: r}
 }
 
 // FlowIDString formats a flow ID the way statuses and receivers show it.

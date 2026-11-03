@@ -4,6 +4,7 @@ import { client, errorText } from "../api";
 import { agentLabel, useAgents } from "../agents";
 import { asFlow, dur, flowSummary, ms, VerdictBadge } from "../components/Flow";
 import { useClearFlows } from "../components/FlowViews";
+import { ConvergencePanel } from "../components/Convergence";
 import { href, navigate } from "../router";
 import type { Protocol } from "../gen/clabgen/v1/agent_pb";
 import { Empty, ErrorBox, HealthText, useBusy } from "../ui";
@@ -24,6 +25,7 @@ export function FlowsPage() {
   const [by, setBy] = useState<Record<string, AgentFlows>>({});
   const [filter, setFilter] = useState("");
   const [failing, setFailing] = useState(false);
+  const [testing, setTesting] = useState(false);
   const ids = agents.map((a) => a.id).join("|");
   const { busy, run } = useBusy();
   const clearFlows = useClearFlows();
@@ -120,6 +122,12 @@ export function FlowsPage() {
       {errors.map((e) => (
         <ErrorBox key={e} error={e} />
       ))}
+      {testing && (
+        <ConvergencePanel
+          agents={agents.map((a) => ({ id: a.id, label: agentLabel(a, info[a.id]) }))}
+          flowIds={rows.map((r) => (r.p.status as { flow_id?: string } | undefined)?.flow_id ?? "").filter(Boolean)}
+        />
+      )}
       <div className="card">
         <div className="card-head">
           <div className="btn-row">
@@ -129,6 +137,9 @@ export function FlowsPage() {
             </label>
           </div>
           <div className="btn-row">
+            <button className={`btn ${testing ? "active" : ""}`} aria-pressed={testing} onClick={() => setTesting((t) => !t)} title="Measure what a failure costs the flows listed">
+              Convergence test
+            </button>
             <button className="btn" disabled={busy || !rows.some((r) => !running(r.p))} onClick={() => each("start")} title="Start the flows listed">
               ▶ Start all
             </button>

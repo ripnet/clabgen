@@ -98,6 +98,7 @@ clabgenctl -s gen2 received
 | `ping` | ping from a device (a temporary icmp flow) |
 | `start`, `stop` | start or stop traffic flows |
 | `received` | flows arriving at the agent's devices (one-way statistics) |
+| `convergence` | what a failure costs running flows: [loss duration per flow](flows.md#convergence-tests) |
 | `preview` | the packet a config would send (packet type), decoded and as hex |
 | `capture` | frames the ports receive and send: live summaries, or pcapng |
 | `events` | stream the agent's events |

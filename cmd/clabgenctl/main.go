@@ -418,7 +418,7 @@ func main() {
 			return printMsg(r.Msg)
 		}})
 
-	root.AddCommand(nodesCmd(), captureCmd(), wiresharkCmd(), portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), previewCmd(), groupsCmd(), groupCmd(), eventsCmd(), scenarioCmd(),
+	root.AddCommand(nodesCmd(), convergenceCmd(), captureCmd(), wiresharkCmd(), portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), previewCmd(), groupsCmd(), groupCmd(), eventsCmd(), scenarioCmd(),
 		flowCmd("start"), flowCmd("stop"), pingCmd(), receivedCmd())
 
 	if err := root.Execute(); err != nil {

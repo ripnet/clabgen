@@ -775,6 +775,11 @@ func (s *Stack) RecordL2(f *pkt.Frame) bool {
 // ReceivedFlows returns the signed flows received by the device.
 func (s *Stack) ReceivedFlows() []flowrx.Flow { return s.flows.Snapshot(s.now()) }
 
+// Convergence reports what the flows received lost since a moment.
+func (s *Stack) Convergence(since, now time.Time) []flowrx.Received {
+	return s.flows.Convergence(since, now)
+}
+
 // ClearReceivedFlows forgets them.
 func (s *Stack) ClearReceivedFlows() { s.flows.Clear() }
 

@@ -10,6 +10,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/ripnet/clabgen/internal/outage"
 )
 
 const (
@@ -84,6 +86,12 @@ type pending struct {
 	at time.Time
 }
 
+// outcome is a packet's result awaiting its turn at the cursor.
+type outcome struct {
+	replied bool
+	at      time.Time // when it was sent
+}
+
 // Tracker is safe for concurrent use.
 type Tracker struct {
 	mu       sync.Mutex
@@ -98,13 +106,16 @@ type Tracker struct {
 	// Outages are measured in sequence order: results are settled at the
 	// cursor (the oldest unsettled sequence) so a reply that overtakes
 	// still-pending packets doesn't end a run early.
-	settled map[uint64]bool // seq → replied (true) or lost (false)
+	settled map[uint64]outcome
 	cursor  uint64
 	begun   bool
 	maxSeq  uint64 // one past the highest sequence sent
 
 	st      Stats
-	run     uint64 // current consecutive-loss run
+	run     uint64    // current consecutive-loss run
+	runFrom time.Time // when its first packet was sent
+	runTo   time.Time // when its last packet was sent
+	log     outage.Log
 	rttN    uint64
 	rttSum  float64
 	prevRTT float64
@@ -120,7 +131,7 @@ type Tracker struct {
 // waiting timeout for each reply.
 func New(interval, timeout time.Duration) *Tracker {
 	return &Tracker{interval: interval, timeout: timeout,
-		pending: map[uint64]pending{}, lost: map[uint64]time.Time{}, settled: map[uint64]bool{}}
+		pending: map[uint64]pending{}, lost: map[uint64]time.Time{}, settled: map[uint64]outcome{}}
 }
 
 func (t *Tracker) bucket(at time.Time) *Bucket {
@@ -171,11 +182,11 @@ func stamp(at time.Time) string { return at.Format("15:04:05.000") }
 
 // settle records seq's outcome and advances the cursor over settled
 // sequences, extending or ending the current loss run.
-func (t *Tracker) settle(seq uint64, replied bool) {
+func (t *Tracker) settle(seq uint64, replied bool, at time.Time) {
 	if !t.begun || seq < t.cursor {
 		return
 	}
-	t.settled[seq] = replied
+	t.settled[seq] = outcome{replied, at}
 	for {
 		r, ok := t.settled[t.cursor]
 		if !ok {
@@ -186,10 +197,14 @@ func (t *Tracker) settle(seq uint64, replied bool) {
 			continue
 		}
 		delete(t.settled, t.cursor)
-		if r {
-			t.endOutage()
+		if r.replied {
+			t.endOutage(r.at)
 		} else {
+			if t.run == 0 {
+				t.runFrom = r.at
+			}
 			t.run++
+			t.runTo = r.at
 		}
 		t.cursor++
 	}
@@ -218,7 +233,7 @@ func (t *Tracker) SentNoReply(at time.Time) {
 	defer t.mu.Unlock()
 	t.st.Tx++
 	t.bucket(at).Tx++
-	t.endOutage()
+	t.endOutage(at)
 }
 
 // TxError records a failed send (e.g. the port is down). It counts as
@@ -244,7 +259,7 @@ func (t *Tracker) TxError(seq uint64, at time.Time, err error) {
 	t.st.TxErrors++
 	t.st.Lost++
 	b.Lost++
-	t.settle(seq, false)
+	t.settle(seq, false, at)
 	t.line(entry{seq: seq, at: at, result: ResultTxError, detail: err.Error()})
 }
 
@@ -297,7 +312,7 @@ func (t *Tracker) Received(seq uint64, rx, sentAt time.Time, detail func() strin
 		r.Jitterus = t.jitSum / float64(t.jitN)
 	}
 	t.prevRTT = rtt
-	t.settle(seq, true)
+	t.settle(seq, true, p.at)
 	t.line(entry{seq: seq, at: rx, result: ResultReply, rtt: rtt, lazy: detail})
 	return ResultReply
 }
@@ -315,15 +330,18 @@ func (t *Tracker) ErrorReceived(seq uint64, rx time.Time, detail string) {
 		if b := t.bucketIfKept(p.at); b != nil {
 			b.Lost++
 		}
-		t.settle(seq, false)
+		t.settle(seq, false, p.at)
 	}
 	t.line(entry{seq: seq, at: rx, result: ResultError, detail: detail})
 }
 
-func (t *Tracker) endOutage() {
+// endOutage ends the current loss run, if any, at the send time of the
+// first packet after it.
+func (t *Tracker) endOutage(at time.Time) {
 	if t.run == 0 {
 		return
 	}
+	t.log.Add(outage.Outage{Start: t.runFrom, End: at, Lost: t.run}, t.interval)
 	ms := float64(t.run) * float64(t.interval) / float64(time.Millisecond)
 	t.st.Outages++
 	t.st.OutageLastMs = ms
@@ -350,7 +368,7 @@ func (t *Tracker) Expire(now time.Time, force bool) {
 		delete(t.pending, seq)
 		t.lost[seq] = p.at
 		t.st.Lost++
-		t.settle(seq, false)
+		t.settle(seq, false, p.at)
 		if b := t.bucketIfKept(p.at); b != nil {
 			b.Lost++
 		}
@@ -363,6 +381,18 @@ func (t *Tracker) Expire(now time.Time, force bool) {
 			delete(t.lost, seq)
 		}
 	}
+}
+
+// Outages reports what the flow lost since a moment. A packet's fate is
+// known one timeout after it was sent, so "clean" counts from there.
+func (t *Tracker) Outages(since, now time.Time) outage.Report {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var open *outage.Outage
+	if t.run > 0 {
+		open = &outage.Outage{Start: t.runFrom, End: t.runTo.Add(t.interval), Lost: t.run}
+	}
+	return t.log.Report(since, now.Add(-t.timeout), t.interval, open)
 }
 
 // Snapshot returns the statistics and the last `seconds` of timeline

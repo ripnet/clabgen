@@ -108,7 +108,8 @@ as forms:
 The **Flows** page has every agent's traffic flows in one table, with
 their pass/fail checks, counts of passing and failing flows, a "failing
 only" filter, and start, stop and clear for all of them (or the ones the
-filter shows).
+filter shows). **Convergence test** measures what a failure costs the flows
+listed: see [convergence tests](flows.md#convergence-tests).
 
 A flow's own page has live loss, outage and RTT tiles, its checks, a
 per-second timeline and a per-packet log. Here, a ping across a link that

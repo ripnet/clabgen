@@ -1,0 +1,33 @@
+# What a link failure costs traffic, with and without BFD: traffic from clabgen
+# across a Nokia SR-SIM to two clabgen IS-IS routers, each with two links to it.
+#   sender:eth1 -- sr1:1/1/c1/1: 10.0.1.2/24, flows to each router's loopback
+#   router:eth1 -- sr1:1/1/c2/1 (dot1q, metric 10, the primary paths)
+#     VLAN 10: 10.0.10.0/30, router-bfd (192.0.2.10), with BFD
+#     VLAN 20: 10.0.20.0/30, router-plain (192.0.2.20), IS-IS hellos only
+#   router:eth2 -- sr1:1/1/c3/1 (dot1q, metric 20, the backup paths)
+#     VLAN 10: 10.0.11.0/30, router-bfd
+#     VLAN 20: 10.0.21.0/30, router-plain
+# These links are containerlab's default (a stitch), which doesn't carry link
+# state: when router's eth1 goes down the SR doesn't see it, and keeps sending
+# into the link until BFD or the IS-IS hold timer notices. That's the failure.
+name: convergence
+topology:
+  nodes:
+    sr1:
+      kind: nokia_srsim
+      image: nokia_srsim:26.10.R1
+      startup-config: sr1.partial.txt
+    sender:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]   # the topology folder: the scenario, and the saved config in clab-<lab>/sender/
+      env: {CLABGEN_SCENARIO: sender.yml}
+    router:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: router.yml}
+  links:
+    - endpoints: [sender:eth1, sr1:1/1/c1/1]
+    - endpoints: [router:eth1, sr1:1/1/c2/1]
+    - endpoints: [router:eth2, sr1:1/1/c3/1]

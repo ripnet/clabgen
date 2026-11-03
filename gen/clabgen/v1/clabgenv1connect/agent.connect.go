@@ -67,6 +67,9 @@ const (
 	// AgentServiceClearReceivedFlowsProcedure is the fully-qualified name of the AgentService's
 	// ClearReceivedFlows RPC.
 	AgentServiceClearReceivedFlowsProcedure = "/clabgen.v1.AgentService/ClearReceivedFlows"
+	// AgentServiceGetConvergenceProcedure is the fully-qualified name of the AgentService's
+	// GetConvergence RPC.
+	AgentServiceGetConvergenceProcedure = "/clabgen.v1.AgentService/GetConvergence"
 	// AgentServiceListProtocolTypesProcedure is the fully-qualified name of the AgentService's
 	// ListProtocolTypes RPC.
 	AgentServiceListProtocolTypesProcedure = "/clabgen.v1.AgentService/ListProtocolTypes"
@@ -161,6 +164,11 @@ type AgentServiceClient interface {
 	// (one-way loss, reordering, latency and outages per flow ID).
 	ListReceivedFlows(context.Context, *connect.Request[v1.ListReceivedFlowsRequest]) (*connect.Response[v1.ListReceivedFlowsResponse], error)
 	ClearReceivedFlows(context.Context, *connect.Request[v1.ClearReceivedFlowsRequest]) (*connect.Response[v1.ClearReceivedFlowsResponse], error)
+	// GetConvergence reports what flows lost since a moment, from the agent's
+	// senders and receivers, and the agent's events since then. Statistics and
+	// checks are left alone. A measurement: call it without since, keep `now`,
+	// run the trigger, then poll with since = now until the flows are clean.
+	GetConvergence(context.Context, *connect.Request[v1.GetConvergenceRequest]) (*connect.Response[v1.GetConvergenceResponse], error)
 	// Protocol types are the plugins compiled into the agent. Each publishes a
 	// JSON schema for its config and for each action's arguments.
 	ListProtocolTypes(context.Context, *connect.Request[v1.ListProtocolTypesRequest]) (*connect.Response[v1.ListProtocolTypesResponse], error)
@@ -290,6 +298,12 @@ func NewAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			httpClient,
 			baseURL+AgentServiceClearReceivedFlowsProcedure,
 			connect.WithSchema(agentServiceMethods.ByName("ClearReceivedFlows")),
+			connect.WithClientOptions(opts...),
+		),
+		getConvergence: connect.NewClient[v1.GetConvergenceRequest, v1.GetConvergenceResponse](
+			httpClient,
+			baseURL+AgentServiceGetConvergenceProcedure,
+			connect.WithSchema(agentServiceMethods.ByName("GetConvergence")),
 			connect.WithClientOptions(opts...),
 		),
 		listProtocolTypes: connect.NewClient[v1.ListProtocolTypesRequest, v1.ListProtocolTypesResponse](
@@ -447,6 +461,7 @@ type agentServiceClient struct {
 	clearNeighbors      *connect.Client[v1.ClearNeighborsRequest, v1.ClearNeighborsResponse]
 	listReceivedFlows   *connect.Client[v1.ListReceivedFlowsRequest, v1.ListReceivedFlowsResponse]
 	clearReceivedFlows  *connect.Client[v1.ClearReceivedFlowsRequest, v1.ClearReceivedFlowsResponse]
+	getConvergence      *connect.Client[v1.GetConvergenceRequest, v1.GetConvergenceResponse]
 	listProtocolTypes   *connect.Client[v1.ListProtocolTypesRequest, v1.ListProtocolTypesResponse]
 	listProtocols       *connect.Client[v1.ListProtocolsRequest, v1.ListProtocolsResponse]
 	getProtocol         *connect.Client[v1.GetProtocolRequest, v1.GetProtocolResponse]
@@ -530,6 +545,11 @@ func (c *agentServiceClient) ListReceivedFlows(ctx context.Context, req *connect
 // ClearReceivedFlows calls clabgen.v1.AgentService.ClearReceivedFlows.
 func (c *agentServiceClient) ClearReceivedFlows(ctx context.Context, req *connect.Request[v1.ClearReceivedFlowsRequest]) (*connect.Response[v1.ClearReceivedFlowsResponse], error) {
 	return c.clearReceivedFlows.CallUnary(ctx, req)
+}
+
+// GetConvergence calls clabgen.v1.AgentService.GetConvergence.
+func (c *agentServiceClient) GetConvergence(ctx context.Context, req *connect.Request[v1.GetConvergenceRequest]) (*connect.Response[v1.GetConvergenceResponse], error) {
+	return c.getConvergence.CallUnary(ctx, req)
 }
 
 // ListProtocolTypes calls clabgen.v1.AgentService.ListProtocolTypes.
@@ -671,6 +691,11 @@ type AgentServiceHandler interface {
 	// (one-way loss, reordering, latency and outages per flow ID).
 	ListReceivedFlows(context.Context, *connect.Request[v1.ListReceivedFlowsRequest]) (*connect.Response[v1.ListReceivedFlowsResponse], error)
 	ClearReceivedFlows(context.Context, *connect.Request[v1.ClearReceivedFlowsRequest]) (*connect.Response[v1.ClearReceivedFlowsResponse], error)
+	// GetConvergence reports what flows lost since a moment, from the agent's
+	// senders and receivers, and the agent's events since then. Statistics and
+	// checks are left alone. A measurement: call it without since, keep `now`,
+	// run the trigger, then poll with since = now until the flows are clean.
+	GetConvergence(context.Context, *connect.Request[v1.GetConvergenceRequest]) (*connect.Response[v1.GetConvergenceResponse], error)
 	// Protocol types are the plugins compiled into the agent. Each publishes a
 	// JSON schema for its config and for each action's arguments.
 	ListProtocolTypes(context.Context, *connect.Request[v1.ListProtocolTypesRequest]) (*connect.Response[v1.ListProtocolTypesResponse], error)
@@ -796,6 +821,12 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 		AgentServiceClearReceivedFlowsProcedure,
 		svc.ClearReceivedFlows,
 		connect.WithSchema(agentServiceMethods.ByName("ClearReceivedFlows")),
+		connect.WithHandlerOptions(opts...),
+	)
+	agentServiceGetConvergenceHandler := connect.NewUnaryHandler(
+		AgentServiceGetConvergenceProcedure,
+		svc.GetConvergence,
+		connect.WithSchema(agentServiceMethods.ByName("GetConvergence")),
 		connect.WithHandlerOptions(opts...),
 	)
 	agentServiceListProtocolTypesHandler := connect.NewUnaryHandler(
@@ -962,6 +993,8 @@ func NewAgentServiceHandler(svc AgentServiceHandler, opts ...connect.HandlerOpti
 			agentServiceListReceivedFlowsHandler.ServeHTTP(w, r)
 		case AgentServiceClearReceivedFlowsProcedure:
 			agentServiceClearReceivedFlowsHandler.ServeHTTP(w, r)
+		case AgentServiceGetConvergenceProcedure:
+			agentServiceGetConvergenceHandler.ServeHTTP(w, r)
 		case AgentServiceListProtocolTypesProcedure:
 			agentServiceListProtocolTypesHandler.ServeHTTP(w, r)
 		case AgentServiceListProtocolsProcedure:
@@ -1063,6 +1096,10 @@ func (UnimplementedAgentServiceHandler) ListReceivedFlows(context.Context, *conn
 
 func (UnimplementedAgentServiceHandler) ClearReceivedFlows(context.Context, *connect.Request[v1.ClearReceivedFlowsRequest]) (*connect.Response[v1.ClearReceivedFlowsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.ClearReceivedFlows is not implemented"))
+}
+
+func (UnimplementedAgentServiceHandler) GetConvergence(context.Context, *connect.Request[v1.GetConvergenceRequest]) (*connect.Response[v1.GetConvergenceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clabgen.v1.AgentService.GetConvergence is not implemented"))
 }
 
 func (UnimplementedAgentServiceHandler) ListProtocolTypes(context.Context, *connect.Request[v1.ListProtocolTypesRequest]) (*connect.Response[v1.ListProtocolTypesResponse], error) {

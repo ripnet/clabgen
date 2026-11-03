@@ -368,6 +368,16 @@ class Agent:
         the persistence info (file, source, scenario); info()["persistence"] has it too."""
         return self.call("ResetConfig").get("persistence", {})
 
+    def convergence(self, since: str | None = None, flow_ids: Iterable[str] = ()) -> dict:
+        """What flows lost since a moment (a time from an earlier response's
+        "now"), from this agent's senders and receivers, and its events since
+        then; without since, the last 5 seconds. Lab.convergence() runs whole
+        measurements."""
+        req: dict[str, Any] = {"flow_ids": list(flow_ids)}
+        if since:
+            req["since"] = since
+        return self.call("GetConvergence", req)
+
     def events(self, replay: bool = False, timeout: float | None = None) -> Iterator[dict]:
         """Stream events (time, source, kind, message, data) as they happen;
         replay=True starts with the buffered recent ones. timeout bounds each

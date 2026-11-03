@@ -605,3 +605,27 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .show-member .input { width: 110px; padding: 3px 8px; }
 .gap-row td { padding-top: 2px; padding-bottom: 2px; font-size: 12px; text-align: center; letter-spacing: 0.02em; }
 .hide-member { margin-left: 4px; width: 18px; height: 18px; font-size: 13px; }
+
+/* Convergence test (Flows page) */
+.conv { display: flex; flex-direction: column; gap: 12px; }
+.conv .card-head { margin-bottom: 0; }
+.conv p { margin: 0; }
+.conv-step { display: flex; flex-direction: column; gap: 8px; }
+.conv-fields { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.conv-fields .field { flex: 0 1 190px; }
+.conv-live { flex: 1 1 280px; }
+.conv-problems { border: 1px solid var(--warn); background: var(--warn-soft); border-radius: var(--radius); padding: 10px 12px; }
+.conv-problems ul { margin: 6px 0 10px; padding-left: 20px; }
+.conv-phase { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
+.conv-phase h3 { margin: 0; font-size: 14px; }
+.conv-legend { font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+.conv-key { display: inline-block; width: 12px; height: 10px; border-radius: 2px; margin-left: 8px; }
+.conv-key-lost { background: var(--bad); }
+.conv-key-event { width: 2px; height: 12px; border-radius: 0; background: var(--accent); }
+.conv-grid { stroke: var(--border); stroke-width: 1; }
+.conv-axis { fill: var(--text-2); font-size: 11px; font-family: var(--mono); }
+.conv-label { fill: var(--text-2); font-size: 12px; font-family: var(--mono); }
+.conv-lost { fill: var(--bad); }
+.conv-event { stroke: var(--accent); stroke-width: 2; }
+.conv-events summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
+.btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); }

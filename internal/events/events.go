@@ -44,6 +44,19 @@ func (b *Bus) Publish(e Event) {
 	}
 }
 
+// Since returns the buffered events from a moment on.
+func (b *Bus) Since(t time.Time) []Event {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var out []Event
+	for _, e := range b.history {
+		if !e.Time.Before(t) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // Subscribe returns a channel of events and a cancel func. With replay,
 // buffered history is returned first.
 func (b *Bus) Subscribe(replay bool) ([]Event, <-chan Event, func()) {

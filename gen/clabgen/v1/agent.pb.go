@@ -1726,6 +1726,125 @@ func (*ClearReceivedFlowsResponse) Descriptor() ([]byte, []int) {
 	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{30}
 }
 
+type GetConvergenceRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Unset: the last 5 seconds, to tell whether flows are clean to start with.
+	Since *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=since,proto3" json:"since,omitempty"`
+	// Only these flow IDs; empty: all flows.
+	FlowIds       []string `protobuf:"bytes,2,rep,name=flow_ids,json=flowIds,proto3" json:"flow_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConvergenceRequest) Reset() {
+	*x = GetConvergenceRequest{}
+	mi := &file_clabgen_v1_agent_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConvergenceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConvergenceRequest) ProtoMessage() {}
+
+func (x *GetConvergenceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_clabgen_v1_agent_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConvergenceRequest.ProtoReflect.Descriptor instead.
+func (*GetConvergenceRequest) Descriptor() ([]byte, []int) {
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *GetConvergenceRequest) GetSince() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Since
+	}
+	return nil
+}
+
+func (x *GetConvergenceRequest) GetFlowIds() []string {
+	if x != nil {
+		return x.FlowIds
+	}
+	return nil
+}
+
+type GetConvergenceResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Now   *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=now,proto3" json:"now,omitempty"`
+	// One per flow and side: side ("sender" or "receiver"), name (the sender's
+	// instance), device, flow_id, one_way, running, status (no_impact, restored,
+	// not_restored or stopped), loss_ms, lost, first_loss_ms, last_loss_ms,
+	// clean_ms, resolution_ms, truncated, outages [{start_ms, end_ms, lost}].
+	// An echo flow is measured by its sender, a one-way flow by its receivers.
+	Flows         []*structpb.Struct `protobuf:"bytes,2,rep,name=flows,proto3" json:"flows,omitempty"`
+	Events        []*Event           `protobuf:"bytes,3,rep,name=events,proto3" json:"events,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConvergenceResponse) Reset() {
+	*x = GetConvergenceResponse{}
+	mi := &file_clabgen_v1_agent_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConvergenceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConvergenceResponse) ProtoMessage() {}
+
+func (x *GetConvergenceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_clabgen_v1_agent_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConvergenceResponse.ProtoReflect.Descriptor instead.
+func (*GetConvergenceResponse) Descriptor() ([]byte, []int) {
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *GetConvergenceResponse) GetNow() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Now
+	}
+	return nil
+}
+
+func (x *GetConvergenceResponse) GetFlows() []*structpb.Struct {
+	if x != nil {
+		return x.Flows
+	}
+	return nil
+}
+
+func (x *GetConvergenceResponse) GetEvents() []*Event {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
 type ActionType struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -1737,7 +1856,7 @@ type ActionType struct {
 
 func (x *ActionType) Reset() {
 	*x = ActionType{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[31]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1749,7 +1868,7 @@ func (x *ActionType) String() string {
 func (*ActionType) ProtoMessage() {}
 
 func (x *ActionType) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[31]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1762,7 +1881,7 @@ func (x *ActionType) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActionType.ProtoReflect.Descriptor instead.
 func (*ActionType) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{31}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ActionType) GetName() string {
@@ -1801,7 +1920,7 @@ type ProtocolType struct {
 
 func (x *ProtocolType) Reset() {
 	*x = ProtocolType{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[32]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1813,7 +1932,7 @@ func (x *ProtocolType) String() string {
 func (*ProtocolType) ProtoMessage() {}
 
 func (x *ProtocolType) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[32]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1826,7 +1945,7 @@ func (x *ProtocolType) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProtocolType.ProtoReflect.Descriptor instead.
 func (*ProtocolType) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{32}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ProtocolType) GetName() string {
@@ -1872,7 +1991,7 @@ type ListProtocolTypesRequest struct {
 
 func (x *ListProtocolTypesRequest) Reset() {
 	*x = ListProtocolTypesRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[33]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1884,7 +2003,7 @@ func (x *ListProtocolTypesRequest) String() string {
 func (*ListProtocolTypesRequest) ProtoMessage() {}
 
 func (x *ListProtocolTypesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[33]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1897,7 +2016,7 @@ func (x *ListProtocolTypesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProtocolTypesRequest.ProtoReflect.Descriptor instead.
 func (*ListProtocolTypesRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{33}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{35}
 }
 
 type ListProtocolTypesResponse struct {
@@ -1909,7 +2028,7 @@ type ListProtocolTypesResponse struct {
 
 func (x *ListProtocolTypesResponse) Reset() {
 	*x = ListProtocolTypesResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[34]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1921,7 +2040,7 @@ func (x *ListProtocolTypesResponse) String() string {
 func (*ListProtocolTypesResponse) ProtoMessage() {}
 
 func (x *ListProtocolTypesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[34]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1934,7 +2053,7 @@ func (x *ListProtocolTypesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProtocolTypesResponse.ProtoReflect.Descriptor instead.
 func (*ListProtocolTypesResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{34}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ListProtocolTypesResponse) GetTypes() []*ProtocolType {
@@ -1964,7 +2083,7 @@ type Protocol struct {
 
 func (x *Protocol) Reset() {
 	*x = Protocol{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[35]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1976,7 +2095,7 @@ func (x *Protocol) String() string {
 func (*Protocol) ProtoMessage() {}
 
 func (x *Protocol) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[35]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1989,7 +2108,7 @@ func (x *Protocol) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Protocol.ProtoReflect.Descriptor instead.
 func (*Protocol) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{35}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *Protocol) GetName() string {
@@ -2070,7 +2189,7 @@ type ListProtocolsRequest struct {
 
 func (x *ListProtocolsRequest) Reset() {
 	*x = ListProtocolsRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[36]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2082,7 +2201,7 @@ func (x *ListProtocolsRequest) String() string {
 func (*ListProtocolsRequest) ProtoMessage() {}
 
 func (x *ListProtocolsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[36]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2095,7 +2214,7 @@ func (x *ListProtocolsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProtocolsRequest.ProtoReflect.Descriptor instead.
 func (*ListProtocolsRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{36}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ListProtocolsRequest) GetWithStatus() bool {
@@ -2128,7 +2247,7 @@ type ListProtocolsResponse struct {
 
 func (x *ListProtocolsResponse) Reset() {
 	*x = ListProtocolsResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[37]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2140,7 +2259,7 @@ func (x *ListProtocolsResponse) String() string {
 func (*ListProtocolsResponse) ProtoMessage() {}
 
 func (x *ListProtocolsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[37]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2153,7 +2272,7 @@ func (x *ListProtocolsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProtocolsResponse.ProtoReflect.Descriptor instead.
 func (*ListProtocolsResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{37}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ListProtocolsResponse) GetProtocols() []*Protocol {
@@ -2172,7 +2291,7 @@ type GetProtocolRequest struct {
 
 func (x *GetProtocolRequest) Reset() {
 	*x = GetProtocolRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[38]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2184,7 +2303,7 @@ func (x *GetProtocolRequest) String() string {
 func (*GetProtocolRequest) ProtoMessage() {}
 
 func (x *GetProtocolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[38]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2197,7 +2316,7 @@ func (x *GetProtocolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProtocolRequest.ProtoReflect.Descriptor instead.
 func (*GetProtocolRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{38}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *GetProtocolRequest) GetName() string {
@@ -2216,7 +2335,7 @@ type GetProtocolResponse struct {
 
 func (x *GetProtocolResponse) Reset() {
 	*x = GetProtocolResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[39]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2228,7 +2347,7 @@ func (x *GetProtocolResponse) String() string {
 func (*GetProtocolResponse) ProtoMessage() {}
 
 func (x *GetProtocolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[39]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2241,7 +2360,7 @@ func (x *GetProtocolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProtocolResponse.ProtoReflect.Descriptor instead.
 func (*GetProtocolResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{39}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *GetProtocolResponse) GetProtocol() *Protocol {
@@ -2260,7 +2379,7 @@ type CreateProtocolRequest struct {
 
 func (x *CreateProtocolRequest) Reset() {
 	*x = CreateProtocolRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[40]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2272,7 +2391,7 @@ func (x *CreateProtocolRequest) String() string {
 func (*CreateProtocolRequest) ProtoMessage() {}
 
 func (x *CreateProtocolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[40]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2285,7 +2404,7 @@ func (x *CreateProtocolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateProtocolRequest.ProtoReflect.Descriptor instead.
 func (*CreateProtocolRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{40}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *CreateProtocolRequest) GetProtocol() *Protocol {
@@ -2304,7 +2423,7 @@ type CreateProtocolResponse struct {
 
 func (x *CreateProtocolResponse) Reset() {
 	*x = CreateProtocolResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[41]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2316,7 +2435,7 @@ func (x *CreateProtocolResponse) String() string {
 func (*CreateProtocolResponse) ProtoMessage() {}
 
 func (x *CreateProtocolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[41]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2329,7 +2448,7 @@ func (x *CreateProtocolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateProtocolResponse.ProtoReflect.Descriptor instead.
 func (*CreateProtocolResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{41}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *CreateProtocolResponse) GetProtocol() *Protocol {
@@ -2349,7 +2468,7 @@ type UpdateProtocolRequest struct {
 
 func (x *UpdateProtocolRequest) Reset() {
 	*x = UpdateProtocolRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[42]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2361,7 +2480,7 @@ func (x *UpdateProtocolRequest) String() string {
 func (*UpdateProtocolRequest) ProtoMessage() {}
 
 func (x *UpdateProtocolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[42]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2374,7 +2493,7 @@ func (x *UpdateProtocolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateProtocolRequest.ProtoReflect.Descriptor instead.
 func (*UpdateProtocolRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{42}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *UpdateProtocolRequest) GetName() string {
@@ -2400,7 +2519,7 @@ type UpdateProtocolResponse struct {
 
 func (x *UpdateProtocolResponse) Reset() {
 	*x = UpdateProtocolResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[43]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2412,7 +2531,7 @@ func (x *UpdateProtocolResponse) String() string {
 func (*UpdateProtocolResponse) ProtoMessage() {}
 
 func (x *UpdateProtocolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[43]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2425,7 +2544,7 @@ func (x *UpdateProtocolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateProtocolResponse.ProtoReflect.Descriptor instead.
 func (*UpdateProtocolResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{43}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *UpdateProtocolResponse) GetProtocol() *Protocol {
@@ -2444,7 +2563,7 @@ type DeleteProtocolRequest struct {
 
 func (x *DeleteProtocolRequest) Reset() {
 	*x = DeleteProtocolRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[44]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2456,7 +2575,7 @@ func (x *DeleteProtocolRequest) String() string {
 func (*DeleteProtocolRequest) ProtoMessage() {}
 
 func (x *DeleteProtocolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[44]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2469,7 +2588,7 @@ func (x *DeleteProtocolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteProtocolRequest.ProtoReflect.Descriptor instead.
 func (*DeleteProtocolRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{44}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *DeleteProtocolRequest) GetName() string {
@@ -2487,7 +2606,7 @@ type DeleteProtocolResponse struct {
 
 func (x *DeleteProtocolResponse) Reset() {
 	*x = DeleteProtocolResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[45]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2499,7 +2618,7 @@ func (x *DeleteProtocolResponse) String() string {
 func (*DeleteProtocolResponse) ProtoMessage() {}
 
 func (x *DeleteProtocolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[45]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2512,7 +2631,7 @@ func (x *DeleteProtocolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteProtocolResponse.ProtoReflect.Descriptor instead.
 func (*DeleteProtocolResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{45}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{47}
 }
 
 type SetProtocolDisabledRequest struct {
@@ -2525,7 +2644,7 @@ type SetProtocolDisabledRequest struct {
 
 func (x *SetProtocolDisabledRequest) Reset() {
 	*x = SetProtocolDisabledRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[46]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2537,7 +2656,7 @@ func (x *SetProtocolDisabledRequest) String() string {
 func (*SetProtocolDisabledRequest) ProtoMessage() {}
 
 func (x *SetProtocolDisabledRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[46]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2550,7 +2669,7 @@ func (x *SetProtocolDisabledRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetProtocolDisabledRequest.ProtoReflect.Descriptor instead.
 func (*SetProtocolDisabledRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{46}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *SetProtocolDisabledRequest) GetName() string {
@@ -2576,7 +2695,7 @@ type SetProtocolDisabledResponse struct {
 
 func (x *SetProtocolDisabledResponse) Reset() {
 	*x = SetProtocolDisabledResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[47]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2588,7 +2707,7 @@ func (x *SetProtocolDisabledResponse) String() string {
 func (*SetProtocolDisabledResponse) ProtoMessage() {}
 
 func (x *SetProtocolDisabledResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[47]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2601,7 +2720,7 @@ func (x *SetProtocolDisabledResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetProtocolDisabledResponse.ProtoReflect.Descriptor instead.
 func (*SetProtocolDisabledResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{47}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *SetProtocolDisabledResponse) GetProtocol() *Protocol {
@@ -2622,7 +2741,7 @@ type RunProtocolActionRequest struct {
 
 func (x *RunProtocolActionRequest) Reset() {
 	*x = RunProtocolActionRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[48]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2634,7 +2753,7 @@ func (x *RunProtocolActionRequest) String() string {
 func (*RunProtocolActionRequest) ProtoMessage() {}
 
 func (x *RunProtocolActionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[48]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2647,7 +2766,7 @@ func (x *RunProtocolActionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunProtocolActionRequest.ProtoReflect.Descriptor instead.
 func (*RunProtocolActionRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{48}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *RunProtocolActionRequest) GetName() string {
@@ -2680,7 +2799,7 @@ type RunProtocolActionResponse struct {
 
 func (x *RunProtocolActionResponse) Reset() {
 	*x = RunProtocolActionResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[49]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2692,7 +2811,7 @@ func (x *RunProtocolActionResponse) String() string {
 func (*RunProtocolActionResponse) ProtoMessage() {}
 
 func (x *RunProtocolActionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[49]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2705,7 +2824,7 @@ func (x *RunProtocolActionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunProtocolActionResponse.ProtoReflect.Descriptor instead.
 func (*RunProtocolActionResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{49}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *RunProtocolActionResponse) GetResult() *structpb.Struct {
@@ -2728,7 +2847,7 @@ type PreviewProtocolRequest struct {
 
 func (x *PreviewProtocolRequest) Reset() {
 	*x = PreviewProtocolRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[50]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2740,7 +2859,7 @@ func (x *PreviewProtocolRequest) String() string {
 func (*PreviewProtocolRequest) ProtoMessage() {}
 
 func (x *PreviewProtocolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[50]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2753,7 +2872,7 @@ func (x *PreviewProtocolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewProtocolRequest.ProtoReflect.Descriptor instead.
 func (*PreviewProtocolRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{50}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *PreviewProtocolRequest) GetType() string {
@@ -2793,7 +2912,7 @@ type PreviewProtocolResponse struct {
 
 func (x *PreviewProtocolResponse) Reset() {
 	*x = PreviewProtocolResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[51]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2805,7 +2924,7 @@ func (x *PreviewProtocolResponse) String() string {
 func (*PreviewProtocolResponse) ProtoMessage() {}
 
 func (x *PreviewProtocolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[51]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2818,7 +2937,7 @@ func (x *PreviewProtocolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewProtocolResponse.ProtoReflect.Descriptor instead.
 func (*PreviewProtocolResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{51}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *PreviewProtocolResponse) GetResult() *structpb.Struct {
@@ -2846,7 +2965,7 @@ type DeviceGroup struct {
 
 func (x *DeviceGroup) Reset() {
 	*x = DeviceGroup{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[52]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2858,7 +2977,7 @@ func (x *DeviceGroup) String() string {
 func (*DeviceGroup) ProtoMessage() {}
 
 func (x *DeviceGroup) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[52]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2871,7 +2990,7 @@ func (x *DeviceGroup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeviceGroup.ProtoReflect.Descriptor instead.
 func (*DeviceGroup) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{52}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *DeviceGroup) GetName() string {
@@ -2910,7 +3029,7 @@ type ListDeviceGroupsRequest struct {
 
 func (x *ListDeviceGroupsRequest) Reset() {
 	*x = ListDeviceGroupsRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[53]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2922,7 +3041,7 @@ func (x *ListDeviceGroupsRequest) String() string {
 func (*ListDeviceGroupsRequest) ProtoMessage() {}
 
 func (x *ListDeviceGroupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[53]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2935,7 +3054,7 @@ func (x *ListDeviceGroupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDeviceGroupsRequest.ProtoReflect.Descriptor instead.
 func (*ListDeviceGroupsRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{53}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{55}
 }
 
 type ListDeviceGroupsResponse struct {
@@ -2947,7 +3066,7 @@ type ListDeviceGroupsResponse struct {
 
 func (x *ListDeviceGroupsResponse) Reset() {
 	*x = ListDeviceGroupsResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[54]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2959,7 +3078,7 @@ func (x *ListDeviceGroupsResponse) String() string {
 func (*ListDeviceGroupsResponse) ProtoMessage() {}
 
 func (x *ListDeviceGroupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[54]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2972,7 +3091,7 @@ func (x *ListDeviceGroupsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDeviceGroupsResponse.ProtoReflect.Descriptor instead.
 func (*ListDeviceGroupsResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{54}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *ListDeviceGroupsResponse) GetGroups() []*DeviceGroup {
@@ -2993,7 +3112,7 @@ type GetDeviceGroupRequest struct {
 
 func (x *GetDeviceGroupRequest) Reset() {
 	*x = GetDeviceGroupRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[55]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3005,7 +3124,7 @@ func (x *GetDeviceGroupRequest) String() string {
 func (*GetDeviceGroupRequest) ProtoMessage() {}
 
 func (x *GetDeviceGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[55]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3018,7 +3137,7 @@ func (x *GetDeviceGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeviceGroupRequest.ProtoReflect.Descriptor instead.
 func (*GetDeviceGroupRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{55}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *GetDeviceGroupRequest) GetName() string {
@@ -3044,7 +3163,7 @@ type GetDeviceGroupResponse struct {
 
 func (x *GetDeviceGroupResponse) Reset() {
 	*x = GetDeviceGroupResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[56]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3056,7 +3175,7 @@ func (x *GetDeviceGroupResponse) String() string {
 func (*GetDeviceGroupResponse) ProtoMessage() {}
 
 func (x *GetDeviceGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[56]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3069,7 +3188,7 @@ func (x *GetDeviceGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeviceGroupResponse.ProtoReflect.Descriptor instead.
 func (*GetDeviceGroupResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{56}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *GetDeviceGroupResponse) GetGroup() *DeviceGroup {
@@ -3088,7 +3207,7 @@ type CreateDeviceGroupRequest struct {
 
 func (x *CreateDeviceGroupRequest) Reset() {
 	*x = CreateDeviceGroupRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[57]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3100,7 +3219,7 @@ func (x *CreateDeviceGroupRequest) String() string {
 func (*CreateDeviceGroupRequest) ProtoMessage() {}
 
 func (x *CreateDeviceGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[57]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3113,7 +3232,7 @@ func (x *CreateDeviceGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDeviceGroupRequest.ProtoReflect.Descriptor instead.
 func (*CreateDeviceGroupRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{57}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *CreateDeviceGroupRequest) GetGroup() *DeviceGroup {
@@ -3132,7 +3251,7 @@ type CreateDeviceGroupResponse struct {
 
 func (x *CreateDeviceGroupResponse) Reset() {
 	*x = CreateDeviceGroupResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[58]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3144,7 +3263,7 @@ func (x *CreateDeviceGroupResponse) String() string {
 func (*CreateDeviceGroupResponse) ProtoMessage() {}
 
 func (x *CreateDeviceGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[58]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3157,7 +3276,7 @@ func (x *CreateDeviceGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDeviceGroupResponse.ProtoReflect.Descriptor instead.
 func (*CreateDeviceGroupResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{58}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *CreateDeviceGroupResponse) GetGroup() *DeviceGroup {
@@ -3176,7 +3295,7 @@ type UpdateDeviceGroupRequest struct {
 
 func (x *UpdateDeviceGroupRequest) Reset() {
 	*x = UpdateDeviceGroupRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[59]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3188,7 +3307,7 @@ func (x *UpdateDeviceGroupRequest) String() string {
 func (*UpdateDeviceGroupRequest) ProtoMessage() {}
 
 func (x *UpdateDeviceGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[59]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3201,7 +3320,7 @@ func (x *UpdateDeviceGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDeviceGroupRequest.ProtoReflect.Descriptor instead.
 func (*UpdateDeviceGroupRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{59}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *UpdateDeviceGroupRequest) GetGroup() *DeviceGroup {
@@ -3220,7 +3339,7 @@ type UpdateDeviceGroupResponse struct {
 
 func (x *UpdateDeviceGroupResponse) Reset() {
 	*x = UpdateDeviceGroupResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[60]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3232,7 +3351,7 @@ func (x *UpdateDeviceGroupResponse) String() string {
 func (*UpdateDeviceGroupResponse) ProtoMessage() {}
 
 func (x *UpdateDeviceGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[60]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3245,7 +3364,7 @@ func (x *UpdateDeviceGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDeviceGroupResponse.ProtoReflect.Descriptor instead.
 func (*UpdateDeviceGroupResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{60}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *UpdateDeviceGroupResponse) GetGroup() *DeviceGroup {
@@ -3264,7 +3383,7 @@ type DeleteDeviceGroupRequest struct {
 
 func (x *DeleteDeviceGroupRequest) Reset() {
 	*x = DeleteDeviceGroupRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[61]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3276,7 +3395,7 @@ func (x *DeleteDeviceGroupRequest) String() string {
 func (*DeleteDeviceGroupRequest) ProtoMessage() {}
 
 func (x *DeleteDeviceGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[61]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3289,7 +3408,7 @@ func (x *DeleteDeviceGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDeviceGroupRequest.ProtoReflect.Descriptor instead.
 func (*DeleteDeviceGroupRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{61}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *DeleteDeviceGroupRequest) GetName() string {
@@ -3307,7 +3426,7 @@ type DeleteDeviceGroupResponse struct {
 
 func (x *DeleteDeviceGroupResponse) Reset() {
 	*x = DeleteDeviceGroupResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[62]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3319,7 +3438,7 @@ func (x *DeleteDeviceGroupResponse) String() string {
 func (*DeleteDeviceGroupResponse) ProtoMessage() {}
 
 func (x *DeleteDeviceGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[62]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3332,7 +3451,7 @@ func (x *DeleteDeviceGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDeviceGroupResponse.ProtoReflect.Descriptor instead.
 func (*DeleteDeviceGroupResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{62}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{64}
 }
 
 type PreviewDeviceGroupRequest struct {
@@ -3347,7 +3466,7 @@ type PreviewDeviceGroupRequest struct {
 
 func (x *PreviewDeviceGroupRequest) Reset() {
 	*x = PreviewDeviceGroupRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[63]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3359,7 +3478,7 @@ func (x *PreviewDeviceGroupRequest) String() string {
 func (*PreviewDeviceGroupRequest) ProtoMessage() {}
 
 func (x *PreviewDeviceGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[63]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3372,7 +3491,7 @@ func (x *PreviewDeviceGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewDeviceGroupRequest.ProtoReflect.Descriptor instead.
 func (*PreviewDeviceGroupRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{63}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *PreviewDeviceGroupRequest) GetGroup() *DeviceGroup {
@@ -3400,7 +3519,7 @@ type PreviewDeviceGroupResponse struct {
 
 func (x *PreviewDeviceGroupResponse) Reset() {
 	*x = PreviewDeviceGroupResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[64]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3412,7 +3531,7 @@ func (x *PreviewDeviceGroupResponse) String() string {
 func (*PreviewDeviceGroupResponse) ProtoMessage() {}
 
 func (x *PreviewDeviceGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[64]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3425,7 +3544,7 @@ func (x *PreviewDeviceGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewDeviceGroupResponse.ProtoReflect.Descriptor instead.
 func (*PreviewDeviceGroupResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{64}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *PreviewDeviceGroupResponse) GetResult() *structpb.Struct {
@@ -3452,7 +3571,7 @@ type RunGroupActionRequest struct {
 
 func (x *RunGroupActionRequest) Reset() {
 	*x = RunGroupActionRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[65]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3464,7 +3583,7 @@ func (x *RunGroupActionRequest) String() string {
 func (*RunGroupActionRequest) ProtoMessage() {}
 
 func (x *RunGroupActionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[65]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3477,7 +3596,7 @@ func (x *RunGroupActionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunGroupActionRequest.ProtoReflect.Descriptor instead.
 func (*RunGroupActionRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{65}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *RunGroupActionRequest) GetGroup() string {
@@ -3535,7 +3654,7 @@ type GroupActionResult struct {
 
 func (x *GroupActionResult) Reset() {
 	*x = GroupActionResult{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[66]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3547,7 +3666,7 @@ func (x *GroupActionResult) String() string {
 func (*GroupActionResult) ProtoMessage() {}
 
 func (x *GroupActionResult) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[66]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3560,7 +3679,7 @@ func (x *GroupActionResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GroupActionResult.ProtoReflect.Descriptor instead.
 func (*GroupActionResult) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{66}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *GroupActionResult) GetIndex() uint32 {
@@ -3600,7 +3719,7 @@ type RunGroupActionResponse struct {
 
 func (x *RunGroupActionResponse) Reset() {
 	*x = RunGroupActionResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[67]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3612,7 +3731,7 @@ func (x *RunGroupActionResponse) String() string {
 func (*RunGroupActionResponse) ProtoMessage() {}
 
 func (x *RunGroupActionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[67]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3625,7 +3744,7 @@ func (x *RunGroupActionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunGroupActionResponse.ProtoReflect.Descriptor instead.
 func (*RunGroupActionResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{67}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *RunGroupActionResponse) GetResults() []*GroupActionResult {
@@ -3651,7 +3770,7 @@ type SetGroupDisabledRequest struct {
 
 func (x *SetGroupDisabledRequest) Reset() {
 	*x = SetGroupDisabledRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[68]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3663,7 +3782,7 @@ func (x *SetGroupDisabledRequest) String() string {
 func (*SetGroupDisabledRequest) ProtoMessage() {}
 
 func (x *SetGroupDisabledRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[68]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3676,7 +3795,7 @@ func (x *SetGroupDisabledRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetGroupDisabledRequest.ProtoReflect.Descriptor instead.
 func (*SetGroupDisabledRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{68}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *SetGroupDisabledRequest) GetGroup() string {
@@ -3724,7 +3843,7 @@ type SetGroupDisabledResponse struct {
 
 func (x *SetGroupDisabledResponse) Reset() {
 	*x = SetGroupDisabledResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[69]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3736,7 +3855,7 @@ func (x *SetGroupDisabledResponse) String() string {
 func (*SetGroupDisabledResponse) ProtoMessage() {}
 
 func (x *SetGroupDisabledResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[69]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3749,7 +3868,7 @@ func (x *SetGroupDisabledResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetGroupDisabledResponse.ProtoReflect.Descriptor instead.
 func (*SetGroupDisabledResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{69}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *SetGroupDisabledResponse) GetResults() []*GroupActionResult {
@@ -3769,7 +3888,7 @@ type WatchEventsRequest struct {
 
 func (x *WatchEventsRequest) Reset() {
 	*x = WatchEventsRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[70]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3781,7 +3900,7 @@ func (x *WatchEventsRequest) String() string {
 func (*WatchEventsRequest) ProtoMessage() {}
 
 func (x *WatchEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[70]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3794,7 +3913,7 @@ func (x *WatchEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchEventsRequest.ProtoReflect.Descriptor instead.
 func (*WatchEventsRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{70}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *WatchEventsRequest) GetReplay() bool {
@@ -3818,7 +3937,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[71]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3830,7 +3949,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[71]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3843,7 +3962,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{71}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *Event) GetTime() *timestamppb.Timestamp {
@@ -3904,7 +4023,7 @@ type CaptureRequest struct {
 
 func (x *CaptureRequest) Reset() {
 	*x = CaptureRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[72]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3916,7 +4035,7 @@ func (x *CaptureRequest) String() string {
 func (*CaptureRequest) ProtoMessage() {}
 
 func (x *CaptureRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[72]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3929,7 +4048,7 @@ func (x *CaptureRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CaptureRequest.ProtoReflect.Descriptor instead.
 func (*CaptureRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{72}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *CaptureRequest) GetPorts() []string {
@@ -4006,7 +4125,7 @@ type CapturedFrame struct {
 
 func (x *CapturedFrame) Reset() {
 	*x = CapturedFrame{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[73]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4018,7 +4137,7 @@ func (x *CapturedFrame) String() string {
 func (*CapturedFrame) ProtoMessage() {}
 
 func (x *CapturedFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[73]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4031,7 +4150,7 @@ func (x *CapturedFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CapturedFrame.ProtoReflect.Descriptor instead.
 func (*CapturedFrame) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{73}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *CapturedFrame) GetTime() *timestamppb.Timestamp {
@@ -4092,7 +4211,7 @@ type DecodeFrameRequest struct {
 
 func (x *DecodeFrameRequest) Reset() {
 	*x = DecodeFrameRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[74]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4104,7 +4223,7 @@ func (x *DecodeFrameRequest) String() string {
 func (*DecodeFrameRequest) ProtoMessage() {}
 
 func (x *DecodeFrameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[74]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4117,7 +4236,7 @@ func (x *DecodeFrameRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecodeFrameRequest.ProtoReflect.Descriptor instead.
 func (*DecodeFrameRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{74}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *DecodeFrameRequest) GetData() []byte {
@@ -4138,7 +4257,7 @@ type DecodeFrameResponse struct {
 
 func (x *DecodeFrameResponse) Reset() {
 	*x = DecodeFrameResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[75]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4150,7 +4269,7 @@ func (x *DecodeFrameResponse) String() string {
 func (*DecodeFrameResponse) ProtoMessage() {}
 
 func (x *DecodeFrameResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[75]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4163,7 +4282,7 @@ func (x *DecodeFrameResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecodeFrameResponse.ProtoReflect.Descriptor instead.
 func (*DecodeFrameResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{75}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *DecodeFrameResponse) GetResult() *structpb.Struct {
@@ -4181,7 +4300,7 @@ type GetScenarioRequest struct {
 
 func (x *GetScenarioRequest) Reset() {
 	*x = GetScenarioRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[76]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4193,7 +4312,7 @@ func (x *GetScenarioRequest) String() string {
 func (*GetScenarioRequest) ProtoMessage() {}
 
 func (x *GetScenarioRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[76]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4206,7 +4325,7 @@ func (x *GetScenarioRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetScenarioRequest.ProtoReflect.Descriptor instead.
 func (*GetScenarioRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{76}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{78}
 }
 
 type GetScenarioResponse struct {
@@ -4218,7 +4337,7 @@ type GetScenarioResponse struct {
 
 func (x *GetScenarioResponse) Reset() {
 	*x = GetScenarioResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[77]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4230,7 +4349,7 @@ func (x *GetScenarioResponse) String() string {
 func (*GetScenarioResponse) ProtoMessage() {}
 
 func (x *GetScenarioResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[77]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4243,7 +4362,7 @@ func (x *GetScenarioResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetScenarioResponse.ProtoReflect.Descriptor instead.
 func (*GetScenarioResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{77}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *GetScenarioResponse) GetYaml() string {
@@ -4264,7 +4383,7 @@ type ApplyScenarioRequest struct {
 
 func (x *ApplyScenarioRequest) Reset() {
 	*x = ApplyScenarioRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[78]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4276,7 +4395,7 @@ func (x *ApplyScenarioRequest) String() string {
 func (*ApplyScenarioRequest) ProtoMessage() {}
 
 func (x *ApplyScenarioRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[78]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4289,7 +4408,7 @@ func (x *ApplyScenarioRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyScenarioRequest.ProtoReflect.Descriptor instead.
 func (*ApplyScenarioRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{78}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *ApplyScenarioRequest) GetYaml() string {
@@ -4314,7 +4433,7 @@ type ApplyScenarioResponse struct {
 
 func (x *ApplyScenarioResponse) Reset() {
 	*x = ApplyScenarioResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[79]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4326,7 +4445,7 @@ func (x *ApplyScenarioResponse) String() string {
 func (*ApplyScenarioResponse) ProtoMessage() {}
 
 func (x *ApplyScenarioResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[79]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4339,7 +4458,7 @@ func (x *ApplyScenarioResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyScenarioResponse.ProtoReflect.Descriptor instead.
 func (*ApplyScenarioResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{79}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{81}
 }
 
 type ResetConfigRequest struct {
@@ -4350,7 +4469,7 @@ type ResetConfigRequest struct {
 
 func (x *ResetConfigRequest) Reset() {
 	*x = ResetConfigRequest{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[80]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4362,7 +4481,7 @@ func (x *ResetConfigRequest) String() string {
 func (*ResetConfigRequest) ProtoMessage() {}
 
 func (x *ResetConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[80]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4375,7 +4494,7 @@ func (x *ResetConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResetConfigRequest.ProtoReflect.Descriptor instead.
 func (*ResetConfigRequest) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{80}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{82}
 }
 
 type ResetConfigResponse struct {
@@ -4387,7 +4506,7 @@ type ResetConfigResponse struct {
 
 func (x *ResetConfigResponse) Reset() {
 	*x = ResetConfigResponse{}
-	mi := &file_clabgen_v1_agent_proto_msgTypes[81]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4399,7 +4518,7 @@ func (x *ResetConfigResponse) String() string {
 func (*ResetConfigResponse) ProtoMessage() {}
 
 func (x *ResetConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_clabgen_v1_agent_proto_msgTypes[81]
+	mi := &file_clabgen_v1_agent_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4412,7 +4531,7 @@ func (x *ResetConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResetConfigResponse.ProtoReflect.Descriptor instead.
 func (*ResetConfigResponse) Descriptor() ([]byte, []int) {
-	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{81}
+	return file_clabgen_v1_agent_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *ResetConfigResponse) GetPersistence() *ConfigInfo {
@@ -4535,7 +4654,14 @@ const file_clabgen_v1_agent_proto_rawDesc = "" +
 	"\x19ClearReceivedFlowsRequest\x12\x16\n" +
 	"\x06device\x18\x01 \x01(\tR\x06device\x12\x17\n" +
 	"\aflow_id\x18\x02 \x01(\tR\x06flowId\"\x1c\n" +
-	"\x1aClearReceivedFlowsResponse\"c\n" +
+	"\x1aClearReceivedFlowsResponse\"d\n" +
+	"\x15GetConvergenceRequest\x120\n" +
+	"\x05since\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x05since\x12\x19\n" +
+	"\bflow_ids\x18\x02 \x03(\tR\aflowIds\"\xa0\x01\n" +
+	"\x16GetConvergenceResponse\x12,\n" +
+	"\x03now\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x03now\x12-\n" +
+	"\x05flows\x18\x02 \x03(\v2\x17.google.protobuf.StructR\x05flows\x12)\n" +
+	"\x06events\x18\x03 \x03(\v2\x11.clabgen.v1.EventR\x06events\"c\n" +
 	"\n" +
 	"ActionType\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
@@ -4693,7 +4819,7 @@ const file_clabgen_v1_agent_proto_rawDesc = "" +
 	"\x15ApplyScenarioResponse\"\x14\n" +
 	"\x12ResetConfigRequest\"O\n" +
 	"\x13ResetConfigResponse\x128\n" +
-	"\vpersistence\x18\x01 \x01(\v2\x16.clabgen.v1.ConfigInfoR\vpersistence2\x86\x18\n" +
+	"\vpersistence\x18\x01 \x01(\v2\x16.clabgen.v1.ConfigInfoR\vpersistence2\xdf\x18\n" +
 	"\fAgentService\x12B\n" +
 	"\aGetInfo\x12\x1a.clabgen.v1.GetInfoRequest\x1a\x1b.clabgen.v1.GetInfoResponse\x12H\n" +
 	"\tListPorts\x12\x1c.clabgen.v1.ListPortsRequest\x1a\x1d.clabgen.v1.ListPortsResponse\x12Q\n" +
@@ -4706,7 +4832,8 @@ const file_clabgen_v1_agent_proto_rawDesc = "" +
 	"\x0fResolveNeighbor\x12\".clabgen.v1.ResolveNeighborRequest\x1a#.clabgen.v1.ResolveNeighborResponse\x12W\n" +
 	"\x0eClearNeighbors\x12!.clabgen.v1.ClearNeighborsRequest\x1a\".clabgen.v1.ClearNeighborsResponse\x12`\n" +
 	"\x11ListReceivedFlows\x12$.clabgen.v1.ListReceivedFlowsRequest\x1a%.clabgen.v1.ListReceivedFlowsResponse\x12c\n" +
-	"\x12ClearReceivedFlows\x12%.clabgen.v1.ClearReceivedFlowsRequest\x1a&.clabgen.v1.ClearReceivedFlowsResponse\x12`\n" +
+	"\x12ClearReceivedFlows\x12%.clabgen.v1.ClearReceivedFlowsRequest\x1a&.clabgen.v1.ClearReceivedFlowsResponse\x12W\n" +
+	"\x0eGetConvergence\x12!.clabgen.v1.GetConvergenceRequest\x1a\".clabgen.v1.GetConvergenceResponse\x12`\n" +
 	"\x11ListProtocolTypes\x12$.clabgen.v1.ListProtocolTypesRequest\x1a%.clabgen.v1.ListProtocolTypesResponse\x12T\n" +
 	"\rListProtocols\x12 .clabgen.v1.ListProtocolsRequest\x1a!.clabgen.v1.ListProtocolsResponse\x12N\n" +
 	"\vGetProtocol\x12\x1e.clabgen.v1.GetProtocolRequest\x1a\x1f.clabgen.v1.GetProtocolResponse\x12W\n" +
@@ -4743,7 +4870,7 @@ func file_clabgen_v1_agent_proto_rawDescGZIP() []byte {
 	return file_clabgen_v1_agent_proto_rawDescData
 }
 
-var file_clabgen_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 83)
+var file_clabgen_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 85)
 var file_clabgen_v1_agent_proto_goTypes = []any{
 	(*GetInfoRequest)(nil),              // 0: clabgen.v1.GetInfoRequest
 	(*GetInfoResponse)(nil),             // 1: clabgen.v1.GetInfoResponse
@@ -4776,63 +4903,65 @@ var file_clabgen_v1_agent_proto_goTypes = []any{
 	(*ListReceivedFlowsResponse)(nil),   // 28: clabgen.v1.ListReceivedFlowsResponse
 	(*ClearReceivedFlowsRequest)(nil),   // 29: clabgen.v1.ClearReceivedFlowsRequest
 	(*ClearReceivedFlowsResponse)(nil),  // 30: clabgen.v1.ClearReceivedFlowsResponse
-	(*ActionType)(nil),                  // 31: clabgen.v1.ActionType
-	(*ProtocolType)(nil),                // 32: clabgen.v1.ProtocolType
-	(*ListProtocolTypesRequest)(nil),    // 33: clabgen.v1.ListProtocolTypesRequest
-	(*ListProtocolTypesResponse)(nil),   // 34: clabgen.v1.ListProtocolTypesResponse
-	(*Protocol)(nil),                    // 35: clabgen.v1.Protocol
-	(*ListProtocolsRequest)(nil),        // 36: clabgen.v1.ListProtocolsRequest
-	(*ListProtocolsResponse)(nil),       // 37: clabgen.v1.ListProtocolsResponse
-	(*GetProtocolRequest)(nil),          // 38: clabgen.v1.GetProtocolRequest
-	(*GetProtocolResponse)(nil),         // 39: clabgen.v1.GetProtocolResponse
-	(*CreateProtocolRequest)(nil),       // 40: clabgen.v1.CreateProtocolRequest
-	(*CreateProtocolResponse)(nil),      // 41: clabgen.v1.CreateProtocolResponse
-	(*UpdateProtocolRequest)(nil),       // 42: clabgen.v1.UpdateProtocolRequest
-	(*UpdateProtocolResponse)(nil),      // 43: clabgen.v1.UpdateProtocolResponse
-	(*DeleteProtocolRequest)(nil),       // 44: clabgen.v1.DeleteProtocolRequest
-	(*DeleteProtocolResponse)(nil),      // 45: clabgen.v1.DeleteProtocolResponse
-	(*SetProtocolDisabledRequest)(nil),  // 46: clabgen.v1.SetProtocolDisabledRequest
-	(*SetProtocolDisabledResponse)(nil), // 47: clabgen.v1.SetProtocolDisabledResponse
-	(*RunProtocolActionRequest)(nil),    // 48: clabgen.v1.RunProtocolActionRequest
-	(*RunProtocolActionResponse)(nil),   // 49: clabgen.v1.RunProtocolActionResponse
-	(*PreviewProtocolRequest)(nil),      // 50: clabgen.v1.PreviewProtocolRequest
-	(*PreviewProtocolResponse)(nil),     // 51: clabgen.v1.PreviewProtocolResponse
-	(*DeviceGroup)(nil),                 // 52: clabgen.v1.DeviceGroup
-	(*ListDeviceGroupsRequest)(nil),     // 53: clabgen.v1.ListDeviceGroupsRequest
-	(*ListDeviceGroupsResponse)(nil),    // 54: clabgen.v1.ListDeviceGroupsResponse
-	(*GetDeviceGroupRequest)(nil),       // 55: clabgen.v1.GetDeviceGroupRequest
-	(*GetDeviceGroupResponse)(nil),      // 56: clabgen.v1.GetDeviceGroupResponse
-	(*CreateDeviceGroupRequest)(nil),    // 57: clabgen.v1.CreateDeviceGroupRequest
-	(*CreateDeviceGroupResponse)(nil),   // 58: clabgen.v1.CreateDeviceGroupResponse
-	(*UpdateDeviceGroupRequest)(nil),    // 59: clabgen.v1.UpdateDeviceGroupRequest
-	(*UpdateDeviceGroupResponse)(nil),   // 60: clabgen.v1.UpdateDeviceGroupResponse
-	(*DeleteDeviceGroupRequest)(nil),    // 61: clabgen.v1.DeleteDeviceGroupRequest
-	(*DeleteDeviceGroupResponse)(nil),   // 62: clabgen.v1.DeleteDeviceGroupResponse
-	(*PreviewDeviceGroupRequest)(nil),   // 63: clabgen.v1.PreviewDeviceGroupRequest
-	(*PreviewDeviceGroupResponse)(nil),  // 64: clabgen.v1.PreviewDeviceGroupResponse
-	(*RunGroupActionRequest)(nil),       // 65: clabgen.v1.RunGroupActionRequest
-	(*GroupActionResult)(nil),           // 66: clabgen.v1.GroupActionResult
-	(*RunGroupActionResponse)(nil),      // 67: clabgen.v1.RunGroupActionResponse
-	(*SetGroupDisabledRequest)(nil),     // 68: clabgen.v1.SetGroupDisabledRequest
-	(*SetGroupDisabledResponse)(nil),    // 69: clabgen.v1.SetGroupDisabledResponse
-	(*WatchEventsRequest)(nil),          // 70: clabgen.v1.WatchEventsRequest
-	(*Event)(nil),                       // 71: clabgen.v1.Event
-	(*CaptureRequest)(nil),              // 72: clabgen.v1.CaptureRequest
-	(*CapturedFrame)(nil),               // 73: clabgen.v1.CapturedFrame
-	(*DecodeFrameRequest)(nil),          // 74: clabgen.v1.DecodeFrameRequest
-	(*DecodeFrameResponse)(nil),         // 75: clabgen.v1.DecodeFrameResponse
-	(*GetScenarioRequest)(nil),          // 76: clabgen.v1.GetScenarioRequest
-	(*GetScenarioResponse)(nil),         // 77: clabgen.v1.GetScenarioResponse
-	(*ApplyScenarioRequest)(nil),        // 78: clabgen.v1.ApplyScenarioRequest
-	(*ApplyScenarioResponse)(nil),       // 79: clabgen.v1.ApplyScenarioResponse
-	(*ResetConfigRequest)(nil),          // 80: clabgen.v1.ResetConfigRequest
-	(*ResetConfigResponse)(nil),         // 81: clabgen.v1.ResetConfigResponse
-	nil,                                 // 82: clabgen.v1.GetDeviceIPResponse.CountersEntry
-	(*timestamppb.Timestamp)(nil),       // 83: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),             // 84: google.protobuf.Struct
+	(*GetConvergenceRequest)(nil),       // 31: clabgen.v1.GetConvergenceRequest
+	(*GetConvergenceResponse)(nil),      // 32: clabgen.v1.GetConvergenceResponse
+	(*ActionType)(nil),                  // 33: clabgen.v1.ActionType
+	(*ProtocolType)(nil),                // 34: clabgen.v1.ProtocolType
+	(*ListProtocolTypesRequest)(nil),    // 35: clabgen.v1.ListProtocolTypesRequest
+	(*ListProtocolTypesResponse)(nil),   // 36: clabgen.v1.ListProtocolTypesResponse
+	(*Protocol)(nil),                    // 37: clabgen.v1.Protocol
+	(*ListProtocolsRequest)(nil),        // 38: clabgen.v1.ListProtocolsRequest
+	(*ListProtocolsResponse)(nil),       // 39: clabgen.v1.ListProtocolsResponse
+	(*GetProtocolRequest)(nil),          // 40: clabgen.v1.GetProtocolRequest
+	(*GetProtocolResponse)(nil),         // 41: clabgen.v1.GetProtocolResponse
+	(*CreateProtocolRequest)(nil),       // 42: clabgen.v1.CreateProtocolRequest
+	(*CreateProtocolResponse)(nil),      // 43: clabgen.v1.CreateProtocolResponse
+	(*UpdateProtocolRequest)(nil),       // 44: clabgen.v1.UpdateProtocolRequest
+	(*UpdateProtocolResponse)(nil),      // 45: clabgen.v1.UpdateProtocolResponse
+	(*DeleteProtocolRequest)(nil),       // 46: clabgen.v1.DeleteProtocolRequest
+	(*DeleteProtocolResponse)(nil),      // 47: clabgen.v1.DeleteProtocolResponse
+	(*SetProtocolDisabledRequest)(nil),  // 48: clabgen.v1.SetProtocolDisabledRequest
+	(*SetProtocolDisabledResponse)(nil), // 49: clabgen.v1.SetProtocolDisabledResponse
+	(*RunProtocolActionRequest)(nil),    // 50: clabgen.v1.RunProtocolActionRequest
+	(*RunProtocolActionResponse)(nil),   // 51: clabgen.v1.RunProtocolActionResponse
+	(*PreviewProtocolRequest)(nil),      // 52: clabgen.v1.PreviewProtocolRequest
+	(*PreviewProtocolResponse)(nil),     // 53: clabgen.v1.PreviewProtocolResponse
+	(*DeviceGroup)(nil),                 // 54: clabgen.v1.DeviceGroup
+	(*ListDeviceGroupsRequest)(nil),     // 55: clabgen.v1.ListDeviceGroupsRequest
+	(*ListDeviceGroupsResponse)(nil),    // 56: clabgen.v1.ListDeviceGroupsResponse
+	(*GetDeviceGroupRequest)(nil),       // 57: clabgen.v1.GetDeviceGroupRequest
+	(*GetDeviceGroupResponse)(nil),      // 58: clabgen.v1.GetDeviceGroupResponse
+	(*CreateDeviceGroupRequest)(nil),    // 59: clabgen.v1.CreateDeviceGroupRequest
+	(*CreateDeviceGroupResponse)(nil),   // 60: clabgen.v1.CreateDeviceGroupResponse
+	(*UpdateDeviceGroupRequest)(nil),    // 61: clabgen.v1.UpdateDeviceGroupRequest
+	(*UpdateDeviceGroupResponse)(nil),   // 62: clabgen.v1.UpdateDeviceGroupResponse
+	(*DeleteDeviceGroupRequest)(nil),    // 63: clabgen.v1.DeleteDeviceGroupRequest
+	(*DeleteDeviceGroupResponse)(nil),   // 64: clabgen.v1.DeleteDeviceGroupResponse
+	(*PreviewDeviceGroupRequest)(nil),   // 65: clabgen.v1.PreviewDeviceGroupRequest
+	(*PreviewDeviceGroupResponse)(nil),  // 66: clabgen.v1.PreviewDeviceGroupResponse
+	(*RunGroupActionRequest)(nil),       // 67: clabgen.v1.RunGroupActionRequest
+	(*GroupActionResult)(nil),           // 68: clabgen.v1.GroupActionResult
+	(*RunGroupActionResponse)(nil),      // 69: clabgen.v1.RunGroupActionResponse
+	(*SetGroupDisabledRequest)(nil),     // 70: clabgen.v1.SetGroupDisabledRequest
+	(*SetGroupDisabledResponse)(nil),    // 71: clabgen.v1.SetGroupDisabledResponse
+	(*WatchEventsRequest)(nil),          // 72: clabgen.v1.WatchEventsRequest
+	(*Event)(nil),                       // 73: clabgen.v1.Event
+	(*CaptureRequest)(nil),              // 74: clabgen.v1.CaptureRequest
+	(*CapturedFrame)(nil),               // 75: clabgen.v1.CapturedFrame
+	(*DecodeFrameRequest)(nil),          // 76: clabgen.v1.DecodeFrameRequest
+	(*DecodeFrameResponse)(nil),         // 77: clabgen.v1.DecodeFrameResponse
+	(*GetScenarioRequest)(nil),          // 78: clabgen.v1.GetScenarioRequest
+	(*GetScenarioResponse)(nil),         // 79: clabgen.v1.GetScenarioResponse
+	(*ApplyScenarioRequest)(nil),        // 80: clabgen.v1.ApplyScenarioRequest
+	(*ApplyScenarioResponse)(nil),       // 81: clabgen.v1.ApplyScenarioResponse
+	(*ResetConfigRequest)(nil),          // 82: clabgen.v1.ResetConfigRequest
+	(*ResetConfigResponse)(nil),         // 83: clabgen.v1.ResetConfigResponse
+	nil,                                 // 84: clabgen.v1.GetDeviceIPResponse.CountersEntry
+	(*timestamppb.Timestamp)(nil),       // 85: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),             // 86: google.protobuf.Struct
 }
 var file_clabgen_v1_agent_proto_depIdxs = []int32{
-	83, // 0: clabgen.v1.GetInfoResponse.start_time:type_name -> google.protobuf.Timestamp
+	85, // 0: clabgen.v1.GetInfoResponse.start_time:type_name -> google.protobuf.Timestamp
 	2,  // 1: clabgen.v1.GetInfoResponse.persistence:type_name -> clabgen.v1.ConfigInfo
 	3,  // 2: clabgen.v1.Port.counters:type_name -> clabgen.v1.PortCounters
 	4,  // 3: clabgen.v1.ListPortsResponse.ports:type_name -> clabgen.v1.Port
@@ -4844,119 +4973,125 @@ var file_clabgen_v1_agent_proto_depIdxs = []int32{
 	10, // 9: clabgen.v1.UpdateDeviceRequest.device:type_name -> clabgen.v1.Device
 	10, // 10: clabgen.v1.UpdateDeviceResponse.device:type_name -> clabgen.v1.Device
 	19, // 11: clabgen.v1.GetDeviceIPResponse.neighbors:type_name -> clabgen.v1.Neighbor
-	82, // 12: clabgen.v1.GetDeviceIPResponse.counters:type_name -> clabgen.v1.GetDeviceIPResponse.CountersEntry
-	84, // 13: clabgen.v1.ReceivedFlow.stats:type_name -> google.protobuf.Struct
+	84, // 12: clabgen.v1.GetDeviceIPResponse.counters:type_name -> clabgen.v1.GetDeviceIPResponse.CountersEntry
+	86, // 13: clabgen.v1.ReceivedFlow.stats:type_name -> google.protobuf.Struct
 	26, // 14: clabgen.v1.ListReceivedFlowsResponse.flows:type_name -> clabgen.v1.ReceivedFlow
-	31, // 15: clabgen.v1.ProtocolType.actions:type_name -> clabgen.v1.ActionType
-	32, // 16: clabgen.v1.ListProtocolTypesResponse.types:type_name -> clabgen.v1.ProtocolType
-	84, // 17: clabgen.v1.Protocol.config:type_name -> google.protobuf.Struct
-	84, // 18: clabgen.v1.Protocol.status:type_name -> google.protobuf.Struct
-	35, // 19: clabgen.v1.ListProtocolsResponse.protocols:type_name -> clabgen.v1.Protocol
-	35, // 20: clabgen.v1.GetProtocolResponse.protocol:type_name -> clabgen.v1.Protocol
-	35, // 21: clabgen.v1.CreateProtocolRequest.protocol:type_name -> clabgen.v1.Protocol
-	35, // 22: clabgen.v1.CreateProtocolResponse.protocol:type_name -> clabgen.v1.Protocol
-	84, // 23: clabgen.v1.UpdateProtocolRequest.config:type_name -> google.protobuf.Struct
-	35, // 24: clabgen.v1.UpdateProtocolResponse.protocol:type_name -> clabgen.v1.Protocol
-	35, // 25: clabgen.v1.SetProtocolDisabledResponse.protocol:type_name -> clabgen.v1.Protocol
-	84, // 26: clabgen.v1.RunProtocolActionRequest.args:type_name -> google.protobuf.Struct
-	84, // 27: clabgen.v1.RunProtocolActionResponse.result:type_name -> google.protobuf.Struct
-	84, // 28: clabgen.v1.PreviewProtocolRequest.config:type_name -> google.protobuf.Struct
-	84, // 29: clabgen.v1.PreviewProtocolRequest.args:type_name -> google.protobuf.Struct
-	84, // 30: clabgen.v1.PreviewProtocolResponse.result:type_name -> google.protobuf.Struct
-	84, // 31: clabgen.v1.DeviceGroup.spec:type_name -> google.protobuf.Struct
-	84, // 32: clabgen.v1.DeviceGroup.status:type_name -> google.protobuf.Struct
-	52, // 33: clabgen.v1.ListDeviceGroupsResponse.groups:type_name -> clabgen.v1.DeviceGroup
-	52, // 34: clabgen.v1.GetDeviceGroupResponse.group:type_name -> clabgen.v1.DeviceGroup
-	52, // 35: clabgen.v1.CreateDeviceGroupRequest.group:type_name -> clabgen.v1.DeviceGroup
-	52, // 36: clabgen.v1.CreateDeviceGroupResponse.group:type_name -> clabgen.v1.DeviceGroup
-	52, // 37: clabgen.v1.UpdateDeviceGroupRequest.group:type_name -> clabgen.v1.DeviceGroup
-	52, // 38: clabgen.v1.UpdateDeviceGroupResponse.group:type_name -> clabgen.v1.DeviceGroup
-	52, // 39: clabgen.v1.PreviewDeviceGroupRequest.group:type_name -> clabgen.v1.DeviceGroup
-	84, // 40: clabgen.v1.PreviewDeviceGroupResponse.result:type_name -> google.protobuf.Struct
-	84, // 41: clabgen.v1.RunGroupActionRequest.args:type_name -> google.protobuf.Struct
-	84, // 42: clabgen.v1.GroupActionResult.result:type_name -> google.protobuf.Struct
-	66, // 43: clabgen.v1.RunGroupActionResponse.results:type_name -> clabgen.v1.GroupActionResult
-	66, // 44: clabgen.v1.SetGroupDisabledResponse.results:type_name -> clabgen.v1.GroupActionResult
-	83, // 45: clabgen.v1.Event.time:type_name -> google.protobuf.Timestamp
-	84, // 46: clabgen.v1.Event.data:type_name -> google.protobuf.Struct
-	83, // 47: clabgen.v1.CapturedFrame.time:type_name -> google.protobuf.Timestamp
-	84, // 48: clabgen.v1.DecodeFrameResponse.result:type_name -> google.protobuf.Struct
-	2,  // 49: clabgen.v1.ResetConfigResponse.persistence:type_name -> clabgen.v1.ConfigInfo
-	0,  // 50: clabgen.v1.AgentService.GetInfo:input_type -> clabgen.v1.GetInfoRequest
-	5,  // 51: clabgen.v1.AgentService.ListPorts:input_type -> clabgen.v1.ListPortsRequest
-	7,  // 52: clabgen.v1.AgentService.SetPortAdmin:input_type -> clabgen.v1.SetPortAdminRequest
-	11, // 53: clabgen.v1.AgentService.ListDevices:input_type -> clabgen.v1.ListDevicesRequest
-	13, // 54: clabgen.v1.AgentService.CreateDevice:input_type -> clabgen.v1.CreateDeviceRequest
-	15, // 55: clabgen.v1.AgentService.UpdateDevice:input_type -> clabgen.v1.UpdateDeviceRequest
-	17, // 56: clabgen.v1.AgentService.DeleteDevice:input_type -> clabgen.v1.DeleteDeviceRequest
-	20, // 57: clabgen.v1.AgentService.GetDeviceIP:input_type -> clabgen.v1.GetDeviceIPRequest
-	22, // 58: clabgen.v1.AgentService.ResolveNeighbor:input_type -> clabgen.v1.ResolveNeighborRequest
-	24, // 59: clabgen.v1.AgentService.ClearNeighbors:input_type -> clabgen.v1.ClearNeighborsRequest
-	27, // 60: clabgen.v1.AgentService.ListReceivedFlows:input_type -> clabgen.v1.ListReceivedFlowsRequest
-	29, // 61: clabgen.v1.AgentService.ClearReceivedFlows:input_type -> clabgen.v1.ClearReceivedFlowsRequest
-	33, // 62: clabgen.v1.AgentService.ListProtocolTypes:input_type -> clabgen.v1.ListProtocolTypesRequest
-	36, // 63: clabgen.v1.AgentService.ListProtocols:input_type -> clabgen.v1.ListProtocolsRequest
-	38, // 64: clabgen.v1.AgentService.GetProtocol:input_type -> clabgen.v1.GetProtocolRequest
-	40, // 65: clabgen.v1.AgentService.CreateProtocol:input_type -> clabgen.v1.CreateProtocolRequest
-	42, // 66: clabgen.v1.AgentService.UpdateProtocol:input_type -> clabgen.v1.UpdateProtocolRequest
-	44, // 67: clabgen.v1.AgentService.DeleteProtocol:input_type -> clabgen.v1.DeleteProtocolRequest
-	48, // 68: clabgen.v1.AgentService.RunProtocolAction:input_type -> clabgen.v1.RunProtocolActionRequest
-	46, // 69: clabgen.v1.AgentService.SetProtocolDisabled:input_type -> clabgen.v1.SetProtocolDisabledRequest
-	50, // 70: clabgen.v1.AgentService.PreviewProtocol:input_type -> clabgen.v1.PreviewProtocolRequest
-	53, // 71: clabgen.v1.AgentService.ListDeviceGroups:input_type -> clabgen.v1.ListDeviceGroupsRequest
-	55, // 72: clabgen.v1.AgentService.GetDeviceGroup:input_type -> clabgen.v1.GetDeviceGroupRequest
-	57, // 73: clabgen.v1.AgentService.CreateDeviceGroup:input_type -> clabgen.v1.CreateDeviceGroupRequest
-	59, // 74: clabgen.v1.AgentService.UpdateDeviceGroup:input_type -> clabgen.v1.UpdateDeviceGroupRequest
-	61, // 75: clabgen.v1.AgentService.DeleteDeviceGroup:input_type -> clabgen.v1.DeleteDeviceGroupRequest
-	63, // 76: clabgen.v1.AgentService.PreviewDeviceGroup:input_type -> clabgen.v1.PreviewDeviceGroupRequest
-	65, // 77: clabgen.v1.AgentService.RunGroupAction:input_type -> clabgen.v1.RunGroupActionRequest
-	68, // 78: clabgen.v1.AgentService.SetGroupDisabled:input_type -> clabgen.v1.SetGroupDisabledRequest
-	70, // 79: clabgen.v1.AgentService.WatchEvents:input_type -> clabgen.v1.WatchEventsRequest
-	72, // 80: clabgen.v1.AgentService.Capture:input_type -> clabgen.v1.CaptureRequest
-	74, // 81: clabgen.v1.AgentService.DecodeFrame:input_type -> clabgen.v1.DecodeFrameRequest
-	76, // 82: clabgen.v1.AgentService.GetScenario:input_type -> clabgen.v1.GetScenarioRequest
-	78, // 83: clabgen.v1.AgentService.ApplyScenario:input_type -> clabgen.v1.ApplyScenarioRequest
-	80, // 84: clabgen.v1.AgentService.ResetConfig:input_type -> clabgen.v1.ResetConfigRequest
-	1,  // 85: clabgen.v1.AgentService.GetInfo:output_type -> clabgen.v1.GetInfoResponse
-	6,  // 86: clabgen.v1.AgentService.ListPorts:output_type -> clabgen.v1.ListPortsResponse
-	8,  // 87: clabgen.v1.AgentService.SetPortAdmin:output_type -> clabgen.v1.SetPortAdminResponse
-	12, // 88: clabgen.v1.AgentService.ListDevices:output_type -> clabgen.v1.ListDevicesResponse
-	14, // 89: clabgen.v1.AgentService.CreateDevice:output_type -> clabgen.v1.CreateDeviceResponse
-	16, // 90: clabgen.v1.AgentService.UpdateDevice:output_type -> clabgen.v1.UpdateDeviceResponse
-	18, // 91: clabgen.v1.AgentService.DeleteDevice:output_type -> clabgen.v1.DeleteDeviceResponse
-	21, // 92: clabgen.v1.AgentService.GetDeviceIP:output_type -> clabgen.v1.GetDeviceIPResponse
-	23, // 93: clabgen.v1.AgentService.ResolveNeighbor:output_type -> clabgen.v1.ResolveNeighborResponse
-	25, // 94: clabgen.v1.AgentService.ClearNeighbors:output_type -> clabgen.v1.ClearNeighborsResponse
-	28, // 95: clabgen.v1.AgentService.ListReceivedFlows:output_type -> clabgen.v1.ListReceivedFlowsResponse
-	30, // 96: clabgen.v1.AgentService.ClearReceivedFlows:output_type -> clabgen.v1.ClearReceivedFlowsResponse
-	34, // 97: clabgen.v1.AgentService.ListProtocolTypes:output_type -> clabgen.v1.ListProtocolTypesResponse
-	37, // 98: clabgen.v1.AgentService.ListProtocols:output_type -> clabgen.v1.ListProtocolsResponse
-	39, // 99: clabgen.v1.AgentService.GetProtocol:output_type -> clabgen.v1.GetProtocolResponse
-	41, // 100: clabgen.v1.AgentService.CreateProtocol:output_type -> clabgen.v1.CreateProtocolResponse
-	43, // 101: clabgen.v1.AgentService.UpdateProtocol:output_type -> clabgen.v1.UpdateProtocolResponse
-	45, // 102: clabgen.v1.AgentService.DeleteProtocol:output_type -> clabgen.v1.DeleteProtocolResponse
-	49, // 103: clabgen.v1.AgentService.RunProtocolAction:output_type -> clabgen.v1.RunProtocolActionResponse
-	47, // 104: clabgen.v1.AgentService.SetProtocolDisabled:output_type -> clabgen.v1.SetProtocolDisabledResponse
-	51, // 105: clabgen.v1.AgentService.PreviewProtocol:output_type -> clabgen.v1.PreviewProtocolResponse
-	54, // 106: clabgen.v1.AgentService.ListDeviceGroups:output_type -> clabgen.v1.ListDeviceGroupsResponse
-	56, // 107: clabgen.v1.AgentService.GetDeviceGroup:output_type -> clabgen.v1.GetDeviceGroupResponse
-	58, // 108: clabgen.v1.AgentService.CreateDeviceGroup:output_type -> clabgen.v1.CreateDeviceGroupResponse
-	60, // 109: clabgen.v1.AgentService.UpdateDeviceGroup:output_type -> clabgen.v1.UpdateDeviceGroupResponse
-	62, // 110: clabgen.v1.AgentService.DeleteDeviceGroup:output_type -> clabgen.v1.DeleteDeviceGroupResponse
-	64, // 111: clabgen.v1.AgentService.PreviewDeviceGroup:output_type -> clabgen.v1.PreviewDeviceGroupResponse
-	67, // 112: clabgen.v1.AgentService.RunGroupAction:output_type -> clabgen.v1.RunGroupActionResponse
-	69, // 113: clabgen.v1.AgentService.SetGroupDisabled:output_type -> clabgen.v1.SetGroupDisabledResponse
-	71, // 114: clabgen.v1.AgentService.WatchEvents:output_type -> clabgen.v1.Event
-	73, // 115: clabgen.v1.AgentService.Capture:output_type -> clabgen.v1.CapturedFrame
-	75, // 116: clabgen.v1.AgentService.DecodeFrame:output_type -> clabgen.v1.DecodeFrameResponse
-	77, // 117: clabgen.v1.AgentService.GetScenario:output_type -> clabgen.v1.GetScenarioResponse
-	79, // 118: clabgen.v1.AgentService.ApplyScenario:output_type -> clabgen.v1.ApplyScenarioResponse
-	81, // 119: clabgen.v1.AgentService.ResetConfig:output_type -> clabgen.v1.ResetConfigResponse
-	85, // [85:120] is the sub-list for method output_type
-	50, // [50:85] is the sub-list for method input_type
-	50, // [50:50] is the sub-list for extension type_name
-	50, // [50:50] is the sub-list for extension extendee
-	0,  // [0:50] is the sub-list for field type_name
+	85, // 15: clabgen.v1.GetConvergenceRequest.since:type_name -> google.protobuf.Timestamp
+	85, // 16: clabgen.v1.GetConvergenceResponse.now:type_name -> google.protobuf.Timestamp
+	86, // 17: clabgen.v1.GetConvergenceResponse.flows:type_name -> google.protobuf.Struct
+	73, // 18: clabgen.v1.GetConvergenceResponse.events:type_name -> clabgen.v1.Event
+	33, // 19: clabgen.v1.ProtocolType.actions:type_name -> clabgen.v1.ActionType
+	34, // 20: clabgen.v1.ListProtocolTypesResponse.types:type_name -> clabgen.v1.ProtocolType
+	86, // 21: clabgen.v1.Protocol.config:type_name -> google.protobuf.Struct
+	86, // 22: clabgen.v1.Protocol.status:type_name -> google.protobuf.Struct
+	37, // 23: clabgen.v1.ListProtocolsResponse.protocols:type_name -> clabgen.v1.Protocol
+	37, // 24: clabgen.v1.GetProtocolResponse.protocol:type_name -> clabgen.v1.Protocol
+	37, // 25: clabgen.v1.CreateProtocolRequest.protocol:type_name -> clabgen.v1.Protocol
+	37, // 26: clabgen.v1.CreateProtocolResponse.protocol:type_name -> clabgen.v1.Protocol
+	86, // 27: clabgen.v1.UpdateProtocolRequest.config:type_name -> google.protobuf.Struct
+	37, // 28: clabgen.v1.UpdateProtocolResponse.protocol:type_name -> clabgen.v1.Protocol
+	37, // 29: clabgen.v1.SetProtocolDisabledResponse.protocol:type_name -> clabgen.v1.Protocol
+	86, // 30: clabgen.v1.RunProtocolActionRequest.args:type_name -> google.protobuf.Struct
+	86, // 31: clabgen.v1.RunProtocolActionResponse.result:type_name -> google.protobuf.Struct
+	86, // 32: clabgen.v1.PreviewProtocolRequest.config:type_name -> google.protobuf.Struct
+	86, // 33: clabgen.v1.PreviewProtocolRequest.args:type_name -> google.protobuf.Struct
+	86, // 34: clabgen.v1.PreviewProtocolResponse.result:type_name -> google.protobuf.Struct
+	86, // 35: clabgen.v1.DeviceGroup.spec:type_name -> google.protobuf.Struct
+	86, // 36: clabgen.v1.DeviceGroup.status:type_name -> google.protobuf.Struct
+	54, // 37: clabgen.v1.ListDeviceGroupsResponse.groups:type_name -> clabgen.v1.DeviceGroup
+	54, // 38: clabgen.v1.GetDeviceGroupResponse.group:type_name -> clabgen.v1.DeviceGroup
+	54, // 39: clabgen.v1.CreateDeviceGroupRequest.group:type_name -> clabgen.v1.DeviceGroup
+	54, // 40: clabgen.v1.CreateDeviceGroupResponse.group:type_name -> clabgen.v1.DeviceGroup
+	54, // 41: clabgen.v1.UpdateDeviceGroupRequest.group:type_name -> clabgen.v1.DeviceGroup
+	54, // 42: clabgen.v1.UpdateDeviceGroupResponse.group:type_name -> clabgen.v1.DeviceGroup
+	54, // 43: clabgen.v1.PreviewDeviceGroupRequest.group:type_name -> clabgen.v1.DeviceGroup
+	86, // 44: clabgen.v1.PreviewDeviceGroupResponse.result:type_name -> google.protobuf.Struct
+	86, // 45: clabgen.v1.RunGroupActionRequest.args:type_name -> google.protobuf.Struct
+	86, // 46: clabgen.v1.GroupActionResult.result:type_name -> google.protobuf.Struct
+	68, // 47: clabgen.v1.RunGroupActionResponse.results:type_name -> clabgen.v1.GroupActionResult
+	68, // 48: clabgen.v1.SetGroupDisabledResponse.results:type_name -> clabgen.v1.GroupActionResult
+	85, // 49: clabgen.v1.Event.time:type_name -> google.protobuf.Timestamp
+	86, // 50: clabgen.v1.Event.data:type_name -> google.protobuf.Struct
+	85, // 51: clabgen.v1.CapturedFrame.time:type_name -> google.protobuf.Timestamp
+	86, // 52: clabgen.v1.DecodeFrameResponse.result:type_name -> google.protobuf.Struct
+	2,  // 53: clabgen.v1.ResetConfigResponse.persistence:type_name -> clabgen.v1.ConfigInfo
+	0,  // 54: clabgen.v1.AgentService.GetInfo:input_type -> clabgen.v1.GetInfoRequest
+	5,  // 55: clabgen.v1.AgentService.ListPorts:input_type -> clabgen.v1.ListPortsRequest
+	7,  // 56: clabgen.v1.AgentService.SetPortAdmin:input_type -> clabgen.v1.SetPortAdminRequest
+	11, // 57: clabgen.v1.AgentService.ListDevices:input_type -> clabgen.v1.ListDevicesRequest
+	13, // 58: clabgen.v1.AgentService.CreateDevice:input_type -> clabgen.v1.CreateDeviceRequest
+	15, // 59: clabgen.v1.AgentService.UpdateDevice:input_type -> clabgen.v1.UpdateDeviceRequest
+	17, // 60: clabgen.v1.AgentService.DeleteDevice:input_type -> clabgen.v1.DeleteDeviceRequest
+	20, // 61: clabgen.v1.AgentService.GetDeviceIP:input_type -> clabgen.v1.GetDeviceIPRequest
+	22, // 62: clabgen.v1.AgentService.ResolveNeighbor:input_type -> clabgen.v1.ResolveNeighborRequest
+	24, // 63: clabgen.v1.AgentService.ClearNeighbors:input_type -> clabgen.v1.ClearNeighborsRequest
+	27, // 64: clabgen.v1.AgentService.ListReceivedFlows:input_type -> clabgen.v1.ListReceivedFlowsRequest
+	29, // 65: clabgen.v1.AgentService.ClearReceivedFlows:input_type -> clabgen.v1.ClearReceivedFlowsRequest
+	31, // 66: clabgen.v1.AgentService.GetConvergence:input_type -> clabgen.v1.GetConvergenceRequest
+	35, // 67: clabgen.v1.AgentService.ListProtocolTypes:input_type -> clabgen.v1.ListProtocolTypesRequest
+	38, // 68: clabgen.v1.AgentService.ListProtocols:input_type -> clabgen.v1.ListProtocolsRequest
+	40, // 69: clabgen.v1.AgentService.GetProtocol:input_type -> clabgen.v1.GetProtocolRequest
+	42, // 70: clabgen.v1.AgentService.CreateProtocol:input_type -> clabgen.v1.CreateProtocolRequest
+	44, // 71: clabgen.v1.AgentService.UpdateProtocol:input_type -> clabgen.v1.UpdateProtocolRequest
+	46, // 72: clabgen.v1.AgentService.DeleteProtocol:input_type -> clabgen.v1.DeleteProtocolRequest
+	50, // 73: clabgen.v1.AgentService.RunProtocolAction:input_type -> clabgen.v1.RunProtocolActionRequest
+	48, // 74: clabgen.v1.AgentService.SetProtocolDisabled:input_type -> clabgen.v1.SetProtocolDisabledRequest
+	52, // 75: clabgen.v1.AgentService.PreviewProtocol:input_type -> clabgen.v1.PreviewProtocolRequest
+	55, // 76: clabgen.v1.AgentService.ListDeviceGroups:input_type -> clabgen.v1.ListDeviceGroupsRequest
+	57, // 77: clabgen.v1.AgentService.GetDeviceGroup:input_type -> clabgen.v1.GetDeviceGroupRequest
+	59, // 78: clabgen.v1.AgentService.CreateDeviceGroup:input_type -> clabgen.v1.CreateDeviceGroupRequest
+	61, // 79: clabgen.v1.AgentService.UpdateDeviceGroup:input_type -> clabgen.v1.UpdateDeviceGroupRequest
+	63, // 80: clabgen.v1.AgentService.DeleteDeviceGroup:input_type -> clabgen.v1.DeleteDeviceGroupRequest
+	65, // 81: clabgen.v1.AgentService.PreviewDeviceGroup:input_type -> clabgen.v1.PreviewDeviceGroupRequest
+	67, // 82: clabgen.v1.AgentService.RunGroupAction:input_type -> clabgen.v1.RunGroupActionRequest
+	70, // 83: clabgen.v1.AgentService.SetGroupDisabled:input_type -> clabgen.v1.SetGroupDisabledRequest
+	72, // 84: clabgen.v1.AgentService.WatchEvents:input_type -> clabgen.v1.WatchEventsRequest
+	74, // 85: clabgen.v1.AgentService.Capture:input_type -> clabgen.v1.CaptureRequest
+	76, // 86: clabgen.v1.AgentService.DecodeFrame:input_type -> clabgen.v1.DecodeFrameRequest
+	78, // 87: clabgen.v1.AgentService.GetScenario:input_type -> clabgen.v1.GetScenarioRequest
+	80, // 88: clabgen.v1.AgentService.ApplyScenario:input_type -> clabgen.v1.ApplyScenarioRequest
+	82, // 89: clabgen.v1.AgentService.ResetConfig:input_type -> clabgen.v1.ResetConfigRequest
+	1,  // 90: clabgen.v1.AgentService.GetInfo:output_type -> clabgen.v1.GetInfoResponse
+	6,  // 91: clabgen.v1.AgentService.ListPorts:output_type -> clabgen.v1.ListPortsResponse
+	8,  // 92: clabgen.v1.AgentService.SetPortAdmin:output_type -> clabgen.v1.SetPortAdminResponse
+	12, // 93: clabgen.v1.AgentService.ListDevices:output_type -> clabgen.v1.ListDevicesResponse
+	14, // 94: clabgen.v1.AgentService.CreateDevice:output_type -> clabgen.v1.CreateDeviceResponse
+	16, // 95: clabgen.v1.AgentService.UpdateDevice:output_type -> clabgen.v1.UpdateDeviceResponse
+	18, // 96: clabgen.v1.AgentService.DeleteDevice:output_type -> clabgen.v1.DeleteDeviceResponse
+	21, // 97: clabgen.v1.AgentService.GetDeviceIP:output_type -> clabgen.v1.GetDeviceIPResponse
+	23, // 98: clabgen.v1.AgentService.ResolveNeighbor:output_type -> clabgen.v1.ResolveNeighborResponse
+	25, // 99: clabgen.v1.AgentService.ClearNeighbors:output_type -> clabgen.v1.ClearNeighborsResponse
+	28, // 100: clabgen.v1.AgentService.ListReceivedFlows:output_type -> clabgen.v1.ListReceivedFlowsResponse
+	30, // 101: clabgen.v1.AgentService.ClearReceivedFlows:output_type -> clabgen.v1.ClearReceivedFlowsResponse
+	32, // 102: clabgen.v1.AgentService.GetConvergence:output_type -> clabgen.v1.GetConvergenceResponse
+	36, // 103: clabgen.v1.AgentService.ListProtocolTypes:output_type -> clabgen.v1.ListProtocolTypesResponse
+	39, // 104: clabgen.v1.AgentService.ListProtocols:output_type -> clabgen.v1.ListProtocolsResponse
+	41, // 105: clabgen.v1.AgentService.GetProtocol:output_type -> clabgen.v1.GetProtocolResponse
+	43, // 106: clabgen.v1.AgentService.CreateProtocol:output_type -> clabgen.v1.CreateProtocolResponse
+	45, // 107: clabgen.v1.AgentService.UpdateProtocol:output_type -> clabgen.v1.UpdateProtocolResponse
+	47, // 108: clabgen.v1.AgentService.DeleteProtocol:output_type -> clabgen.v1.DeleteProtocolResponse
+	51, // 109: clabgen.v1.AgentService.RunProtocolAction:output_type -> clabgen.v1.RunProtocolActionResponse
+	49, // 110: clabgen.v1.AgentService.SetProtocolDisabled:output_type -> clabgen.v1.SetProtocolDisabledResponse
+	53, // 111: clabgen.v1.AgentService.PreviewProtocol:output_type -> clabgen.v1.PreviewProtocolResponse
+	56, // 112: clabgen.v1.AgentService.ListDeviceGroups:output_type -> clabgen.v1.ListDeviceGroupsResponse
+	58, // 113: clabgen.v1.AgentService.GetDeviceGroup:output_type -> clabgen.v1.GetDeviceGroupResponse
+	60, // 114: clabgen.v1.AgentService.CreateDeviceGroup:output_type -> clabgen.v1.CreateDeviceGroupResponse
+	62, // 115: clabgen.v1.AgentService.UpdateDeviceGroup:output_type -> clabgen.v1.UpdateDeviceGroupResponse
+	64, // 116: clabgen.v1.AgentService.DeleteDeviceGroup:output_type -> clabgen.v1.DeleteDeviceGroupResponse
+	66, // 117: clabgen.v1.AgentService.PreviewDeviceGroup:output_type -> clabgen.v1.PreviewDeviceGroupResponse
+	69, // 118: clabgen.v1.AgentService.RunGroupAction:output_type -> clabgen.v1.RunGroupActionResponse
+	71, // 119: clabgen.v1.AgentService.SetGroupDisabled:output_type -> clabgen.v1.SetGroupDisabledResponse
+	73, // 120: clabgen.v1.AgentService.WatchEvents:output_type -> clabgen.v1.Event
+	75, // 121: clabgen.v1.AgentService.Capture:output_type -> clabgen.v1.CapturedFrame
+	77, // 122: clabgen.v1.AgentService.DecodeFrame:output_type -> clabgen.v1.DecodeFrameResponse
+	79, // 123: clabgen.v1.AgentService.GetScenario:output_type -> clabgen.v1.GetScenarioResponse
+	81, // 124: clabgen.v1.AgentService.ApplyScenario:output_type -> clabgen.v1.ApplyScenarioResponse
+	83, // 125: clabgen.v1.AgentService.ResetConfig:output_type -> clabgen.v1.ResetConfigResponse
+	90, // [90:126] is the sub-list for method output_type
+	54, // [54:90] is the sub-list for method input_type
+	54, // [54:54] is the sub-list for extension type_name
+	54, // [54:54] is the sub-list for extension extendee
+	0,  // [0:54] is the sub-list for field type_name
 }
 
 func init() { file_clabgen_v1_agent_proto_init() }
@@ -4970,7 +5105,7 @@ func file_clabgen_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clabgen_v1_agent_proto_rawDesc), len(file_clabgen_v1_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   83,
+			NumMessages:   85,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

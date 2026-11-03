@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1210 420" width="1210" height="420" role="img" aria-label="sender agent, SR-SIM sr1, router agent with a primary and a backup link">
+<style>
+  .box { fill: #22272e; stroke-width: 2.5; }
+  .agent { stroke: #4c8dff; }
+  .router { stroke: #2dd4bf; }
+  .title { font: 600 26px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #e6edf3; }
+  .kind { font: 17px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #9198a1; }
+  .line { font: 19px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #e6edf3; }
+  .port { font: 16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #9198a1; }
+  .linkname { font: 600 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #e6edf3; }
+  .linknote { font: 17px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #9198a1; }
+  .failtxt { font: 600 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #f85149; }
+  .wire { stroke: #768390; stroke-width: 3; }
+  .cross { stroke: #f85149; stroke-width: 5; stroke-linecap: round; }
+  .flow { stroke: #f59e0b; stroke-width: 2.5; fill: none; stroke-dasharray: 8 5; }
+  .flowtxt { font: 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #9198a1; }
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/></marker></defs>
+<rect x="20" y="30" width="230" height="280" rx="10" class="box agent"/>
+<text x="135.0" y="74" class="title" text-anchor="middle">sender</text>
+<text x="135.0" y="100" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="135.0" y="154" class="line" text-anchor="middle">ping-bfd</text>
+<text x="135.0" y="184" class="line" text-anchor="middle">ping-plain</text>
+<text x="135.0" y="214" class="line" text-anchor="middle">stream-plain</text>
+<rect x="390" y="30" width="220" height="280" rx="10" class="box router"/>
+<text x="500.0" y="74" class="title" text-anchor="middle">sr1</text>
+<text x="500.0" y="100" class="kind" text-anchor="middle">Nokia SR-SIM</text>
+<text x="500.0" y="154" class="line" text-anchor="middle">IS-IS level 2</text>
+<text x="500.0" y="184" class="line" text-anchor="middle">BFD on VLAN 10</text>
+<rect x="950" y="30" width="240" height="280" rx="10" class="box agent"/>
+<text x="1070.0" y="74" class="title" text-anchor="middle">router</text>
+<text x="1070.0" y="100" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="1070.0" y="154" class="line" text-anchor="middle">router-bfd</text>
+<text x="1070.0" y="184" class="line" text-anchor="middle">router-plain</text>
+<text x="1070.0" y="214" class="line" text-anchor="middle">two IS-IS routers</text>
+<line x1="250" y1="170.0" x2="390" y2="170.0" class="wire"/>
+<text x="258" y="158.0" class="port" text-anchor="start">eth1</text>
+<text x="382" y="158.0" class="port" text-anchor="end">1/1/c1</text>
+<line x1="610" y1="100" x2="950" y2="100" class="wire"/>
+<text x="618" y="88" class="port" text-anchor="start">1/1/c2</text>
+<text x="942" y="88" class="port" text-anchor="end">eth1</text>
+<text x="780.0" y="130" class="linkname" text-anchor="middle">primary, metric 10</text>
+<line x1="766.0" y1="86" x2="794.0" y2="114" class="cross"/>
+<line x1="766.0" y1="114" x2="794.0" y2="86" class="cross"/>
+<text x="780.0" y="156" class="failtxt" text-anchor="middle">fails: the SR isn't told</text>
+<line x1="610" y1="245" x2="950" y2="245" class="wire"/>
+<text x="618" y="233" class="port" text-anchor="start">1/1/c3</text>
+<text x="942" y="233" class="port" text-anchor="end">eth2</text>
+<text x="780.0" y="275" class="linkname" text-anchor="middle">backup, metric 20</text>
+<path d="M135.0,318 V354 H1070.0 V320" class="flow" marker-end="url(#arrow)"/>
+<text x="605.0" y="386" class="flowtxt" text-anchor="middle">flows to each router's loopback, primary link first, then backup once the SR reroutes</text>
+</svg>

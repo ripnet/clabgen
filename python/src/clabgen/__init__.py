@@ -11,8 +11,8 @@
 
 from ._connect import ClabgenError
 from .agent import Agent, merge, pcap_data, wait_until
-from .lab import FlowResult, FlowsFailed, Lab, Measurement
+from .lab import Convergence, ConvergenceFailed, ConvergenceFlow, FlowResult, FlowsFailed, Lab, Measurement
 
 __version__ = "0.2.0"
 
-__all__ = ["Agent", "ClabgenError", "FlowResult", "FlowsFailed", "Lab", "Measurement", "merge", "pcap_data", "wait_until", "__version__"]
+__all__ = ["Agent", "ClabgenError", "Convergence", "ConvergenceFailed", "ConvergenceFlow", "FlowResult", "FlowsFailed", "Lab", "Measurement", "merge", "pcap_data", "wait_until", "__version__"]

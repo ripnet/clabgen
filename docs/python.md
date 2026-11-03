@@ -42,6 +42,31 @@ pytest --clabgen-lab b2b --clabgen-ui http://host:8090    # through a clabgen-ui
   suite, including a raw L2 circuit that the test builds and removes
   itself.
 
+## Measuring convergence
+
+`convergence()` measures what the `with` block's failure costs running
+flows, without clearing them. It refuses flows that aren't clean to start
+with (`force=True` measures anyway), then waits until they stay clean for
+`settle` seconds (5 by default) or `timeout` passes. For the repair, measure
+again in another `with` block. See
+[convergence tests](flows.md#convergence-tests).
+
+```python
+with lab.convergence() as failure:
+    lab["gen2"].port_down("eth1")
+failure.assert_restored(max_ms=500)     # raises if a flow lost more, or never recovered
+print(failure.worst_ms, failure.median_ms, failure.p95_ms)
+
+with lab.convergence() as repair:
+    lab["gen2"].port_up("eth1")
+print(repair["ping1"].status, repair["ping1"].loss_ms)
+```
+
+Each of `flows` is a `ConvergenceFlow`: `name`, `agent`, `device`, `flow_id`,
+`status` (`no_impact`, `restored`, `not_restored`, `stopped`, `no_receiver`),
+`loss_ms`, `lost`, `first_loss_ms`, `last_loss_ms`, `resolution_ms`,
+`truncated` and `outages`. `events` has what the agents reported meanwhile.
+
 ## Measuring flows
 
 `measure()` clears the flows, runs the `with` block, waits `settle`

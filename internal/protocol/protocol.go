@@ -16,9 +16,11 @@ import (
 	"net/netip"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/invopop/jsonschema"
 
+	"github.com/ripnet/clabgen/internal/outage"
 	"github.com/ripnet/clabgen/internal/pkt"
 )
 
@@ -152,6 +154,12 @@ type FrameCounter interface{ DataFrames() (tx, rx uint64) }
 // short word for group views, e.g. "established" or "up". Counts of each
 // word are shown per group, so it should have few distinct values.
 type Healther interface{ Health() string }
+
+// FlowMeasurer may be implemented by a traffic flow's Session: what the
+// flow lost since a moment, for convergence measurements.
+type FlowMeasurer interface {
+	Convergence(since, now time.Time) outage.Flow
+}
 
 // Delegator may be implemented by a Session holding prefixes delegated to
 // it (DHCPv6 prefix delegation), listed beside its device's addresses in

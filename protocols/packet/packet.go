@@ -20,6 +20,7 @@ import (
 
 	"github.com/ripnet/clabgen/internal/flowstats"
 	"github.com/ripnet/clabgen/internal/ipflow"
+	"github.com/ripnet/clabgen/internal/outage"
 	"github.com/ripnet/clabgen/internal/pcapng"
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/protocol"
@@ -326,6 +327,15 @@ func (f *stream) run(ctx context.Context, done chan struct{}) {
 	f.state, f.stopped, f.cancel = ipflow.StateDone, time.Now(), nil
 	f.mu.Unlock()
 	f.env.Emit("flow-done", "finished", nil)
+}
+
+// Convergence reports what the flow lost since a moment (packet flows get
+// no replies; only failed sends show here, the receivers measure the rest).
+func (f *stream) Convergence(since, now time.Time) outage.Flow {
+	f.mu.Lock()
+	running := f.state == ipflow.StateRunning
+	f.mu.Unlock()
+	return ipflow.Convergence(f.flowID, false, running, f.tracker0(), since, now)
 }
 
 func (f *stream) tracker0() *flowstats.Tracker {

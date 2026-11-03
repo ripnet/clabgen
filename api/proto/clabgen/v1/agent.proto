@@ -35,6 +35,11 @@ service AgentService {
   // (one-way loss, reordering, latency and outages per flow ID).
   rpc ListReceivedFlows(ListReceivedFlowsRequest) returns (ListReceivedFlowsResponse);
   rpc ClearReceivedFlows(ClearReceivedFlowsRequest) returns (ClearReceivedFlowsResponse);
+  // GetConvergence reports what flows lost since a moment, from the agent's
+  // senders and receivers, and the agent's events since then. Statistics and
+  // checks are left alone. A measurement: call it without since, keep `now`,
+  // run the trigger, then poll with since = now until the flows are clean.
+  rpc GetConvergence(GetConvergenceRequest) returns (GetConvergenceResponse);
 
   // Protocol types are the plugins compiled into the agent. Each publishes a
   // JSON schema for its config and for each action's arguments.
@@ -233,6 +238,23 @@ message ClearReceivedFlowsRequest {
   string flow_id = 2;
 }
 message ClearReceivedFlowsResponse {}
+
+message GetConvergenceRequest {
+  // Unset: the last 5 seconds, to tell whether flows are clean to start with.
+  google.protobuf.Timestamp since = 1;
+  // Only these flow IDs; empty: all flows.
+  repeated string flow_ids = 2;
+}
+message GetConvergenceResponse {
+  google.protobuf.Timestamp now = 1;
+  // One per flow and side: side ("sender" or "receiver"), name (the sender's
+  // instance), device, flow_id, one_way, running, status (no_impact, restored,
+  // not_restored or stopped), loss_ms, lost, first_loss_ms, last_loss_ms,
+  // clean_ms, resolution_ms, truncated, outages [{start_ms, end_ms, lost}].
+  // An echo flow is measured by its sender, a one-way flow by its receivers.
+  repeated google.protobuf.Struct flows = 2;
+  repeated Event events = 3;
+}
 
 message ActionType {
   string name = 1;

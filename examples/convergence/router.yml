@@ -1,0 +1,36 @@
+# Two IS-IS routers, each with a link to the SR over eth1 (metric 10, the
+# primary path) and over eth2 (metric 20, the backup). Only the first runs BFD
+# on its primary link. A loopback answers on either of a router's links.
+devices:
+  - {name: bfd-primary, port: eth1, vlans: [{vid: 10}], addresses: [10.0.10.2/30], gateway4: 10.0.10.1}
+  - {name: bfd-backup, port: eth2, vlans: [{vid: 10}], addresses: [10.0.11.2/30], gateway4: 10.0.11.1}
+  - {name: plain-primary, port: eth1, vlans: [{vid: 20}], addresses: [10.0.20.2/30], gateway4: 10.0.20.1}
+  - {name: plain-backup, port: eth2, vlans: [{vid: 20}], addresses: [10.0.21.2/30], gateway4: 10.0.21.1}
+protocols:
+  - name: isis-bfd
+    type: isis
+    device: bfd-primary
+    config:
+      system_id: 0000.0000.0010
+      hostname: router-bfd
+      level: L2
+      areas: ["49.0001"]
+      metric: 10
+      hello_interval: 1
+      hello_multiplier: 3
+      bfd: {enabled: true, min_tx_ms: 100, min_rx_ms: 100}
+      interfaces: [{device: bfd-backup, metric: 20, bfd: false}]
+      loopbacks: [192.0.2.10/32]
+  - name: isis-plain
+    type: isis
+    device: plain-primary
+    config:
+      system_id: 0000.0000.0020
+      hostname: router-plain
+      level: L2
+      areas: ["49.0001"]
+      metric: 10
+      hello_interval: 1
+      hello_multiplier: 3
+      interfaces: [{device: plain-backup, metric: 20}]
+      loopbacks: [192.0.2.20/32]
