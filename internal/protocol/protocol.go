@@ -69,6 +69,11 @@ type IP interface {
 	// it pops the stack and handles the IP packet inside (for it, as usual).
 	// Call release to stop.
 	AddLocalLabel(label uint32) (release func())
+	// SetTunnel publishes an LSP flows on the device can send into, by name
+	// (nil: it's down).
+	SetTunnel(name string, t *Tunnel)
+	// Tunnel is an LSP's current state, or nil when it's down.
+	Tunnel(name string) *Tunnel
 	// IsLocal reports whether packets to addr are for this device: one of its
 	// addresses, a local address, or one in a local prefix set.
 	IsLocal(addr netip.Addr) bool
@@ -84,6 +89,14 @@ type IP interface {
 	// ListenTCP accepts connections on local:port, or (local invalid) on
 	// every address of the family (v6) the device has, sending with ttl.
 	ListenTCP(local netip.Addr, port uint16, v6 bool, ttl int) (net.Listener, error)
+}
+
+// Tunnel is what it takes to send into an LSP: the labels to push (outermost
+// first; none: the next hop pops it) and where to send the packet.
+type Tunnel struct {
+	Labels  []uint32
+	NextHop netip.Addr
+	MAC     pkt.MAC
 }
 
 // Env is what the agent provides to a running session.

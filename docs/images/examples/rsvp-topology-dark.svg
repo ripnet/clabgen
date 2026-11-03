@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 560" width="1240" height="560" role="img" aria-label="head agent, SR-SIMs sr1 and sr2 with sr3 as the bypass, tail agent">
+<style>
+  .box { fill: #22272e; stroke-width: 2.5; }
+  .agent { stroke: #4c8dff; }
+  .router { stroke: #2dd4bf; }
+  .title { font: 600 26px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #e6edf3; }
+  .kind { font: 17px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #9198a1; }
+  .line { font: 19px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #e6edf3; }
+  .port { font: 15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #9198a1; }
+  .note { font: 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #9198a1; }
+  .wire { stroke: #768390; stroke-width: 3; }
+  .flow { stroke: #f59e0b; stroke-width: 2.5; fill: none; stroke-dasharray: 8 5; }
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/></marker></defs>
+<line x1="220" y1="165.0" x2="330" y2="165.0" class="wire"/>
+<text x="226" y="155.0" class="port" text-anchor="start">eth1</text>
+<text x="324" y="155.0" class="port" text-anchor="end">c1/1</text>
+<line x1="530" y1="165.0" x2="710" y2="165.0" class="wire"/>
+<text x="536" y="155.0" class="port" text-anchor="start">c2/1</text>
+<text x="704" y="155.0" class="port" text-anchor="end">c1/1</text>
+<text x="620.0" y="193.0" class="note" text-anchor="middle">the protected link</text>
+<line x1="910" y1="165.0" x2="1020" y2="165.0" class="wire"/>
+<text x="916" y="155.0" class="port" text-anchor="start">c2/1</text>
+<text x="1014" y="155.0" class="port" text-anchor="end">eth1</text>
+<line x1="430.0" y1="250" x2="520" y2="460.0" class="wire"/>
+<line x1="810.0" y1="250" x2="720" y2="460.0" class="wire"/>
+<text x="418.0" y="280" class="port" text-anchor="end">c3/1</text>
+<text x="822.0" y="280" class="port" text-anchor="start">c3/1</text>
+<text x="508" y="486.0" class="port" text-anchor="end">c1/1</text>
+<text x="732" y="486.0" class="port" text-anchor="start">c2/1</text>
+<rect x="20" y="80" width="200" height="170" rx="10" class="box agent"/>
+<text x="120.0" y="120" class="title" text-anchor="middle">head</text>
+<text x="120.0" y="144" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="120.0" y="180" class="line" text-anchor="middle">signals to-tail,</text>
+<text x="120.0" y="206" class="line" text-anchor="middle">flow into it</text>
+<rect x="330" y="80" width="200" height="170" rx="10" class="box router"/>
+<text x="430.0" y="120" class="title" text-anchor="middle">sr1</text>
+<text x="430.0" y="144" class="kind" text-anchor="middle">Nokia SR-SIM</text>
+<text x="430.0" y="180" class="line" text-anchor="middle">builds the bypass</text>
+<text x="430.0" y="206" class="line" text-anchor="middle">repairs locally</text>
+<rect x="710" y="80" width="200" height="170" rx="10" class="box router"/>
+<text x="810.0" y="120" class="title" text-anchor="middle">sr2</text>
+<text x="810.0" y="144" class="kind" text-anchor="middle">Nokia SR-SIM</text>
+<text x="810.0" y="180" class="line" text-anchor="middle">where the</text>
+<text x="810.0" y="206" class="line" text-anchor="middle">bypass rejoins</text>
+<rect x="1020" y="80" width="200" height="170" rx="10" class="box agent"/>
+<text x="1120.0" y="120" class="title" text-anchor="middle">tail</text>
+<text x="1120.0" y="144" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="1120.0" y="180" class="line" text-anchor="middle">LSPs end here,</text>
+<text x="1120.0" y="206" class="line" text-anchor="middle">measures</text>
+<rect x="520" y="400" width="200" height="120" rx="10" class="box router"/>
+<text x="620.0" y="440" class="title" text-anchor="middle">sr3</text>
+<text x="620.0" y="464" class="kind" text-anchor="middle">Nokia SR-SIM</text>
+<text x="620.0" y="500" class="line" text-anchor="middle">on the bypass</text>
+<path d="M120.0,72 V46 H1120.0 V70" class="flow" marker-end="url(#arrow)"/>
+<text x="620.0" y="34" class="note" text-anchor="middle">LSP to-tail, carrying the flow</text>
+</svg>

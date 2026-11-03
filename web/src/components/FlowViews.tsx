@@ -281,6 +281,13 @@ export function IpFlowView({ status, agentId, name, extra }: { status: JsonObjec
           <span className={`pill ${running ? "pill-on" : ""}`}>{s.state}</span> {s.source || "?"} → <b>{s.destination}</b>
           {s.next_hop && s.next_hop !== s.destination && <span className="muted"> via {s.next_hop}</span>}
           {s.dst_mac && <span className="muted"> ({s.dst_mac})</span>}
+          {s.lsp && (
+            <span className={s.lsp_up ? "muted" : "warn-text"}>
+              {" "}
+              in LSP <span className="mono">{s.lsp}</span>
+              {s.lsp_up ? (s.lsp_labels?.length ? `, label ${s.lsp_labels.join(" ")}` : ", no label (the next hop pops it)") : ": down, packets count as lost"}
+            </span>
+          )}
         </div>
         <div className="muted">
           {s.kind} · {s.rate} pps · {s.mode}

@@ -14,6 +14,9 @@ export type FlowStatus = {
   source?: string;
   next_hop?: string;
   dst_mac?: string;
+  lsp?: string;
+  lsp_up?: boolean;
+  lsp_labels?: number[];
   kind?: string;
   rate: number;
   mode?: string;

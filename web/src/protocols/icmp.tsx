@@ -1,6 +1,6 @@
 import { flowSummary } from "../components/Flow";
 import { IpFlowView } from "../components/FlowViews";
-import { RoutePicker } from "../components/RoutePicker";
+import { FlowExtras } from "../components/LSPPicker";
 import { registerView } from "./registry";
 
-registerView("icmp", { summary: flowSummary, Status: IpFlowView, ConfigExtra: RoutePicker });
+registerView("icmp", { summary: flowSummary, Status: IpFlowView, ConfigExtra: FlowExtras });

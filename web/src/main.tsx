@@ -15,6 +15,7 @@ import "./protocols/lldp";
 import "./protocols/bgp";
 import "./protocols/ldp";
 import "./protocols/ospf";
+import "./protocols/rsvp";
 import "./protocols/dhcp";
 
 createRoot(document.getElementById("root")!).render(

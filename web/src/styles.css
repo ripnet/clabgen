@@ -639,3 +639,9 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .ldp-peer h3 { margin: 0; }
 .ldp-peer p { margin: 0 0 8px; }
 .ldp-peer .btn { margin-top: 8px; }
+.rsvp-lsp { margin-top: 10px; }
+.rsvp-lsp h3 { margin: 0; }
+.rsvp-lsp p { margin: 0 0 8px; }
+.rsvp-path { overflow-wrap: anywhere; }
+.lsp-picker { display: block; margin-bottom: 10px; }
+.lsp-picker select { display: block; margin-top: 4px; width: auto; }

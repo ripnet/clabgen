@@ -359,6 +359,13 @@ func (t *Table) Convergence(since, now time.Time) []Received {
 		var open *outage.Outage
 		if idle := now.Sub(e.last); iv > 0 && idle > max(silentAfter*iv, minSilence) {
 			open = &outage.Outage{Start: e.lastSent.Add(iv), End: now, Lost: uint64(idle / iv)}
+		} else if n := len(e.gaps); n > 0 {
+			// Packets are back, but this gap isn't settled yet: it isn't over
+			// as far as a report goes, or a flow looks clean just as it resumes.
+			open = &outage.Outage{Start: e.gaps[0].from, End: e.gaps[n-1].to}
+			for _, g := range e.gaps {
+				open.Lost += g.hi - g.lo + 1
+			}
 		}
 		out = append(out, Received{
 			Flow:   outage.Flow{FlowID: flowID(e.key.FlowID), OneWay: true, Running: true, Report: e.log.Report(since, now.Add(-settleAfter), iv, open)},

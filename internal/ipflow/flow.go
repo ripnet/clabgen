@@ -359,6 +359,9 @@ func (f *Flow) prepare(ctx context.Context) error {
 		f.mu.Unlock()
 		return nil
 	}
+	if f.Spec.LSP != "" {
+		return nil // the LSP says where each packet goes
+	}
 	return f.resolve(ctx)
 }
 
@@ -409,7 +412,7 @@ func (f *Flow) run(ctx context.Context, cancel context.CancelFunc, done chan str
 	f.mu.Unlock()
 
 	// Keep following the next hop (e.g. a gateway that fails over).
-	if f.Spec.DstMAC == "" {
+	if f.Spec.DstMAC == "" && f.Spec.LSP == "" {
 		go func() {
 			t := time.NewTicker(5 * time.Second)
 			defer t.Stop()
@@ -461,6 +464,14 @@ func (f *Flow) sendOne() {
 	if f.Echo {
 		tr.Sent(n, now)
 	}
+	if f.Spec.LSP != "" {
+		var err error
+		if b, et, mac, err = f.intoLSP(b, et); err != nil {
+			f.SetError(err.Error())
+			tr.TxError(n, now, err)
+			return
+		}
+	}
 	if err := f.Env.Send(mac, et, b, opt); err != nil {
 		tr.TxError(n, now, err)
 		return
@@ -468,6 +479,30 @@ func (f *Flow) sendOne() {
 	if !f.Echo {
 		tr.SentNoReply(now)
 	}
+}
+
+// intoLSP puts an IP packet into the flow's LSP: its labels, and its next hop.
+func (f *Flow) intoLSP(b []byte, et uint16) ([]byte, uint16, pkt.MAC, error) {
+	t := f.Env.IP().Tunnel(f.Spec.LSP)
+	if t == nil {
+		return nil, 0, pkt.MAC{}, fmt.Errorf("LSP %s is down", f.Spec.LSP)
+	}
+	if len(t.Labels) == 0 {
+		return b, et, t.MAC, nil // the next hop pops it
+	}
+	out := make([]byte, 0, 4*len(t.Labels)+len(b))
+	ttl := f.Spec.TTL
+	if ttl == 0 {
+		ttl = 64
+	}
+	for i, l := range t.Labels {
+		e := l<<12 | uint32(f.Spec.DSCP>>3)<<9 | uint32(ttl)
+		if i == len(t.Labels)-1 {
+			e |= 1 << 8
+		}
+		out = binary.BigEndian.AppendUint32(out, e)
+	}
+	return append(out, b...), pkt.EtherTypeMPLS, t.MAC, nil
 }
 
 // ---- status and actions ----
@@ -493,6 +528,10 @@ type Base struct {
 	Verdict *Verdict `json:"verdict,omitempty"` // with checks configured
 	// With destinations: loss by prefix, since the flow started or was cleared.
 	Prefixes *outage.PrefixLoss `json:"prefixes,omitempty"`
+	// With lsp: the LSP, and the labels packets get now.
+	LSP       string   `json:"lsp,omitempty"`
+	LSPUp     bool     `json:"lsp_up,omitempty"`
+	LSPLabels []uint32 `json:"lsp_labels,omitempty"`
 }
 
 // BaseStatus returns the shared status; the flow type sets Kind and may
@@ -529,6 +568,15 @@ func (f *Flow) BaseStatus() Base {
 	hdr := 20
 	if f.Dst.Is6() {
 		hdr = 40
+	}
+	if f.Spec.LSP != "" {
+		s.LSP = f.Spec.LSP
+		if t := f.Env.IP().Tunnel(f.Spec.LSP); t != nil {
+			s.LSPUp, s.LSPLabels, s.NextHop, s.DstMAC = true, t.Labels, t.NextHop.String(), t.MAC.String()
+			hdr += 4 * len(t.Labels)
+		} else {
+			s.NextHop, s.DstMAC = "", ""
+		}
 	}
 	s.FrameSize = 14 + 4*len(f.Env.Device().VLANs()) + hdr + f.tp.HeaderLen() + f.Spec.PayloadSize
 	if s.FrameSize < 60 {
@@ -641,6 +689,13 @@ func (f *Flow) preview(ctx context.Context) (any, error) {
 	f.mu.Unlock()
 	if !src.IsValid() {
 		return nil, fmt.Errorf("no source address for %s on device %s", f.Dst, f.Env.Device().Name())
+	}
+	if f.Spec.LSP != "" {
+		var err error
+		if b, et, mac, err = f.intoLSP(b, et); err != nil {
+			return nil, err
+		}
+		have = true
 	}
 	d := f.Env.Device()
 	tags := d.VLANs()

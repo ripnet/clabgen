@@ -4,6 +4,8 @@ import (
 	"net/netip"
 	"testing"
 	"time"
+
+	"github.com/ripnet/clabgen/internal/outage"
 )
 
 func TestTable(t *testing.T) {
@@ -89,5 +91,35 @@ func TestConvergence(t *testing.T) {
 	// Quiet well before the moment: not part of this measurement.
 	if f := tb.Convergence(at(300), at(310)); len(f) != 0 {
 		t.Fatalf("stale: %+v", f)
+	}
+}
+
+// A flow that has just resumed isn't clean: its gap, not settled yet, counts.
+func TestConvergenceGapNotSettled(t *testing.T) {
+	tb := New()
+	t0 := time.Now().Add(-10 * time.Second)
+	iv := 10 * time.Millisecond
+	rec := func(seq int, at time.Time) {
+		sent := t0.Add(time.Duration(seq) * iv)
+		tb.Record(Packet{FlowID: 1, Seq: uint64(seq), Sent: sent, Rx: at, Proto: "udp"})
+	}
+	for i := 0; i < 50; i++ {
+		rec(i, t0.Add(time.Duration(i)*iv))
+	}
+	since := t0.Add(100 * time.Millisecond)
+	// Back after 5 s, this moment.
+	now := time.Now()
+	rec(550, now)
+	r := tb.Convergence(since, now)
+	if len(r) != 1 || r[0].Status != outage.NotRestored || r[0].Lost < 400 {
+		t.Fatalf("while unsettled: %+v", r)
+	}
+	// It keeps coming, and the gap settles.
+	for i := 551; i <= 600; i++ {
+		rec(i, now.Add(time.Duration(i-550)*iv))
+	}
+	r = tb.Convergence(since, now.Add(settleAfter+time.Millisecond))
+	if len(r) != 1 || r[0].Status != outage.Restored || r[0].Lost < 400 {
+		t.Fatalf("settled: %+v", r)
 	}
 }

@@ -23,6 +23,9 @@
 - [`ldp`](ldp): LDP with a Nokia SR-SIM, which pushes the labels it learns onto
   real traffic. Walked through in the docs'
   [LDP with traffic in the LSPs](../docs/examples/ldp.md) example.
+- [`rsvp`](rsvp): RSVP-TE through Nokia SR-SIMs with clabgen at both ends, and
+  what a link failure costs with fast reroute. Walked through in the docs'
+  [RSVP-TE fast reroute](../docs/examples/rsvp.md) example.
 
 Each binds its topology's folder into the clabgen nodes (`.:/clab`), so
 what you change in a running lab is saved in `clab-<lab>/<node>/clabgen.yml`
@@ -36,7 +39,7 @@ cd b2b && containerlab deploy -t b2b.clab.yml
 ```
 
 SR-SIM needs its image and a license: add `license: <file>` to the `sr1`
-node in `srsim/srsim.clab.yml` (or `dhcp/dhcp.clab.yml`, `convergence/convergence.clab.yml`, `bgp-routes/bgp-routes.clab.yml`, `ldp/ldp.clab.yml`) before deploying.
+node in `srsim/srsim.clab.yml` (or `dhcp/dhcp.clab.yml`, `convergence/convergence.clab.yml`, `bgp-routes/bgp-routes.clab.yml`, `ldp/ldp.clab.yml`, `rsvp/rsvp.clab.yml`) before deploying.
 Each agent's scenario is in its own YAML file; `sr1.partial.txt` is the
 SR's configuration.
 

@@ -21,6 +21,7 @@ import (
 	"github.com/ripnet/clabgen/internal/flowrx"
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/prefixset"
+	"github.com/ripnet/clabgen/internal/protocol"
 )
 
 // Config is a device's IP configuration.
@@ -159,7 +160,8 @@ type Stack struct {
 	locals    map[netip.Addr]int // AddLocal addresses (reference counts)
 	localSets []*prefixset.Set   // AddLocalPrefixes sets
 	labels    map[uint32]int     // AddLocalLabel labels (reference counts)
-	tcp       *tcpStack          // netstack for TCP (created on first use)
+	tunnels   map[string]*protocol.Tunnel
+	tcp       *tcpStack // netstack for TCP (created on first use)
 
 	ipID     atomic.Uint32
 	counters counters
@@ -486,6 +488,27 @@ func (s *Stack) rxMPLS(f *pkt.Frame) bool {
 		return s.rxIPv6(&inner)
 	}
 	return false
+}
+
+// SetTunnel implements protocol.IP.
+func (s *Stack) SetTunnel(name string, t *protocol.Tunnel) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if t == nil {
+		delete(s.tunnels, name)
+		return
+	}
+	if s.tunnels == nil {
+		s.tunnels = map[string]*protocol.Tunnel{}
+	}
+	s.tunnels[name] = t
+}
+
+// Tunnel implements protocol.IP.
+func (s *Stack) Tunnel(name string) *protocol.Tunnel {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.tunnels[name]
 }
 
 // AddLocalLabel implements protocol.IP.

@@ -199,6 +199,28 @@ The Flows page shows every agent's flows with their verdicts, and starts,
 stops or clears them all. `clabgenctl protocols` adds `checks=pass` or
 `checks=fail (…)`, and the status has the measured value of each check.
 
+## Flows into LSPs
+
+An `icmp` or `udp` flow can send into an LSP that an [RSVP-TE](rsvp.md) instance
+on its device signals, by name: `lsp: to-tail`, or **Send into an LSP** in the
+flow's form. An example: [RSVP-TE fast reroute](examples/rsvp.md).
+
+```yaml
+    config:
+      destination: 192.0.2.2
+      lsp: to-tail
+      rate: 200
+```
+
+- Each packet gets the LSP's current label and goes to its next hop, so a new
+  label or path applies at once, and a tail that pops the label gets plain IP.
+- **While the LSP is down, packets count as lost** and aren't sent, and the flow's
+  page says why. They don't fall back to plain IP.
+- IPv4 only. `dst_mac` doesn't go with it.
+- **Replies aren't in the LSP.** The far end sends them as plain IP, so an echo flow
+  also measures the way back. To measure just the LSP, use a one-way flow, measured
+  at a clabgen receiver.
+
 ## Flows to many prefixes
 
 An `icmp` or `udp` flow can send to many prefixes instead of one address:

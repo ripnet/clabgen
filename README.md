@@ -112,6 +112,9 @@ Good to know:
 - **LDP**: link and targeted sessions, labels both ways, and traffic in the
   LSPs measured at clabgen; end sessions, go silent or withdraw labels
   ([docs](docs/ldp.md)).
+- **RSVP-TE**: head and tail of LSPs, explicit routes and fast reroute requests,
+  and flows sending into LSPs; tear down, re-signal, send errors or go silent
+  ([docs](docs/rsvp.md)).
 - **IS-IS**: point-to-point and LAN, L1/L2, multi-topology, SR-MPLS,
   SRv6 and flex-algo, keychain authentication, BFD, graceful restart.
 - **OSPFv2 / OSPFv3**: areas (stub, NSSA, virtual links), segment routing,

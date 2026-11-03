@@ -1,0 +1,52 @@
+/configure card 1 card-type iom-1
+/configure card 1 mda 1 mda-type me6-100gb-qsfp28
+/configure port 1/1/c1 admin-state enable
+/configure port 1/1/c1 connector breakout c1-100g
+/configure port 1/1/c1/1 admin-state enable
+/configure port 1/1/c1/1 ethernet mode network
+/configure port 1/1/c2 admin-state enable
+/configure port 1/1/c2 connector breakout c1-100g
+/configure port 1/1/c2/1 admin-state enable
+/configure port 1/1/c2/1 ethernet mode network
+/configure port 1/1/c3 admin-state enable
+/configure port 1/1/c3 connector breakout c1-100g
+/configure port 1/1/c3/1 admin-state enable
+/configure port 1/1/c3/1 ethernet mode network
+/configure router "Base" interface "system" ipv4 primary address 192.0.2.11 prefix-length 32
+/configure router "Base" isis 0 admin-state enable
+/configure router "Base" isis 0 area-address [49.0001]
+/configure router "Base" isis 0 level-capability 2
+/configure router "Base" isis 0 traffic-engineering true
+/configure router "Base" isis 0 level 2 wide-metrics-only true
+/configure router "Base" isis 0 interface "system" passive true
+/configure router "Base" mpls admin-state enable
+/configure router "Base" rsvp admin-state enable
+/configure router "Base" interface "to-head" port 1/1/c1/1
+/configure router "Base" interface "to-head" ipv4 primary address 10.0.1.1 prefix-length 30
+/configure router "Base" interface "to-sr2" port 1/1/c2/1
+/configure router "Base" interface "to-sr2" ipv4 primary address 10.0.12.1 prefix-length 30
+/configure router "Base" interface "to-sr3" port 1/1/c3/1
+/configure router "Base" interface "to-sr3" ipv4 primary address 10.0.13.1 prefix-length 30
+/configure router "Base" isis 0 interface "to-head" interface-type point-to-point
+/configure router "Base" isis 0 interface "to-head" level 2 metric 10
+/configure router "Base" mpls interface "to-head"
+/configure router "Base" rsvp interface "to-head"
+/configure router "Base" isis 0 interface "to-sr2" interface-type point-to-point
+/configure router "Base" isis 0 interface "to-sr2" level 2 metric 10
+/configure router "Base" mpls interface "to-sr2"
+/configure router "Base" rsvp interface "to-sr2"
+/configure router "Base" isis 0 interface "to-sr3" interface-type point-to-point
+/configure router "Base" isis 0 interface "to-sr3" level 2 metric 100
+/configure router "Base" mpls interface "to-sr3"
+/configure router "Base" rsvp interface "to-sr3"
+/configure router "Base" mpls path "to-sr2" admin-state enable
+/configure router "Base" mpls path "to-sr2" hop 10 ip-address 192.0.2.12
+/configure router "Base" mpls path "to-sr2" hop 10 type loose
+/configure router "Base" mpls lsp "sr-to-tail" type p2p-rsvp
+/configure router "Base" mpls lsp "sr-to-tail" to 192.0.2.2
+/configure router "Base" mpls lsp "sr-to-tail" retry-timer 5
+/configure router "Base" mpls lsp "sr-to-tail" admin-state enable
+/configure router "Base" mpls lsp "sr-to-tail" primary "to-sr2"
+/configure router "Base" isis 0 igp-shortcut admin-state enable
+/configure router "Base" isis 0 igp-shortcut tunnel-next-hop family ipv4 resolution-filter rsvp true
+/configure router "Base" isis 0 igp-shortcut tunnel-next-hop family ipv4 resolution filter

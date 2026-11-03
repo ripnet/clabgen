@@ -1,0 +1,46 @@
+# The head of an RSVP-TE LSP through the SRs, and flows.
+devices:
+  - {name: core, port: eth1, addresses: [10.0.1.2/30], gateway4: 10.0.1.1}
+protocols:
+  - name: isis
+    type: isis
+    device: core
+    config:
+      system_id: 0000.0000.0001
+      hostname: head
+      level: L2
+      areas: ["49.0001"]
+      loopbacks: [192.0.2.1/32]
+  - name: rsvp
+    type: rsvp
+    device: core
+    config:
+      router_id: 192.0.2.1
+      lsps:
+        # Fast reroute asks for a fully strict route on these routers.
+        - name: to-tail
+          to: 192.0.2.2
+          protection: link
+          hops:
+            - {address: 10.0.1.1}
+            - {address: 10.0.12.2}
+            - {address: 10.0.2.2}
+  # One way, measured at the tail: replies would come back over IS-IS, and be
+  # hit by the same failure.
+  - name: into-lsp
+    type: udp
+    device: core
+    config:
+      destination: 192.0.2.2
+      lsp: to-tail
+      dst_port: 5001
+      rate: 200
+      auto_start: true
+  # Routed as usual: sr1 pushes the label of its own LSP to the tail.
+  - name: through-sr1
+    type: icmp
+    device: core
+    config:
+      destination: 192.0.2.2
+      rate: 100
+      auto_start: true

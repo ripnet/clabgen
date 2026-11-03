@@ -83,6 +83,7 @@ type Addressing struct {
 	Source string `json:"source,omitempty" jsonschema:"description=Source address. Default: the device's address on the destination's subnet; else its first address of that family"`
 	DstMAC string `json:"dst_mac,omitempty" jsonschema:"description=Destination MAC. Default: resolve the next hop (destination or gateway) with ARP/ND"`
 	PCP    *uint8 `json:"vlan_pcp,omitempty" jsonschema:"minimum=0,maximum=7,description=PCP on every VLAN tag. Default: the device's"`
+	LSP    string `json:"lsp,omitempty" jsonschema:"description=Send into this LSP: one that an RSVP instance on the device signals. Packets count as lost while it's down"`
 }
 
 type IPHeader struct {
@@ -177,6 +178,14 @@ func (s Spec) Validate() (netip.Addr, error) {
 	if s.DstMAC != "" {
 		if _, err := pkt.ParseMAC(s.DstMAC); err != nil {
 			return dst, fmt.Errorf("dst_mac: %w", err)
+		}
+	}
+	if s.LSP != "" {
+		if !dst.Is4() {
+			return dst, errors.New("lsp carries IPv4 only")
+		}
+		if s.DstMAC != "" {
+			return dst, errors.New("set either lsp or dst_mac")
 		}
 	}
 	if err := s.Run.Validate(); err != nil {

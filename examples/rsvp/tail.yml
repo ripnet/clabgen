@@ -1,0 +1,18 @@
+# The tail: LSPs to its router ID end here, and it takes their labels off.
+devices:
+  - {name: core, port: eth1, addresses: [10.0.2.2/30], gateway4: 10.0.2.1}
+protocols:
+  - name: isis
+    type: isis
+    device: core
+    config:
+      system_id: 0000.0000.0002
+      hostname: tail
+      level: L2
+      areas: ["49.0001"]
+      loopbacks: [192.0.2.2/32]
+  - name: rsvp
+    type: rsvp
+    device: core
+    config:
+      router_id: 192.0.2.2

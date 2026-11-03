@@ -887,6 +887,20 @@ func summary(p *v1.Protocol) string {
 		}
 		return fmt.Sprintf("%v fecs=%v peers=[%s]", m["router_id"], m["advertised"], strings.Join(ps, " "))
 	}
+	if p.Type == "rsvp" {
+		var hs []string
+		if l, ok := m["heads"].([]any); ok {
+			for _, x := range l {
+				n := x.(map[string]any)
+				hs = append(hs, fmt.Sprintf("%v:%v", n["name"], n["state"]))
+			}
+		}
+		tails := 0
+		if l, ok := m["tails"].([]any); ok {
+			tails = len(l)
+		}
+		return fmt.Sprintf("%v lsps=[%s] ending-here=%d", m["router_id"], strings.Join(hs, " "), tails)
+	}
 	if p.Type == "lldp" {
 		var ns []string
 		if l, ok := m["neighbors"].([]any); ok {

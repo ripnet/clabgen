@@ -23,6 +23,7 @@ nav:
       - BGP: bgp.md
       - OSPF: ospf.md
       - LDP: ldp.md
+      - RSVP-TE: rsvp.md
       - LLDP: lldp.md
       - DHCP: dhcp.md
   - Examples:
@@ -31,6 +32,7 @@ nav:
       - Link failure convergence: examples/convergence.md
       - Traffic to BGP routes: examples/bgp-routes.md
       - LDP with traffic in the LSPs: examples/ldp.md
+      - RSVP-TE fast reroute: examples/rsvp.md
   - CLI: cli.md
   - Python and pytest: python.md
   - API: api.md

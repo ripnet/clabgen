@@ -1,0 +1,29 @@
+# RSVP-TE through Nokia SR-SIMs, with clabgen at both ends.
+#   head:eth1 -- sr1:1/1/c1/1: 10.0.1.2/30, signals the LSP and sends into it
+#   sr1:1/1/c2/1 -- sr2:1/1/c1/1: the LSP's path
+#   sr1:1/1/c3/1 -- sr3:1/1/c1/1, sr3:1/1/c2/1 -- sr2:1/1/c3/1: the bypass
+#   tail:eth1 -- sr2:1/1/c2/1: 10.0.2.2/30, where the LSP ends
+name: rsvp
+topology:
+  defaults:
+    kind: nokia_srsim
+  nodes:
+    sr1: {image: "nokia_srsim:26.10.R1", startup-config: sr1.partial.txt}
+    sr2: {image: "nokia_srsim:26.10.R1", startup-config: sr2.partial.txt}
+    sr3: {image: "nokia_srsim:26.10.R1", startup-config: sr3.partial.txt}
+    head:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]   # the topology folder: the scenario, and the saved config in clab-<lab>/head/
+      env: {CLABGEN_SCENARIO: head.yml}
+    tail:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: tail.yml}
+  links:
+    - endpoints: [head:eth1, sr1:1/1/c1/1]
+    - endpoints: [sr1:1/1/c2/1, sr2:1/1/c1/1]
+    - endpoints: [sr1:1/1/c3/1, sr3:1/1/c1/1]
+    - endpoints: [sr3:1/1/c2/1, sr2:1/1/c3/1]
+    - endpoints: [tail:eth1, sr2:1/1/c2/1]
