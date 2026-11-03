@@ -629,3 +629,9 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .conv-event { stroke: var(--accent); stroke-width: 2; }
 .conv-events summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
 .btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); }
+
+/* From BGP routes (flow config) */
+.route-picker { margin-bottom: 12px; }
+.route-picker-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); }
+.route-picker-list { max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.route-picker-row { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 13px; }

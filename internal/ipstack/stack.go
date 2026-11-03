@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/ripnet/clabgen/internal/flowrx"
 	"github.com/ripnet/clabgen/internal/pkt"
+	"github.com/ripnet/clabgen/internal/prefixset"
 )
 
 // Config is a device's IP configuration.
@@ -155,6 +157,7 @@ type Stack struct {
 	flows     *flowrx.Table      // signed flow packets received
 	ownFlows  map[uint32]int     // flow IDs sent from this device (not recorded)
 	locals    map[netip.Addr]int // AddLocal addresses (reference counts)
+	localSets []*prefixset.Set   // AddLocalPrefixes sets
 	tcp       *tcpStack          // netstack for TCP (created on first use)
 
 	ipID     atomic.Uint32
@@ -333,11 +336,40 @@ func (s *Stack) own(a netip.Addr) (netip.Prefix, bool) {
 	return netip.Prefix{}, false
 }
 
-// forUs reports whether IP packets to a are ours: an address of the device
-// or a local (loopback) one. Caller holds mu.
+// forUs reports whether IP packets to a are ours: an address of the device,
+// a local (loopback) one, or one in a local prefix set. Caller holds mu.
 func (s *Stack) forUs(a netip.Addr) bool {
-	_, ok := s.own(a)
-	return ok || s.locals[a] > 0
+	if _, ok := s.own(a); ok || s.locals[a] > 0 {
+		return true
+	}
+	for _, set := range s.localSets {
+		if set.Contains(a) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsLocal implements protocol.IP.
+func (s *Stack) IsLocal(a netip.Addr) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.forUs(a.Unmap())
+}
+
+// AddLocalPrefixes implements protocol.IP.
+func (s *Stack) AddLocalPrefixes(set *prefixset.Set) func() {
+	s.mu.Lock()
+	s.localSets = append(s.localSets, set)
+	s.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.mu.Lock()
+			s.localSets = slices.DeleteFunc(s.localSets, func(x *prefixset.Set) bool { return x == set })
+			s.mu.Unlock()
+		})
+	}
 }
 
 // AddLocal implements protocol.IP.

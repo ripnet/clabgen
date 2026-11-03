@@ -167,6 +167,7 @@ export function CreateProtocol({
   }
   const dev = device || devices.data?.devices[0]?.name || "";
   const Editor = t ? viewFor(t.name).ConfigEditor : undefined;
+  const Extra = t ? viewFor(t.name).ConfigExtra : undefined;
 
   return (
     <Modal title={preset?.title ?? (category === "traffic" ? "New flow" : "New protocol")} onClose={onClose} wide={Editor ? "x" : true}>
@@ -217,6 +218,7 @@ export function CreateProtocol({
           </div>
         </div>
         <h4>Configuration</h4>
+        {Extra && <Extra schema={schema} value={cfg} onChange={setCfg} agentId={agentId} device={dev} />}
         {Editor && t ? (
           <Editor schema={schema} value={cfg} onChange={setCfg} agentId={agentId} device={dev} />
         ) : (

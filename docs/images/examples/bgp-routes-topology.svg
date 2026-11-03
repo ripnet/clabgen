@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1210 380" width="1210" height="380" role="img" aria-label="sender agent, SR-SIM sr1, routes agent advertising 100 BGP routes">
+<style>
+  .box { fill: #f6f8fa; stroke-width: 2.5; }
+  .agent { stroke: #2563eb; }
+  .router { stroke: #0f766e; }
+  .title { font: 600 26px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #1f2328; }
+  .kind { font: 17px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #59636e; }
+  .line { font: 19px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #1f2328; }
+  .port { font: 16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #59636e; }
+  .note { font: 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #59636e; }
+  .wire { stroke: #8c959f; stroke-width: 3; }
+  .flow { stroke: #d97706; stroke-width: 2.5; fill: none; stroke-dasharray: 8 5; }
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d97706"/></marker></defs>
+<rect x="20" y="30" width="260" height="220" rx="10" class="box agent"/>
+<text x="150.0" y="74" class="title" text-anchor="middle">sender</text>
+<text x="150.0" y="100" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="150.0" y="154" class="line" text-anchor="middle">one flow to all</text>
+<text x="150.0" y="184" class="line" text-anchor="middle">100 prefixes</text>
+<rect x="475" y="30" width="260" height="220" rx="10" class="box router"/>
+<text x="605.0" y="74" class="title" text-anchor="middle">sr1</text>
+<text x="605.0" y="100" class="kind" text-anchor="middle">Nokia SR-SIM</text>
+<text x="605.0" y="154" class="line" text-anchor="middle">AS 65001</text>
+<text x="605.0" y="184" class="line" text-anchor="middle">routes the 100 prefixes</text>
+<rect x="930" y="30" width="260" height="220" rx="10" class="box agent"/>
+<text x="1060.0" y="74" class="title" text-anchor="middle">routes</text>
+<text x="1060.0" y="100" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="1060.0" y="154" class="line" text-anchor="middle">AS 65002</text>
+<text x="1060.0" y="184" class="line" text-anchor="middle">advertises 100 routes,</text>
+<text x="1060.0" y="214" class="line" text-anchor="middle">and answers for them</text>
+<line x1="280" y1="140.0" x2="475" y2="140.0" class="wire"/>
+<text x="288" y="128.0" class="port" text-anchor="start">eth1</text>
+<text x="467" y="128.0" class="port" text-anchor="end">1/1/c1/1</text>
+<line x1="735" y1="140.0" x2="930" y2="140.0" class="wire"/>
+<text x="743" y="128.0" class="port" text-anchor="start">1/1/c2/1</text>
+<text x="922" y="128.0" class="port" text-anchor="end">eth1</text>
+<text x="832.5" y="170.0" class="note" text-anchor="middle">eBGP</text>
+<path d="M150.0,258 V294 H1060.0 V260" class="flow" marker-end="url(#arrow)"/>
+<text x="605.0" y="326" class="note" text-anchor="middle">a packet to each prefix in turn: which ones get no reply?</text>
+</svg>

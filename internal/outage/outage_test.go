@@ -129,3 +129,13 @@ func TestCombineHandoverNoLoss(t *testing.T) {
 		t.Fatalf("moved=%v %+v", moved, r)
 	}
 }
+
+// An outage already going on counts only from the moment.
+func TestReportOutageAlreadyGoingOn(t *testing.T) {
+	var l Log
+	l.Add(Outage{at(-60000), at(200), 60200}, iv)
+	r := l.Report(t0, at(3000), iv, nil)
+	if r.Lost != 200 || r.LossMs != 200 || *r.FirstLossMs != 0 || *r.LastLossMs != 200 {
+		t.Fatalf("%+v", r)
+	}
+}

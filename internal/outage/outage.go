@@ -89,7 +89,33 @@ type Report struct {
 	// Truncated: the log overflowed since the moment, so this is a minimum.
 	Truncated bool   `json:"truncated,omitempty"`
 	Outages   []Span `json:"outages"`
+	// A flow to many prefixes: how many, and those that lost traffic.
+	Prefixes *PrefixLoss `json:"prefixes,omitempty"`
 }
+
+// PrefixLoss is a many-destination flow's loss by prefix. Each prefix is
+// probed once every ProbeMs, so a failure shorter than that misses some.
+type PrefixLoss struct {
+	Total    int           `json:"total"`
+	Impacted int           `json:"impacted"`
+	ProbeMs  float64       `json:"probe_ms"`
+	Measured bool          `json:"measured"` // an echo flow; a one-way flow cannot say by prefix
+	List     []PrefixEntry `json:"list"`     // most lost first, up to MaxPrefixList
+}
+
+// PrefixEntry is what one prefix lost.
+type PrefixEntry struct {
+	Prefix      string  `json:"prefix"`
+	Lost        uint64  `json:"lost"`
+	LossMs      float64 `json:"loss_ms"`
+	FirstLossMs float64 `json:"first_loss_ms"`
+	LastLossMs  float64 `json:"last_loss_ms"`
+	// Ongoing: its latest packet whose fate is known was lost.
+	Ongoing bool `json:"ongoing,omitempty"`
+}
+
+// MaxPrefixList caps the prefixes listed in a report.
+const MaxPrefixList = 1000
 
 // Report sums the outages that ended after since. Results are known up to
 // settled (later packets may still be lost); open, if not nil, is an outage
@@ -99,14 +125,19 @@ func (l *Log) Report(since, settled time.Time, interval time.Duration, open *Out
 	r := Report{Status: NoImpact, ResolutionMs: ms(interval), Outages: []Span{}, Truncated: l.droppedAt.After(since)}
 	last := since
 	add := func(o Outage) {
-		first := ms(o.Start.Sub(since))
+		first := max(0, ms(o.Start.Sub(since))) // an outage already going on
 		if r.FirstLossMs == nil {
 			r.FirstLossMs = &first
 		}
 		end := ms(o.End.Sub(since))
 		r.LastLossMs = &end
-		r.Lost += o.Lost
-		r.Outages = append(r.Outages, Span{StartMs: first, EndMs: end, Lost: o.Lost})
+		lost := o.Lost
+		if o.Start.Before(since) && interval > 0 {
+			// It began earlier: only what it lost from the moment on.
+			lost = min(lost, uint64(o.End.Sub(since).Round(interval)/interval))
+		}
+		r.Lost += lost
+		r.Outages = append(r.Outages, Span{StartMs: first, EndMs: end, Lost: lost})
 		last = o.End
 	}
 	for _, o := range l.entries {

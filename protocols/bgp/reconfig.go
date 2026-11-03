@@ -204,6 +204,7 @@ func (s *session) Reconfigure(c any) bool {
 			c.enqueue(job{xs: xadv})
 		}
 	}
+	s.syncAnswerLocked()
 	s.cfg.Peers, s.cfg.Routes, s.cfg.EVPN, s.cfg.L2VPN, s.cfg.SRPolicies = nc.Peers, nc.Routes, nc.EVPN, nc.L2VPN, nc.SRPolicies
 	for _, p := range started {
 		s.wg.Add(1) // under s.mu: before Stop can wait

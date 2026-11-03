@@ -199,6 +199,39 @@ The Flows page shows every agent's flows with their verdicts, and starts,
 stops or clears them all. `clabgenctl protocols` adds `checks=pass` or
 `checks=fail (…)`, and the status has the measured value of each check.
 
+## Flows to many prefixes
+
+An `icmp` or `udp` flow can send to many prefixes instead of one address:
+`destinations` replaces `destination`, and each packet goes to the first host
+of the next prefix. An example: [Traffic to BGP routes](examples/bgp-routes.md).
+
+```yaml
+    config:
+      destinations:
+        - {prefix: 198.51.0.0/24, count: 50}
+        - {prefix: 198.18.0.0/24, count: 50}
+      rate: 200
+```
+
+In the UI, **From BGP routes…** in the flow's config fills them in, from what
+any agent advertises or a BGP speaker received from a peer. They're copied:
+later changes to the routes don't reach the flow, and a withdrawn route keeps
+getting traffic, which is how a black hole shows.
+
+- **They must be off-link and of one address family**, so that one next hop,
+  the device's gateway, serves them all.
+- **Each prefix is probed once a cycle**: the number of prefixes ÷ the rate.
+  1000 prefixes at 200 packets a second is once every 5 s, so a 2 s failure
+  only reaches 400 of them. The flow's page and the
+  [convergence test](#convergence-tests) show the cycle and warn when a failure
+  was shorter. Use a faster rate or fewer prefixes.
+- **Echo flows say which prefixes lost traffic**, on the flow's page and in
+  convergence tests. A one-way flow is measured by its receivers, which can't
+  tell which prefix a missing packet was for, so it only has flow totals.
+- **In a convergence test**, the flow's loss duration is its worst prefix's,
+  its resolution is the cycle, and it isn't restored while any prefix is still
+  losing traffic.
+
 ## Convergence tests
 
 A convergence test measures what a failure costs running flows: for each

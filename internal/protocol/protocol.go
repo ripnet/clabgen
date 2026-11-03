@@ -22,6 +22,7 @@ import (
 
 	"github.com/ripnet/clabgen/internal/outage"
 	"github.com/ripnet/clabgen/internal/pkt"
+	"github.com/ripnet/clabgen/internal/prefixset"
 )
 
 // Device is the emulated endpoint a session is bound to.
@@ -60,6 +61,13 @@ type IP interface {
 	// owning it on the link (no ARP/ND, not in Addresses): a router's
 	// loopback reachable over any of its interfaces. Call release to stop.
 	AddLocal(addr netip.Addr) (release func())
+	// AddLocalPrefixes makes the device answer for every address in the set,
+	// as AddLocal does, for as long as the set says so: a router's advertised
+	// routes. Call release to stop.
+	AddLocalPrefixes(set *prefixset.Set) (release func())
+	// IsLocal reports whether packets to addr are for this device: one of its
+	// addresses, a local address, or one in a local prefix set.
+	IsLocal(addr netip.Addr) bool
 	// AddAddress gives the device an address on the link (prefix the
 	// on-link subnet), a default gateway, or both (either may be the zero
 	// value), as a DHCP client does with a lease. The device owns the

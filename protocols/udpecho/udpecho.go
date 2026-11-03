@@ -77,12 +77,7 @@ func (r *responder) ours(a netip.Addr) bool {
 	if ip == nil {
 		return false
 	}
-	for _, p := range ip.Addresses() {
-		if p.Addr() == a {
-			return true
-		}
-	}
-	return false
+	return ip.IsLocal(a)
 }
 
 func (r *responder) HandleRx(fr *pkt.Frame) {

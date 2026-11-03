@@ -119,7 +119,9 @@ class ConvergenceFlow:
     """One flow's result. loss_ms is the loss duration: lost packets × send
     interval (resolution_ms). first_loss_ms and last_loss_ms are from the
     start of the measurement, when known; a much longer time between them
-    than loss_ms means partial loss, such as one ECMP path failing."""
+    than loss_ms means partial loss, such as one ECMP path failing. prefixes,
+    for a flow to many prefixes: total, impacted, probe_ms and list (each with
+    prefix, lost, loss_ms, first_loss_ms and last_loss_ms)."""
 
     name: str
     agent: str
@@ -133,13 +135,15 @@ class ConvergenceFlow:
     resolution_ms: float
     truncated: bool
     outages: list[dict] = field(repr=False, default_factory=list)
+    prefixes: dict | None = field(repr=False, default=None)
 
     @classmethod
     def _of(cls, r: dict) -> "ConvergenceFlow":
         return cls(name=r.get("name") or r.get("flow_id", ""), agent=r.get("agent", ""), device=r.get("device", ""), flow_id=r.get("flow_id", ""),
                    status=r.get("status", ""), loss_ms=r.get("loss_ms", 0.0), lost=int(r.get("lost", 0)),
                    first_loss_ms=r.get("first_loss_ms"), last_loss_ms=r.get("last_loss_ms"),
-                   resolution_ms=r.get("resolution_ms", 0.0), truncated=bool(r.get("truncated")), outages=r.get("outages", []))
+                   resolution_ms=r.get("resolution_ms", 0.0), truncated=bool(r.get("truncated")), outages=r.get("outages", []),
+                   prefixes=r.get("prefixes"))
 
     def summary(self) -> str:
         return f"{self.name} ({self.agent}/{self.device}): {self.status.replace('_', ' ')}, loss {self.loss_ms:g} ms, {self.lost} packets"
@@ -432,6 +436,10 @@ class Lab(Mapping[str, Agent]):
             settled = all(f["status"] in ("stopped", NO_RECEIVER) or (f["status"] != "not_restored" and f.get("clean_ms", 0) >= settle * 1000)
                           for f in merged)
             if settled or time.monotonic() >= end:
+                # Gave up on a flow still losing a packet now and then: not restored.
+                for f in merged:
+                    if f["status"] == "restored" and f.get("clean_ms", 0) < settle * 1000:
+                        f["status"] = "not_restored"
                 c.flows = [ConvergenceFlow._of(f) for f in merged]
                 c.events = sorted(({**e, "agent": n} for n, r in got.items() for e in r.get("events", [])), key=lambda e: e.get("time", ""))
                 return

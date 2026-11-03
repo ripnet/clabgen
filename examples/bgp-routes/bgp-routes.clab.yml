@@ -1,0 +1,25 @@
+# Traffic to BGP routes, and which of them a failure hits: clabgen flows
+# across a Nokia SR-SIM to 100 prefixes that another clabgen node advertises.
+#   sender:eth1 -- sr1:1/1/c1/1: 10.0.1.2/24, flows to the advertised routes
+#   routes:eth1 -- sr1:1/1/c2/1: 10.0.2.2/30, eBGP with the SR, AS 65002,
+#     50 routes in 198.51.0.0/24 up and 50 in 198.18.0.0/24 up
+name: bgp-routes
+topology:
+  nodes:
+    sr1:
+      kind: nokia_srsim
+      image: nokia_srsim:26.10.R1
+      startup-config: sr1.partial.txt
+    sender:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]   # the topology folder: the scenario, and the saved config in clab-<lab>/sender/
+      env: {CLABGEN_SCENARIO: sender.yml}
+    routes:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: routes.yml}
+  links:
+    - endpoints: [sender:eth1, sr1:1/1/c1/1]
+    - endpoints: [routes:eth1, sr1:1/1/c2/1]

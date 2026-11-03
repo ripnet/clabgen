@@ -16,6 +16,12 @@ peer from loopbacks too.
 
 There is no TCP MD5 authentication (the netstack has none).
 
+The device answers for the routes it advertises with itself as the next
+hop (ping, [flows](flows.md#flows-to-many-prefixes)), until they're withdrawn,
+so traffic to them can be measured. A route with its `next_hop` elsewhere and
+VPN routes aren't answered. An example:
+[Traffic to BGP routes](examples/bgp-routes.md).
+
 ## Actions
 
 - `advertise routes='[{"prefix":"101.0.0.0/24","count":200000}]'` and

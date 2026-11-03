@@ -86,6 +86,12 @@ type pending struct {
 	at time.Time
 }
 
+// lostPacket is one lost packet, as kept by KeepLost.
+type lostPacket struct {
+	seq uint64
+	at  time.Time
+}
+
 // outcome is a packet's result awaiting its turn at the cursor.
 type outcome struct {
 	replied bool
@@ -116,15 +122,92 @@ type Tracker struct {
 	runFrom time.Time // when its first packet was sent
 	runTo   time.Time // when its last packet was sent
 	log     outage.Log
-	rttN    uint64
-	rttSum  float64
-	prevRTT float64
-	jitSum  float64
-	jitN    uint64
+	// With KeepLost: the latest lost packets, a ring, for loss by destination.
+	lostRing []lostPacket
+	lostNext uint64 // packets recorded so far
+	lostCap  int
+	rttN     uint64
+	rttSum   float64
+	prevRTT  float64
+	jitSum   float64
+	jitN     uint64
 
 	buckets [timelineLen]Bucket
 	recent  [recentLen]entry // ring; formatted into Lines by Snapshot
 	nRecent int
+}
+
+// KeepLost makes the tracker remember the latest n lost packets, for a flow
+// that sends each sequence number to a known destination. Returns t.
+func (t *Tracker) KeepLost(n int) *Tracker {
+	t.lostCap = n
+	return t
+}
+
+func (t *Tracker) keepLost(seq uint64, at time.Time) {
+	if t.lostCap == 0 {
+		return
+	}
+	if len(t.lostRing) < t.lostCap {
+		t.lostRing = append(t.lostRing, lostPacket{seq, at})
+	} else {
+		t.lostRing[t.lostNext%uint64(t.lostCap)] = lostPacket{seq, at}
+	}
+	t.lostNext++
+}
+
+// LostByDestination sums the kept lost packets sent since a moment by
+// destination index (sequence number modulo total), and says whether older
+// ones in that time have dropped out of the ring.
+func (t *Tracker) LostByDestination(since time.Time, total int, names func(int) string) (*outage.PrefixLoss, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	type sum struct {
+		lost        uint64
+		first, last time.Time
+	}
+	sums := map[int]*sum{}
+	oldest := time.Time{}
+	for _, l := range t.lostRing {
+		if oldest.IsZero() || l.at.Before(oldest) {
+			oldest = l.at
+		}
+		if l.at.Before(since) {
+			continue
+		}
+		i := int(l.seq % uint64(total))
+		s := sums[i]
+		if s == nil {
+			s = &sum{first: l.at, last: l.at}
+			sums[i] = s
+		}
+		s.lost++
+		if l.at.Before(s.first) {
+			s.first = l.at
+		}
+		if l.at.After(s.last) {
+			s.last = l.at
+		}
+	}
+	ms := func(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) }
+	probe := t.interval * time.Duration(total)
+	out := &outage.PrefixLoss{Total: total, Impacted: len(sums), ProbeMs: ms(probe), Measured: true, List: []outage.PrefixEntry{}}
+	for i, s := range sums {
+		out.List = append(out.List, outage.PrefixEntry{Prefix: names(i), Lost: s.lost, LossMs: float64(s.lost) * ms(probe),
+			FirstLossMs: ms(s.first.Sub(since)), LastLossMs: ms(s.last.Add(probe).Sub(since))})
+	}
+	sort.Slice(out.List, func(a, b int) bool {
+		x, y := out.List[a], out.List[b]
+		if x.Lost != y.Lost {
+			return x.Lost > y.Lost
+		}
+		return x.Prefix < y.Prefix
+	})
+	if len(out.List) > outage.MaxPrefixList {
+		out.List = out.List[:outage.MaxPrefixList]
+	}
+	truncated := t.lostNext > uint64(len(t.lostRing)) && oldest.After(since)
+	return out, truncated
 }
 
 // New returns a tracker for a flow sending one packet per interval and
@@ -205,6 +288,7 @@ func (t *Tracker) settle(seq uint64, replied bool, at time.Time) {
 			}
 			t.run++
 			t.runTo = r.at
+			t.keepLost(t.cursor, r.at)
 		}
 		t.cursor++
 	}

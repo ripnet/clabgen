@@ -1,0 +1,13 @@
+# Advertises 100 routes to the SR and, as their next hop, answers for them.
+devices:
+  - {name: edge, port: eth1, addresses: [10.0.2.2/30], gateway4: 10.0.2.1}
+protocols:
+  - name: bgp
+    type: bgp
+    device: edge
+    config:
+      local_as: 65002
+      peers: [{address: 10.0.2.1, remote_as: 65001}]
+      routes:
+        - {prefix: 198.51.0.0/24, count: 50}
+        - {prefix: 198.18.0.0/24, count: 50}

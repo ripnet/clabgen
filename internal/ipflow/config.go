@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ripnet/clabgen/internal/pkt"
+	"github.com/ripnet/clabgen/internal/prefixset"
 )
 
 // Config parts shared by IP flow types. A type embeds them (in this order,
@@ -16,7 +17,57 @@ import (
 // list run, addressing, IP, transport and payload fields in that order.
 
 type Target struct {
-	Destination string `json:"destination" jsonschema:"required,description=IPv4 or IPv6 address to send to"`
+	Destination  string        `json:"destination,omitempty" jsonschema:"description=IPv4 or IPv6 address to send to. Or use destinations"`
+	Destinations []PrefixBlock `json:"destinations,omitempty" jsonschema_description:"Send to many prefixes instead of one address: the first host of each, in turn. They must be off-link (reached through the device's gateway) and of one address family" jsonschema_extras:"x-summary={prefix} ×{count}"`
+}
+
+// PrefixBlock is count consecutive prefixes of one length, as in a BGP route.
+type PrefixBlock struct {
+	Prefix string `json:"prefix" jsonschema:"required,description=e.g. 198.51.100.0/24 or 2001:db8:1::/48"`
+	Count  int    `json:"count,omitempty" jsonschema:"minimum=1,description=Consecutive prefixes of this length. Default 1"`
+}
+
+// MaxDestinations caps the prefixes a flow cycles through.
+const MaxDestinations = 1 << 20
+
+// FirstHost is the address a flow sends to in a prefix: the one after the
+// network address, or the only one (or first) in a /32, /128, /31 or /127.
+func FirstHost(p netip.Prefix) netip.Addr {
+	p = p.Masked()
+	if p.Bits() >= p.Addr().BitLen()-1 {
+		return p.Addr()
+	}
+	return p.Addr().Next()
+}
+
+// Prefixes expands the destination blocks, in order.
+func (t Target) Prefixes() ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, b := range t.Destinations {
+		p, err := netip.ParsePrefix(strings.TrimSpace(b.Prefix))
+		if err != nil {
+			return nil, fmt.Errorf("destinations: %q is not a prefix", b.Prefix)
+		}
+		p = p.Masked()
+		n := b.Count
+		if n == 0 {
+			n = 1
+		}
+		if n < 0 || len(out)+n > MaxDestinations {
+			return nil, fmt.Errorf("destinations: at most %d prefixes", MaxDestinations)
+		}
+		for i := 0; i < n; i++ {
+			if i > 0 {
+				next := prefixset.Last(p).Next()
+				if !next.IsValid() || next.Is4() != p.Addr().Is4() {
+					return nil, fmt.Errorf("destinations: %s count %d runs past the address space", b.Prefix, n)
+				}
+				p = netip.PrefixFrom(next, p.Bits())
+			}
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 type Run struct {
@@ -68,7 +119,15 @@ var (
 	DefaultPayload  = Payload{PayloadSize: 56, PayloadPattern: "increment", Signature: true}
 )
 
+// Dst is the destination address: with destinations, the first.
 func (t Target) Dst() (netip.Addr, error) {
+	if len(t.Destinations) > 0 {
+		ps, err := t.Prefixes()
+		if err != nil {
+			return netip.Addr{}, err
+		}
+		return FirstHost(ps[0]), nil
+	}
 	a, err := netip.ParseAddr(strings.TrimSpace(t.Destination))
 	if err != nil || a.Zone() != "" {
 		return a, fmt.Errorf("destination %q is not an IP address", t.Destination)
@@ -90,9 +149,21 @@ func (r Run) DurationD() time.Duration {
 
 // Validate checks the shared parts and returns the destination.
 func (s Spec) Validate() (netip.Addr, error) {
+	if (s.Destination == "") == (len(s.Destinations) == 0) {
+		return netip.Addr{}, errors.New("set either destination or destinations")
+	}
 	dst, err := s.Dst()
 	if err != nil {
 		return dst, err
+	}
+	ps, err := s.Prefixes()
+	if err != nil {
+		return dst, err
+	}
+	for _, p := range ps {
+		if p.Addr().Is4() != dst.Is4() {
+			return dst, errors.New("destinations must all be of one address family")
+		}
 	}
 	if dst.IsUnspecified() {
 		return dst, errors.New("destination must not be unspecified")

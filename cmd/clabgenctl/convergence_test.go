@@ -57,6 +57,14 @@ func TestSummarizeAndDone(t *testing.T) {
 	}
 }
 
+func TestMarkUnsettled(t *testing.T) {
+	flows := []convFlow{{Status: "restored", CleanMs: 100}, {Status: "restored", CleanMs: 9000}, {Status: "no_impact", CleanMs: 100}}
+	markUnsettled(flows, 5*time.Second)
+	if flows[0].Status != "not_restored" || flows[1].Status != "restored" || flows[2].Status != "no_impact" {
+		t.Fatalf("%+v", flows)
+	}
+}
+
 func TestCheckClean(t *testing.T) {
 	if err := checkClean([]convFlow{{Status: "stopped"}}); err == nil {
 		t.Fatal("nothing running")

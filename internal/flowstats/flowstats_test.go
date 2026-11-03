@@ -152,3 +152,36 @@ func TestTrackerOutagesLocalFailure(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+func TestLostByDestination(t *testing.T) {
+	tr := New(10*time.Millisecond, 100*time.Millisecond).KeepLost(100)
+	t0 := time.Unix(1_000_000, 0)
+	at := func(i int) time.Time { return t0.Add(time.Duration(i) * 10 * time.Millisecond) }
+	for i := 0; i < 40; i++ { // 4 destinations; every packet to numbers 1 and 2 lost from 8 on
+		tr.Sent(uint64(i), at(i))
+		if i < 8 || i%4 == 0 || i%4 == 3 {
+			tr.Received(uint64(i), at(i), time.Time{}, nil)
+		}
+	}
+	tr.Expire(at(40).Add(time.Second), false)
+	names := func(i int) string { return fmt.Sprint("p", i) }
+	p, truncated := tr.LostByDestination(t0, 4, names)
+	if truncated || p.Total != 4 || p.Impacted != 2 || p.ProbeMs != 40 || len(p.List) != 2 {
+		t.Fatalf("%+v %v", p, truncated)
+	}
+	if e := p.List[0]; e.Prefix != "p1" || e.Lost != 8 || e.LossMs != 320 || e.FirstLossMs != 90 || e.LastLossMs != 370+40 {
+		t.Fatalf("%+v", e)
+	}
+	if p, _ := tr.LostByDestination(at(39), 4, names); p.Impacted != 0 {
+		t.Fatalf("later: %+v", p)
+	}
+	// The ring overflows: what's left is a minimum for that time.
+	small := New(10*time.Millisecond, 100*time.Millisecond).KeepLost(4)
+	for i := 0; i < 10; i++ {
+		small.Sent(uint64(i), at(i))
+	}
+	small.Expire(at(10).Add(time.Second), false)
+	if p, truncated := small.LostByDestination(t0, 2, names); !truncated || p.List[0].Lost != 2 {
+		t.Fatalf("%+v %v", p, truncated)
+	}
+}

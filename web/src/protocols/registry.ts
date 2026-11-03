@@ -18,6 +18,9 @@ export type ProtocolView = {
   // Config editor replacing the generic form (create and edit), e.g. the
   // packet builder's layers with a live preview from the device.
   ConfigEditor?: ComponentType<ConfigEditorProps>;
+  // Shown above the generic form (create and edit), e.g. a way to fill some
+  // of its fields from elsewhere.
+  ConfigExtra?: ComponentType<ConfigEditorProps>;
   // What applying a config edit does, for types that apply some edits in
   // place (default: the instance restarts).
   applyNote?: (was: Obj, now: Obj) => ApplyNote;

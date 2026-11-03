@@ -1,0 +1,14 @@
+# One flow to all 100 routes at 200 packets a second: each prefix is probed
+# every 500 ms. (SR-SIM starts dropping above a few hundred a second.)
+devices:
+  - {name: sender, port: eth1, addresses: [10.0.1.2/24], gateway4: 10.0.1.1}
+protocols:
+  - name: to-routes
+    type: icmp
+    device: sender
+    config:
+      destinations:
+        - {prefix: 198.51.0.0/24, count: 50}
+        - {prefix: 198.18.0.0/24, count: 50}
+      rate: 200
+      auto_start: true

@@ -144,12 +144,12 @@ func (f *flow) HandleRx(fr *pkt.Frame) {
 		return
 	}
 	// Echo replies.
-	if from, ttl, b, _, ok := ipflow.DecodeIP(fr, src, pkt.ProtoUDP); ok && f.Echo && from == f.Dst && len(b) >= 8 {
+	if from, ttl, b, _, ok := ipflow.DecodeIP(fr, src, pkt.ProtoUDP); ok && f.Echo && len(b) >= 8 {
 		if binary.BigEndian.Uint16(b[0:]) != f.cfg.DstPort || !f.inRange(binary.BigEndian.Uint16(b[2:])) {
 			return
 		}
 		id, n, sent, ok := ipflow.ParseSignature(b[8:])
-		if !ok || id != f.FlowID {
+		if !ok || id != f.FlowID || from != f.DstFor(n) {
 			return
 		}
 		size, port := len(b)-8, f.cfg.DstPort
@@ -166,7 +166,7 @@ func (f *flow) HandleRx(fr *pkt.Frame) {
 		return
 	}
 	e, ok := ipflow.ParseICMPError(m, v4, from)
-	if !ok || e.Proto != pkt.ProtoUDP || e.InnerSrc != src || e.InnerDst != f.Dst ||
+	if !ok || e.Proto != pkt.ProtoUDP || e.InnerSrc != src || !f.HasDst(e.InnerDst) ||
 		!f.inRange(binary.BigEndian.Uint16(e.Quoted[0:])) || binary.BigEndian.Uint16(e.Quoted[2:]) != f.cfg.DstPort {
 		return
 	}

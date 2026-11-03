@@ -72,6 +72,14 @@ def test_measures_from_the_agents_moment():
     assert "T0" in a.asked
 
 
+def test_giving_up_on_a_flow_still_losing_some():
+    before = [row(name="p", flow_id="1")]
+    after = [row(name="p", flow_id="1", status="restored", loss_ms=5.0, lost=5, clean_ms=10.0)]
+    with Lab({"a1": FakeAgent("a1", before, after)}).convergence(settle=5, timeout=0) as c:
+        pass
+    assert c["p"].status == "not_restored"
+
+
 def test_refuses_flows_that_arent_clean():
     a = FakeAgent("a1", [row(name="p", flow_id="1", status="restored", lost=7)], [])
     with pytest.raises(ClabgenError, match="lost 7 packets"):

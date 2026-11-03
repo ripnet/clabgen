@@ -117,7 +117,7 @@ func (f *flow) HandleRx(fr *pkt.Frame) {
 		reply = pkt.ICMPv6EchoReply
 	}
 	if m[0] == reply {
-		if !f.Echo || binary.BigEndian.Uint16(m[4:]) != f.ident || from != f.Dst {
+		if !f.Echo || binary.BigEndian.Uint16(m[4:]) != f.ident {
 			return
 		}
 		var n uint64
@@ -131,6 +131,9 @@ func (f *flow) HandleRx(fr *pkt.Frame) {
 		} else if n, ok = f.index(binary.BigEndian.Uint16(m[6:])); !ok {
 			return
 		}
+		if from != f.DstFor(n) {
+			return
+		}
 		ttlName := "ttl"
 		if !v4 {
 			ttlName = "hlim"
@@ -140,7 +143,7 @@ func (f *flow) HandleRx(fr *pkt.Frame) {
 		return
 	}
 	e, ok := ipflow.ParseICMPError(m, v4, from)
-	if !ok || e.Proto != proto || e.InnerSrc != src || e.InnerDst != f.Dst || binary.BigEndian.Uint16(e.Quoted[4:]) != f.ident {
+	if !ok || e.Proto != proto || e.InnerSrc != src || !f.HasDst(e.InnerDst) || binary.BigEndian.Uint16(e.Quoted[4:]) != f.ident {
 		return
 	}
 	n, mapped := f.index(binary.BigEndian.Uint16(e.Quoted[6:]))

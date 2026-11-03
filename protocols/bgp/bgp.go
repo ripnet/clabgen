@@ -22,6 +22,7 @@ import (
 	gb "github.com/osrg/gobgp/v3/pkg/packet/bgp"
 
 	"github.com/ripnet/clabgen/internal/ipstack"
+	"github.com/ripnet/clabgen/internal/prefixset"
 	"github.com/ripnet/clabgen/internal/protocol"
 )
 
@@ -55,6 +56,9 @@ type session struct {
 	env protocol.Env
 	cfg Config
 	rid netip.Addr
+
+	answer        *prefixset.Set // routes the device answers for
+	releaseAnswer func()
 
 	mu       sync.Mutex
 	peers    []*peer
@@ -96,6 +100,9 @@ func (bgpType) Start(env protocol.Env, c any) (protocol.Session, error) {
 		s.addRouteLocked(r)
 		s.addXLocked(s.vpnRoutes(r))
 	}
+	s.answer = &prefixset.Set{}
+	s.syncAnswerLocked()
+	s.releaseAnswer = ip.AddLocalPrefixes(s.answer)
 	for _, e := range cfg.EVPN {
 		s.addXLocked(s.evpnRoutes(e))
 	}
@@ -167,6 +174,7 @@ func (s *session) accept(l net.Listener) {
 
 func (s *session) Stop() {
 	close(s.stop)
+	s.releaseAnswer()
 	s.closeListeners()
 	s.mu.Lock()
 	var conns []*conn
@@ -185,6 +193,20 @@ func (s *session) Stop() {
 func (s *session) event(kind, msg string) { s.env.Emit(kind, msg, nil) }
 
 // ---- advertised routes ----
+
+// syncAnswerLocked makes the device answer for the routes we advertise as
+// the next hop of, so traffic to them is received here. A route with its
+// next hop elsewhere isn't ours to answer. VPN routes aren't in s.out: their
+// traffic would arrive labelled, which the IP stack doesn't take.
+func (s *session) syncAnswerLocked() {
+	ps := make([]netip.Prefix, 0, len(s.out))
+	for p, t := range s.out {
+		if !t.nextHop.IsValid() {
+			ps = append(ps, p)
+		}
+	}
+	s.answer.Update(ps)
+}
 
 // addRouteLocked records a route's prefixes with its attributes and
 // returns them by family.
@@ -489,6 +511,7 @@ func (s *session) changeRoutes(add bool, a *RouteArgs) (any, error) {
 			}
 		}
 	}
+	s.syncAnswerLocked()
 	for _, p := range s.peers {
 		c := p.est
 		if c == nil {

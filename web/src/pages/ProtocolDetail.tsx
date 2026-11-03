@@ -151,6 +151,7 @@ function EditConfig({
   onSave: (v: Obj) => Promise<void>;
 }) {
   const Editor = viewFor(type).ConfigEditor;
+  const Extra = viewFor(type).ConfigExtra;
   const schema = useMemo(() => parseSchema(schemaText), [schemaText]);
   const [original] = useState(value);
   const [cfg, setCfg] = useState<Obj>(value);
@@ -175,6 +176,7 @@ function EditConfig({
       {/* Kept mounted during review so the section, open items and filter stay. */}
       <div hidden={step !== "edit"}>
         {error ? <div className="error-box" role="alert">The agent rejected the configuration: {error}</div> : <Note note={note} />}
+        {Extra && <Extra schema={schema} value={cfg} onChange={setCfg} agentId={agentId} device={device} />}
         {Editor ? (
           <Editor schema={schema} value={cfg} onChange={setCfg} original={original} errorText={error} agentId={agentId} device={device} />
         ) : (

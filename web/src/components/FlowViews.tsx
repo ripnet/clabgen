@@ -1,3 +1,4 @@
+import { PrefixTable, type PrefixLoss } from "./Convergence";
 import type { ReactNode } from "react";
 import type { JsonObject } from "@bufbuild/protobuf";
 import { client, usePoll } from "../api";
@@ -246,6 +247,21 @@ function Receivers({ flowId, s }: { flowId: string; s: FlowStatus }) {
 }
 
 // IpFlowView is the status panel for IP flows (icmp, udp, …).
+// PrefixCard is a flow to many prefixes: how often each is probed, and (from
+// an echo flow) those that lost traffic.
+function PrefixCard({ p }: { p: PrefixLoss }) {
+  return (
+    <>
+      <h4>Prefixes</h4>
+      <p className="muted small-note">
+        {p.total.toLocaleString()} prefixes, each probed every {dur(p.probe_ms)}.{" "}
+        {!p.measured ? "A one-way flow can't say which prefix lost a packet: reply echo can." : p.impacted ? `${p.impacted.toLocaleString()} lost traffic:` : "None lost traffic."}
+      </p>
+      {p.measured && p.impacted > 0 && <PrefixTable p={p} />}
+    </>
+  );
+}
+
 export function IpFlowView({ status, agentId, name, extra }: { status: JsonObject; agentId?: string; name?: string; extra?: ReactNode }) {
   const s = asFlow(status);
   const { busy, run } = useBusy();
@@ -257,6 +273,7 @@ export function IpFlowView({ status, agentId, name, extra }: { status: JsonObjec
     run((): Promise<unknown> => (action === "clear" ? clearFlows(agentId, [{ name, flowId }]) : client(agentId).runProtocolAction({ name, action })));
   const running = s.state === "running" || s.state === "resolving";
   const st = status as { last_error?: string; last_error_age_s?: number };
+  const prefixes = (status as unknown as { prefixes?: PrefixLoss }).prefixes;
   return (
     <div className="flow">
       <div className="flow-head">
@@ -296,6 +313,7 @@ export function IpFlowView({ status, agentId, name, extra }: { status: JsonObjec
       <FlowTiles s={s} />
       {s.verdict && <VerdictPanel v={s.verdict} />}
       {s.tracks_replies !== false && <FlowTimeline s={s} />}
+      {prefixes && <PrefixCard p={prefixes} />}
       {flowId && <Receivers flowId={flowId} s={s} />}
       {(s.tracks_replies !== false || s.recent.length > 0) && (
         <>

@@ -93,7 +93,7 @@ Good to know:
 - **Measure and judge**: traffic flows with loss, outages and RTT, and
   pass/fail limits on them shown across the whole lab ("every flow stayed
   under 50 ms of outage"); convergence tests that report how much traffic a
-  failure cost each flow; one-way stats on every device; Y.1731 delay and
+  failure cost each flow, down to which BGP routes lost traffic; one-way stats on every device; Y.1731 delay and
   loss sessions in bins.
 - **Scriptable**: the same things through [`clabgenctl`](docs/cli.md), an
   [API](docs/api.md), YAML scenarios, and a [Python package](docs/python.md)

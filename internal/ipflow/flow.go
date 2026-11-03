@@ -68,7 +68,8 @@ type Transport interface {
 type Flow struct {
 	Env    protocol.Env
 	Spec   Spec
-	Dst    netip.Addr
+	Dst    netip.Addr // the destination; with several, the first
+	dsts   *dstTable  // nil: just Dst
 	FlowID uint32
 	// Echo is true when the flow expects replies (and tracks loss/RTT).
 	Echo bool
@@ -94,12 +95,72 @@ type Flow struct {
 	done    chan struct{}
 }
 
+// lostKept is how many lost packets a flow to many prefixes remembers, to
+// say which prefixes lost traffic.
+const lostKept = 1 << 16
+
+func newTracker(s Spec) *flowstats.Tracker {
+	t := flowstats.New(s.Interval(), s.TimeoutD())
+	if len(s.Destinations) > 0 {
+		t.KeepLost(lostKept)
+	}
+	return t
+}
+
+// dstTable is what a flow to many prefixes sends to, by sequence index.
+type dstTable struct {
+	prefixes []netip.Prefix
+	addrs    []netip.Addr
+	has      map[netip.Addr]bool
+}
+
+func newDstTable(t Target) *dstTable {
+	ps, _ := t.Prefixes()
+	if len(ps) == 0 {
+		return nil
+	}
+	d := &dstTable{prefixes: ps, addrs: make([]netip.Addr, len(ps)), has: make(map[netip.Addr]bool, len(ps))}
+	for i, p := range ps {
+		d.addrs[i] = FirstHost(p)
+		d.has[d.addrs[i]] = true
+	}
+	return d
+}
+
+// DstFor is the address packet n goes to.
+func (f *Flow) DstFor(n uint64) netip.Addr {
+	if f.dsts == nil {
+		return f.Dst
+	}
+	return f.dsts.addrs[n%uint64(len(f.dsts.addrs))]
+}
+
+// HasDst reports whether the flow sends to a.
+func (f *Flow) HasDst(a netip.Addr) bool {
+	if f.dsts == nil {
+		return a == f.Dst
+	}
+	return f.dsts.has[a]
+}
+
+// destinationText is the destination for statuses and events.
+func (f *Flow) destinationText() string {
+	if f.dsts == nil {
+		return f.Dst.String()
+	}
+	if n := len(f.dsts.prefixes); n > 1 {
+		return fmt.Sprintf("%s +%d more", f.dsts.prefixes[0], n-1)
+	}
+	return f.dsts.prefixes[0].String()
+}
+
 // New prepares a flow; call Begin after the embedding type is set up.
 func New(env protocol.Env, spec Spec, echo bool, tp Transport) *Flow {
 	dst, _ := spec.Dst()
 	f := &Flow{Env: env, Spec: spec, Dst: dst, Echo: echo, tp: tp, state: StateIdle,
+		dsts:    newDstTable(spec.Target),
 		FlowID:  binary.BigEndian.Uint32(Hash(env, 2)),
-		tracker: flowstats.New(spec.Interval(), spec.TimeoutD())}
+		tracker: newTracker(spec)}
 	if spec.IPID != nil {
 		f.ipID = *spec.IPID
 	}
@@ -201,10 +262,11 @@ func (f *Flow) build(n uint64, now time.Time) ([]byte, uint16) {
 		binary.BigEndian.PutUint64(data[8:], n)
 		binary.BigEndian.PutUint64(data[16:], uint64(now.UnixNano()))
 	}
-	msg, proto := f.tp.Message(n, f.src, f.Dst, data)
+	dst := f.DstFor(n)
+	msg, proto := f.tp.Message(n, f.src, dst, data)
 	tos := s.DSCP<<2 | s.ECN&3
-	if f.Dst.Is4() {
-		h := pkt.IPv4{TOS: tos, ID: f.ipID, TTL: s.TTL, Protocol: proto, Src: f.src, Dst: f.Dst, Payload: msg}
+	if dst.Is4() {
+		h := pkt.IPv4{TOS: tos, ID: f.ipID, TTL: s.TTL, Protocol: proto, Src: f.src, Dst: dst, Payload: msg}
 		if s.DF {
 			h.Flags = pkt.IPv4DF
 		}
@@ -217,7 +279,7 @@ func (f *Flow) build(n uint64, now time.Time) ([]byte, uint16) {
 		}
 		return b, pkt.EtherTypeIPv4
 	}
-	h := pkt.IPv6{TrafficClass: tos, FlowLabel: s.FlowLabel, NextHeader: proto, HopLimit: s.TTL, Src: f.src, Dst: f.Dst, Payload: msg}
+	h := pkt.IPv6{TrafficClass: tos, FlowLabel: s.FlowLabel, NextHeader: proto, HopLimit: s.TTL, Src: f.src, Dst: dst, Payload: msg}
 	return h.Encode(), pkt.EtherTypeIPv6
 }
 
@@ -234,7 +296,7 @@ func (f *Flow) Start() error {
 	f.cancel, f.done = cancel, make(chan struct{})
 	f.state, f.lastErr, f.started, f.stopped = StateResolving, "", time.Now(), time.Time{}
 	go f.run(ctx, cancel, f.done)
-	f.Env.Emit("flow-started", fmt.Sprintf("sending to %s at %g pps", f.Dst, f.Spec.Rate), nil)
+	f.Env.Emit("flow-started", fmt.Sprintf("sending to %s at %g pps", f.destinationText(), f.Spec.Rate), nil)
 	return nil
 }
 
@@ -310,6 +372,9 @@ func (f *Flow) resolve(ctx context.Context) error {
 	nh, mac, err := ip.ResolveNextHop(rctx, f.Dst)
 	if err != nil {
 		return err
+	}
+	if f.dsts != nil && nh == f.Dst {
+		return fmt.Errorf("destinations must be off-link, and %s is on the device's subnet", f.Dst)
 	}
 	f.mu.Lock()
 	old, had := f.dstMAC, f.haveMAC
@@ -426,6 +491,8 @@ type Base struct {
 	TrackReply  bool    `json:"tracks_replies"`
 	flowstats.Stats
 	Verdict *Verdict `json:"verdict,omitempty"` // with checks configured
+	// With destinations: loss by prefix, since the flow started or was cleared.
+	Prefixes *outage.PrefixLoss `json:"prefixes,omitempty"`
 }
 
 // BaseStatus returns the shared status; the flow type sets Kind and may
@@ -435,12 +502,18 @@ func (f *Flow) BaseStatus() Base {
 	st := f.Tracker().Snapshot(now, 300)
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	s := Base{State: f.state, Error: f.lastErr, Destination: f.Dst.String(), Rate: f.Spec.Rate, Mode: f.Spec.Mode,
+	s := Base{State: f.state, Error: f.lastErr, Destination: f.destinationText(), Rate: f.Spec.Rate, Mode: f.Spec.Mode,
 		FlowID: FlowIDString(f.FlowID), TrackReply: f.Echo, Stats: st}
 	if f.state != StateRunning {
 		s.OutageCurrentMs = 0 // a stopped flow isn't in an outage now
 	}
 	s.Verdict = f.Spec.Checks.Evaluate(s.Stats, f.Echo)
+	if d := f.dsts; d != nil {
+		name := func(i int) string { return d.prefixes[i].String() }
+		// A one-way flow's tracker only knows of failed sends.
+		s.Prefixes, _ = f.tracker.LostByDestination(f.started, len(d.prefixes), name)
+		s.Prefixes.Measured = f.Echo
+	}
 	if f.lastErr != "" && f.state == StateRunning && now.Sub(f.errAt) > errorShownFor {
 		s.Error, s.LastError, s.LastErrorS = "", f.lastErr, now.Sub(f.errAt).Round(time.Second).Seconds()
 	}
@@ -476,7 +549,30 @@ func (f *Flow) Convergence(since, now time.Time) outage.Flow {
 	f.mu.Lock()
 	running := f.state == StateRunning
 	f.mu.Unlock()
-	return Convergence(f.FlowID, f.Echo, running, f.Tracker(), since, now)
+	out := Convergence(f.FlowID, f.Echo, running, f.Tracker(), since, now)
+	if d := f.dsts; d != nil && f.Echo {
+		p, truncated := f.Tracker().LostByDestination(since, len(d.prefixes), func(i int) string { return d.prefixes[i].String() })
+		out.Prefixes = p
+		out.Truncated = out.Truncated || truncated
+		// What a route lost, not the flow: a packet in every cycle goes to it,
+		// so its loss is its packets × the cycle, and that is the resolution.
+		out.ResolutionMs = p.ProbeMs
+		out.LossMs = 0
+		if len(p.List) > 0 {
+			out.LossMs = p.List[0].LossMs
+		}
+		// Replies from other prefixes don't mean this one has come back.
+		known := float64(now.Add(-f.Spec.TimeoutD()).Sub(since)) / float64(time.Millisecond)
+		for i := range p.List {
+			if p.List[i].LastLossMs >= known {
+				p.List[i].Ongoing = true
+				if running {
+					out.Status, out.CleanMs = outage.NotRestored, 0
+				}
+			}
+		}
+	}
+	return out
 }
 
 // Convergence is a flow's report from its tracker, for flow types with one.
@@ -520,7 +616,7 @@ func (f *Flow) Action(ctx context.Context, name string, _ any) (any, error) {
 		return map[string]any{"stopped": true}, nil
 	case "clear":
 		f.mu.Lock()
-		f.tracker = flowstats.New(f.Spec.Interval(), f.Spec.TimeoutD())
+		f.tracker = newTracker(f.Spec)
 		f.mu.Unlock()
 		return map[string]any{"cleared": true}, nil
 	case "preview":
@@ -561,7 +657,7 @@ func (f *Flow) preview(ctx context.Context) (any, error) {
 		dst = "unresolved"
 	}
 	return PreviewResult{Hex: hex.EncodeToString(enc), Length: len(enc),
-		Summary: fmt.Sprintf("%s > %s, %s > %s, %s, %d data bytes", d.MAC(), dst, src, f.Dst, f.tp.Describe(n), f.Spec.PayloadSize)}, nil
+		Summary: fmt.Sprintf("%s > %s, %s > %s, %s, %d data bytes", d.MAC(), dst, src, f.DstFor(n), f.tp.Describe(n), f.Spec.PayloadSize)}, nil
 }
 
 // ---- ICMP errors ----

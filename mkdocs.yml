@@ -28,6 +28,7 @@ nav:
       - examples/index.md
       - DHCP subscribers: examples/dhcp.md
       - Link failure convergence: examples/convergence.md
+      - Traffic to BGP routes: examples/bgp-routes.md
   - CLI: cli.md
   - Python and pytest: python.md
   - API: api.md

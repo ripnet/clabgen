@@ -65,7 +65,9 @@ print(repair["ping1"].status, repair["ping1"].loss_ms)
 Each of `flows` is a `ConvergenceFlow`: `name`, `agent`, `device`, `flow_id`,
 `status` (`no_impact`, `restored`, `not_restored`, `stopped`, `no_receiver`),
 `loss_ms`, `lost`, `first_loss_ms`, `last_loss_ms`, `resolution_ms`,
-`truncated` and `outages`. `events` has what the agents reported meanwhile.
+`truncated`, `outages` and, for a [flow to many prefixes](flows.md#flows-to-many-prefixes),
+`prefixes` (`total`, `impacted`, `probe_ms` and a `list` of what each lost).
+`events` has what the agents reported meanwhile.
 
 ## Measuring flows
 

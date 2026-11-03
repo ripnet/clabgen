@@ -25,22 +25,38 @@ import (
 
 // convFlow is one flow's report from GetConvergence, with its agent.
 type convFlow struct {
-	Agent        string     `json:"agent"`
-	Side         string     `json:"side"`
-	Name         string     `json:"name,omitempty"`
-	Device       string     `json:"device"`
-	FlowID       string     `json:"flow_id"`
-	OneWay       bool       `json:"one_way"`
-	Running      bool       `json:"running"`
-	Status       string     `json:"status"`
-	LossMs       float64    `json:"loss_ms"`
-	Lost         uint64     `json:"lost"`
-	FirstLossMs  *float64   `json:"first_loss_ms,omitempty"`
-	LastLossMs   *float64   `json:"last_loss_ms,omitempty"`
-	CleanMs      float64    `json:"clean_ms"`
-	ResolutionMs float64    `json:"resolution_ms"`
-	Truncated    bool       `json:"truncated,omitempty"`
-	Outages      []convSpan `json:"outages"`
+	Agent        string        `json:"agent"`
+	Side         string        `json:"side"`
+	Name         string        `json:"name,omitempty"`
+	Device       string        `json:"device"`
+	FlowID       string        `json:"flow_id"`
+	OneWay       bool          `json:"one_way"`
+	Running      bool          `json:"running"`
+	Status       string        `json:"status"`
+	LossMs       float64       `json:"loss_ms"`
+	Lost         uint64        `json:"lost"`
+	FirstLossMs  *float64      `json:"first_loss_ms,omitempty"`
+	LastLossMs   *float64      `json:"last_loss_ms,omitempty"`
+	CleanMs      float64       `json:"clean_ms"`
+	ResolutionMs float64       `json:"resolution_ms"`
+	Truncated    bool          `json:"truncated,omitempty"`
+	Outages      []convSpan    `json:"outages"`
+	Prefixes     *convPrefixes `json:"prefixes,omitempty"`
+}
+
+// convPrefixes is a flow to many prefixes: how many lost traffic, and which.
+type convPrefixes struct {
+	Total    int     `json:"total"`
+	Impacted int     `json:"impacted"`
+	ProbeMs  float64 `json:"probe_ms"`
+	List     []struct {
+		Prefix      string  `json:"prefix"`
+		Lost        uint64  `json:"lost"`
+		LossMs      float64 `json:"loss_ms"`
+		FirstLossMs float64 `json:"first_loss_ms"`
+		LastLossMs  float64 `json:"last_loss_ms"`
+		Ongoing     bool    `json:"ongoing"`
+	} `json:"list"`
 }
 
 type convSpan struct {
@@ -112,6 +128,16 @@ func convergenceDone(flows []convFlow, settle time.Duration) bool {
 		}
 	}
 	return true
+}
+
+// markUnsettled is for the end of a test that gave up: a flow still losing a
+// packet now and then (one path of several) hasn't been restored.
+func markUnsettled(flows []convFlow, settle time.Duration) {
+	for i, f := range flows {
+		if f.Status == "restored" && f.CleanMs < float64(settle.Milliseconds()) {
+			flows[i].Status = "not_restored"
+		}
+	}
 }
 
 type convSummary struct {
@@ -236,8 +262,11 @@ func runPhase(ctx context.Context, name, command string, agents []*convAgent, id
 			return nil, err
 		}
 		flows := mergeConvergence(rows)
-		s := summarize(flows)
 		stop := time.Now().After(end) || ctx.Err() != nil
+		if stop {
+			markUnsettled(flows, settle)
+		}
+		s := summarize(flows)
 		if stop || convergenceDone(flows, settle) && (command != "" || s.Impacted > 0) {
 			return &convPhase{Phase: name, Command: command, Summary: s, Flows: flows, Events: events}, nil
 		}
@@ -287,6 +316,20 @@ func printPhase(p *convPhase) {
 	s := p.Summary
 	fmt.Printf("Loss duration: worst %s, median %s, p95 %s (%d flows, %d lost traffic, %d not restored)\n",
 		fmtMs(s.WorstMs), fmtMs(s.MedianMs), fmtMs(s.P95Ms), s.Flows, s.Impacted, s.NotRestored)
+	for _, f := range p.Flows {
+		x := f.Prefixes
+		if x == nil || x.Impacted == 0 {
+			continue
+		}
+		fmt.Printf("%s: %d of %d prefixes lost traffic (each probed every %s):\n", f.Name, x.Impacted, x.Total, fmtMs(x.ProbeMs))
+		for _, e := range x.List {
+			until := "+" + fmtMs(e.LastLossMs)
+			if e.Ongoing {
+				until = "still losing"
+			}
+			fmt.Printf("  %-22s %8s  %d lost, +%s to %s\n", e.Prefix, fmtMs(e.LossMs), e.Lost, fmtMs(e.FirstLossMs), until)
+		}
+	}
 	if len(p.Events) > 0 {
 		fmt.Println("Events:")
 		for _, e := range p.Events {

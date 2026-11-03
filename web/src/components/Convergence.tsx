@@ -28,6 +28,14 @@ export type ConvFlow = {
   resolution_ms: number;
   truncated?: boolean;
   outages: Span[];
+  prefixes?: PrefixLoss;
+};
+export type PrefixLoss = {
+  total: number;
+  impacted: number;
+  probe_ms: number;
+  measured?: boolean;
+  list: { prefix: string; lost: number; loss_ms: number; first_loss_ms: number; last_loss_ms: number; ongoing?: boolean }[];
 };
 export type ConvEvent = { agent: string; at_ms: number; source: string; kind: string; message: string };
 export type Phase = { phase: string; step: string; flows: ConvFlow[]; events: ConvEvent[] };
@@ -148,7 +156,9 @@ async function measure(name: string, step: Step, label: (id: string) => string, 
     const s = summarize(r.flows);
     const clean = settled(r.flows, o.settleMs);
     if (stop.current || performance.now() > end || (clean && (step.kind !== "none" || s.impacted > 0))) {
-      return { phase: name, step: stepText(step, label), flows: r.flows, events: r.events.filter((e) => !["flow-started", "flow-stopped", "flow-done"].includes(e.kind)) };
+      // Gave up on a flow still losing a packet now and then: not restored.
+      const flows = r.flows.map((f) => (f.status === "restored" && f.clean_ms < o.settleMs ? { ...f, status: "not_restored" } : f));
+      return { phase: name, step: stepText(step, label), flows, events: r.events.filter((e) => !["flow-started", "flow-stopped", "flow-done"].includes(e.kind)) };
     }
     live(
       step.kind === "none" && !s.impacted
@@ -169,10 +179,13 @@ function download(name: string, type: string, text: string) {
 
 export function toCSV(phases: Phase[]): string {
   const opt = (v?: number) => (v === undefined ? "" : String(v));
-  const lines = ["phase,flow,agent,device,status,loss_ms,lost,first_loss_ms,last_loss_ms,resolution_ms,truncated"];
+  const lines = ["phase,flow,prefix,agent,device,status,loss_ms,lost,first_loss_ms,last_loss_ms,resolution_ms,truncated"];
   for (const p of phases) {
     for (const f of p.flows) {
-      lines.push([p.phase, flowName(f), f.agent, f.device, f.status, f.loss_ms, f.lost, opt(f.first_loss_ms), opt(f.last_loss_ms), f.resolution_ms, !!f.truncated].join(","));
+      lines.push([p.phase, flowName(f), "", `"${f.agent}"`, `"${f.device}"`, f.status, f.loss_ms, f.lost, opt(f.first_loss_ms), opt(f.last_loss_ms), f.resolution_ms, !!f.truncated].join(","));
+      for (const x of f.prefixes?.list ?? []) {
+        lines.push([p.phase, flowName(f), x.prefix, `"${f.agent}"`, `"${f.device}"`, "", x.loss_ms, x.lost, x.first_loss_ms, x.last_loss_ms, f.prefixes!.probe_ms, !!f.truncated].join(","));
+      }
     }
   }
   return lines.join("\n") + "\n";
@@ -419,6 +432,45 @@ function ConvTimeline({ phase }: { phase: Phase }) {
   );
 }
 
+// PrefixTable lists what each of a flow's prefixes lost. Each prefix is
+// probed once a cycle, so a failure shorter than that misses some.
+export function PrefixTable({ p, span }: { p: PrefixLoss; span?: number }) {
+  return (
+    <>
+      {span !== undefined && p.probe_ms > span && (
+        <div className="warn-box">
+          Each prefix is only probed every {dur(p.probe_ms)}, longer than this {dur(span)} of loss, so more prefixes may have been affected. Send faster, or to fewer prefixes.
+        </div>
+      )}
+      <div className="table-wrap">
+        <table className="table dense">
+          <thead>
+            <tr>
+              <th>Prefix</th>
+              <th className="num" title={`Lost packets × the ${dur(p.probe_ms)} between probes of a prefix`}>Loss duration</th>
+              <th className="num">Lost</th>
+              <th className="num">First loss</th>
+              <th className="num">Last loss</th>
+            </tr>
+          </thead>
+          <tbody>
+            {p.list.map((x) => (
+              <tr key={x.prefix}>
+                <td className="mono">{x.prefix}</td>
+                <td className="num mono">{dur(x.loss_ms)}</td>
+                <td className="num mono">{x.lost.toLocaleString()}</td>
+                <td className="num mono">{when(x.first_loss_ms)}</td>
+                <td className={x.ongoing ? "num mono bad-text" : "num mono"}>{x.ongoing ? "still losing" : when(x.last_loss_ms)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {p.impacted > p.list.length && <div className="muted">The {p.list.length} that lost the most are listed, of {p.impacted}.</div>}
+    </>
+  );
+}
+
 function PhaseResult({ phase }: { phase: Phase }) {
   const s = summarize(phase.flows);
   return (
@@ -463,6 +515,7 @@ function PhaseResult({ phase }: { phase: Phase }) {
               <th className="num" title="From the start of the step to the first lost packet">First loss</th>
               <th className="num" title="From the start of the step to the end of the last loss. Much later than the loss duration means partial loss, such as one ECMP path failing.">Last loss</th>
               <th className="num" title="The send interval: the smallest loss a flow can show">Resolution</th>
+              {phase.flows.some((f) => f.prefixes) && <th className="num" title="A flow to many prefixes: how many lost traffic">Prefixes</th>}
             </tr>
           </thead>
           <tbody>
@@ -483,11 +536,22 @@ function PhaseResult({ phase }: { phase: Phase }) {
                 <td className="num mono">{when(f.first_loss_ms)}</td>
                 <td className="num mono">{when(f.last_loss_ms)}</td>
                 <td className="num mono">{dur(f.resolution_ms)}</td>
+                {phase.flows.some((x) => x.prefixes) && <td className="num mono">{f.prefixes ? `${f.prefixes.impacted}/${f.prefixes.total}` : "—"}</td>}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {phase.flows
+        .filter((f) => f.prefixes && f.prefixes.impacted > 0)
+        .map((f) => (
+          <details className="conv-events" key={f.agent + f.device + f.flow_id}>
+            <summary>
+              {flowName(f)}: {f.prefixes!.impacted} of {f.prefixes!.total} prefixes lost traffic
+            </summary>
+            <PrefixTable p={f.prefixes!} span={(f.last_loss_ms ?? 0) - (f.first_loss_ms ?? 0)} />
+          </details>
+        ))}
       {phase.events.length > 0 && (
         <details className="conv-events">
           <summary>{phase.events.length} events during this step</summary>
