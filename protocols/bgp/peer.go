@@ -242,6 +242,7 @@ type conn struct {
 	fams     []family
 	caps     []string
 	refresh  bool // peer can do route refresh
+	lost     bool // lost to another connection: closing, must not go Established
 
 	wmu    sync.Mutex
 	silent bool // flap: send nothing more
@@ -400,10 +401,13 @@ func (c *conn) run() {
 	s.mu.Unlock()
 	if wasUp {
 		go s.event("peer-down", fmt.Sprintf("BGP peer %s down: %s", p.addr, reason))
-	}
-	select {
-	case p.wake <- struct{}{}:
-	default:
+		// Reconnect at once after losing a session. A connection that never
+		// got that far waits for the connect retry timer (RFC 4271 8), or a
+		// peer that keeps closing connections gets dialled in a tight loop.
+		select {
+		case p.wake <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -460,23 +464,29 @@ func (c *conn) handshake() string {
 				return "KEEPALIVE before OPEN"
 			}
 			s.mu.Lock()
-			lost := p.est != nil
+			// A connection already told to close can still have the peer's
+			// KEEPALIVE to read. Going Established on it would close the
+			// connection that won.
+			lost := p.est != nil || c.lost
+			var others []*conn
 			if !lost {
 				p.est, c.state = c, stEstablished
 				s.startBFDLocked(p, c)
 				p.ups++
 				p.lastErr = ""
 				p.setStateLocked(stEstablished)
-			}
-			var others []*conn
-			for o := range p.conns {
-				if o != c {
-					others = append(others, o)
+				for o := range p.conns {
+					if o != c {
+						o.lost = true
+						others = append(others, o)
+					}
 				}
 			}
 			s.mu.Unlock()
 			if lost {
-				c.notify(gb.BGP_ERROR_CEASE, gb.BGP_ERROR_SUB_CONNECTION_COLLISION_RESOLUTION, nil)
+				if c.closedWhy() == "" {
+					c.notify(gb.BGP_ERROR_CEASE, gb.BGP_ERROR_SUB_CONNECTION_COLLISION_RESOLUTION, nil)
+				}
 				return "connection collision"
 			}
 			for _, o := range others {
@@ -582,7 +592,7 @@ func (c *conn) checkOpen(o *gb.BGPOpen) (uint8, uint8, string) {
 func (c *conn) resolveCollision() bool {
 	p, s := c.p, c.p.s
 	s.mu.Lock()
-	if p.est != nil {
+	if p.est != nil || c.lost {
 		s.mu.Unlock()
 		return true
 	}
@@ -593,6 +603,9 @@ func (c *conn) resolveCollision() bool {
 		}
 	}
 	keepOutbound := s.rid.Compare(c.remoteID) > 0
+	if other != nil && c.outbound == keepOutbound {
+		other.lost = true
+	}
 	s.mu.Unlock()
 	if other == nil {
 		return false

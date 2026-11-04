@@ -262,8 +262,49 @@ func TestBGPSRPolicy(t *testing.T) {
 	eventuallyLong(t, "withdrawn", func() bool { return received(bgpPeer(t, b, "10.0.0.1"), "ipv4-srpolicy") == 1 })
 }
 
+// A peer that keeps closing connections isn't dialled faster than
+// connect_retry.
+func TestBGPConnectRetryPaced(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	// a has no such peer: it accepts the connection and closes it.
+	if _, err := a.CreateProtocol(core.ProtocolSpec{Name: "bgp", Type: "bgp", Device: "d", Config: json.RawMessage(`{"local_as":65000,"hold_time":9}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CreateProtocol(core.ProtocolSpec{Name: "bgp", Type: "bgp", Device: "d", Config: json.RawMessage(
+		`{"local_as":65000,"router_id":"10.0.0.2","hold_time":9,"peers":[{"address":"10.0.0.1","remote_as":65000,"connect_retry":1}]}`)}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(3500 * time.Millisecond)
+	counters, _ := flowStatus(t, a, "bgp")["counters"].(map[string]any)
+	if n := num(counters, "rx_unknown_peer_connections"); n < 2 || n > 5 {
+		t.Fatalf("%v connections in 3.5 s, with connect_retry 1", n)
+	}
+}
+
+// Losing a session is no reason to wait out connect_retry.
+func TestBGPReconnectsAtOnce(t *testing.T) {
+	a, b, _, _ := ipPair(t)
+	if _, err := a.CreateProtocol(core.ProtocolSpec{Name: "bgp", Type: "bgp", Device: "d", Config: json.RawMessage(
+		`{"local_as":65000,"hold_time":9,"peers":[{"address":"10.0.0.2","remote_as":65000,"connect_retry":1,"passive":true}]}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CreateProtocol(core.ProtocolSpec{Name: "bgp", Type: "bgp", Device: "d", Config: json.RawMessage(
+		`{"local_as":65000,"router_id":"10.0.0.2","hold_time":9,"peers":[{"address":"10.0.0.1","remote_as":65000,"connect_retry":60}]}`)}); err != nil {
+		t.Fatal(err)
+	}
+	at := func() map[string]any { return bgpPeer(t, b, "10.0.0.1") }
+	eventuallyLong(t, "up", func() bool { return at()["state"] == "established" })
+	bgpRun(t, a, "reset", `{}`)
+	eventuallyLong(t, "back, well before connect_retry", func() bool {
+		p := at()
+		return num(p, "ups") == 2 && p["state"] == "established"
+	})
+}
+
 // A config edit applies in place: routes change without the session going
-// down, and only a peer whose session settings change is reset.
+// down, and only a peer whose session settings change is reset. One end only
+// dials: this counts session-ups, and when both dial a connection collision
+// can add one.
 func TestBGPReconfigure(t *testing.T) {
 	a, b, _, _ := ipPair(t)
 	fams := `"families":["ipv4-unicast","ipv4-srpolicy"]`
@@ -280,7 +321,7 @@ func TestBGPReconfigure(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := b.CreateProtocol(core.ProtocolSpec{Name: "bgp", Type: "bgp", Device: "d", Config: json.RawMessage(
-		`{"local_as":65000,"router_id":"10.0.0.2","hold_time":9,"peers":[{"address":"10.0.0.1","remote_as":65000,` + fams + `,"connect_retry":1}]}`)}); err != nil {
+		`{"local_as":65000,"router_id":"10.0.0.2","hold_time":9,"peers":[{"address":"10.0.0.1","remote_as":65000,` + fams + `,"connect_retry":1,"passive":true}]}`)}); err != nil {
 		t.Fatal(err)
 	}
 	at := func() map[string]any { return bgpPeer(t, b, "10.0.0.1") }

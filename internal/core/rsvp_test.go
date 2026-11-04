@@ -20,7 +20,13 @@ const (
 // rsvpPair is a with the head and b with the tail, on a link.
 func rsvpPair(t *testing.T, cfgA, cfgB string) (*core.Engine, *core.Engine, *wire) {
 	t.Helper()
-	a, b, wa, _ := newPair()
+	a, b, wa, _ := rsvpPairWires(t, cfgA, cfgB)
+	return a, b, wa
+}
+
+func rsvpPairWires(t *testing.T, cfgA, cfgB string) (*core.Engine, *core.Engine, *wire, *wire) {
+	t.Helper()
+	a, b, wa, wb := newPair()
 	for i, e := range []*core.Engine{a, b} {
 		addr, gw, mac, cfg := "10.0.0.1/24", "10.0.0.2", "02:00:00:00:0a:01", cfgA
 		if i == 1 {
@@ -33,7 +39,7 @@ func rsvpPair(t *testing.T, cfgA, cfgB string) (*core.Engine, *core.Engine, *wir
 			t.Fatal(err)
 		}
 	}
-	return a, b, wa
+	return a, b, wa, wb
 }
 
 func rsvpStatus(t *testing.T, e *core.Engine) map[string]any {
@@ -199,17 +205,30 @@ func TestRSVPNotForUs(t *testing.T) {
 
 // Soft state: refreshes stop, and both ends notice from their timers.
 func TestRSVPSoftState(t *testing.T) {
-	a, b, wa := rsvpPair(t, rsvpHead, rsvpTail)
+	a, b, wa, wb := rsvpPairWires(t, rsvpHead, rsvpTail)
 	rsvpUp(t, a)
-	wa.mu.Lock()
-	wa.up = false
-	wa.mu.Unlock()
+	// Hellos only time out once they've been answered.
+	ldpWait(t, "hellos up", func() bool {
+		for _, e := range []*core.Engine{a, b} {
+			n := rsvpStatus(t, e)["neighbors"].([]any)
+			if len(n) != 1 || n[0].(map[string]any)["hellos"] != "up" {
+				return false
+			}
+		}
+		return true
+	}, 5*time.Second)
+	link := func(up bool) {
+		for _, w := range []*wire{wa, wb} {
+			w.mu.Lock()
+			w.up = up
+			w.mu.Unlock()
+		}
+	}
+	link(false)
 	// Hellos at 1 s notice in about 3.5 s, well before the state's 5.25 refreshes.
 	ldpWait(t, "head noticed", func() bool { return rsvpHeadOf(t, a)["state"] != "up" }, 6*time.Second)
 	ldpWait(t, "tail noticed", func() bool { return len(rsvpTails(t, b)) == 0 }, 6*time.Second)
-	wa.mu.Lock()
-	wa.up = true
-	wa.mu.Unlock()
+	link(true)
 	rsvpUp(t, a)
 }
 
