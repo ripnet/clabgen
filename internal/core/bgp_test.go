@@ -413,6 +413,12 @@ func TestBGPBFD(t *testing.T) {
 	eventuallyLong(t, "BGP and BFD up", func() bool {
 		return bgpPeer(t, a, "10.0.0.2")["state"] == "established" && bfdState(a, "10.0.0.2") == "up" && bfdState(b, "10.0.0.1") == "up"
 	})
+	// Until b's fast rate is agreed, a's detection time comes from b's slow
+	// 1 s interval: 3 s, longer than the silence below.
+	eventuallyLong(t, "a detecting at the fast rate", func() bool {
+		s, _ := bgpPeer(t, a, "10.0.0.2")["bfd"].(map[string]any)
+		return num(s, "detect_ms") == 300
+	})
 	// b goes silent: a's BFD fails and takes the session down (hold time 30 s
 	// would take far longer).
 	bgpRun(t, b, "bfd-fail", `{"seconds":2}`)
