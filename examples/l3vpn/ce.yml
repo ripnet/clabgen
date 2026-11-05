@@ -1,0 +1,25 @@
+# A customer site: plain IP and eBGP to the VPRN on sr2.
+devices:
+  - {name: site, port: eth1, addresses: [172.16.0.2/24, 2001:db8:ce::2/64], gateway4: 172.16.0.1, gateway6: 2001:db8:ce::1}
+protocols:
+  - name: bgp
+    type: bgp
+    device: site
+    config:
+      local_as: 65001
+      router_id: 172.16.0.2
+      peers:
+        - {address: 172.16.0.1, remote_as: 65000}
+        - {address: 2001:db8:ce::1, remote_as: 65000, families: [ipv6-unicast]}
+      routes:
+        - {prefix: 203.0.113.0/24, count: 10}
+        - {prefix: 2001:db8:c::/48}
+  # Through the VPN to the emulated PE, which answers with labels.
+  - name: to-pe
+    type: icmp
+    device: site
+    config:
+      destinations: [{prefix: 198.51.100.0/24, count: 10}]
+      source: 203.0.113.1
+      rate: 100
+      auto_start: true

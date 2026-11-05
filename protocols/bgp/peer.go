@@ -108,6 +108,9 @@ func (p *peer) ebgp() bool { return p.cfg.RemoteAS != p.s.cfg.LocalAS }
 func (p *peer) resetRIBLocked() {
 	p.adjIn, p.eorIn = map[gb.RouteFamily]map[netip.Prefix]*pathInfo{}, map[gb.RouteFamily]bool{}
 	p.adjX = map[gb.RouteFamily]map[string]*rxRoute{}
+	if p.s.env != nil {
+		p.s.env.IP().VPNRIB().RemoveSource(p.vpnSource())
+	}
 }
 
 func (p *peer) established() *conn {
@@ -690,6 +693,9 @@ func (c *conn) rxUpdate(u *gb.BGPUpdate, l2 *l2Update) {
 	p, s := c.p, c.p.s
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if p.est != c {
+		return // queued on a connection that has lost its session: stale
+	}
 	if l2 != nil {
 		info := summarize(u.PathAttributes)
 		m := p.adjX[gb.RF_VPLS]
@@ -771,10 +777,16 @@ func (c *conn) rxUpdate(u *gb.BGPUpdate, l2 *l2Update) {
 				for _, n := range m.Value {
 					if loop {
 						delete(xrib(rf), xKey(n))
+						p.vpnWithdraw(n)
 						p.counters["rx_as_path_loops"]++
 						continue
 					}
-					xrib(rf)[xKey(n)] = &rxRoute{text: rxText(n, vxlan), info: in}
+					r := &rxRoute{text: rxText(n, vxlan), info: in}
+					if rd, prefix, labels, ok := vpnParts(n); ok {
+						r.vpn = vpnFields{RD: rd, VPNPrefix: prefix.String(), Labels: labels}
+					}
+					xrib(rf)[xKey(n)] = r
+					p.vpnReceive(n, in)
 				}
 				continue
 			}
@@ -788,6 +800,7 @@ func (c *conn) rxUpdate(u *gb.BGPUpdate, l2 *l2Update) {
 			if isXFamily(rf) {
 				for _, n := range m.Value {
 					delete(xrib(rf), xKey(n))
+					p.vpnWithdraw(n)
 				}
 				continue
 			}

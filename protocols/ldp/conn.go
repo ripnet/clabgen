@@ -33,6 +33,7 @@ type conn struct {
 	peer      ID
 	addresses map[netip.Addr]bool
 	lib       map[netip.Prefix]uint32
+	published map[netip.Prefix]bool // labels offered to flows as tunnels
 	counters  map[string]uint64
 
 	wmu        sync.Mutex
@@ -44,7 +45,7 @@ type conn struct {
 
 func newConn(s *session, n *neighbor, c net.Conn) *conn {
 	return &conn{s: s, n: n, c: c, active: n != nil, state: stInitialized, maxPDU: maxPDUDefault, addresses: map[netip.Addr]bool{},
-		lib: map[netip.Prefix]uint32{}, counters: map[string]uint64{}, closed: make(chan struct{})}
+		lib: map[netip.Prefix]uint32{}, published: map[netip.Prefix]bool{}, counters: map[string]uint64{}, closed: make(chan struct{})}
 }
 
 func (c *conn) count(k string) {
@@ -522,6 +523,7 @@ func (c *conn) rxMapping(m *Message) {
 			release = append(release, binding{p, old})
 		}
 		c.lib[p] = label
+		c.s.publishLocked(c, p, label)
 	}
 	c.s.mu.Unlock()
 	c.release(release)
@@ -551,12 +553,14 @@ func (c *conn) rxWithdraw(m *Message) {
 		for p, l := range c.lib {
 			release = append(release, binding{p, l})
 			delete(c.lib, p)
+			c.s.unpublishLocked(c, p)
 		}
 	}
 	for _, p := range f.Prefixes {
 		if l, have := c.lib[p]; have {
 			release = append(release, binding{p, l})
 			delete(c.lib, p)
+			c.s.unpublishLocked(c, p)
 		}
 	}
 	c.s.mu.Unlock()
@@ -593,6 +597,9 @@ func (c *conn) ended() {
 	c.s.mu.Lock()
 	n, st := c.n, c.state
 	lost := len(c.lib)
+	for p := range c.published {
+		c.s.unpublishLocked(c, p)
+	}
 	if n != nil && n.conn == c {
 		n.conn = nil
 		n.lastErr = c.why

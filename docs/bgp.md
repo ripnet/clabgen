@@ -18,8 +18,8 @@ There is no TCP MD5 authentication (the netstack has none).
 
 The device answers for the routes it advertises with itself as the next
 hop (ping, [flows](flows.md#flows-to-many-prefixes)), until they're withdrawn,
-so traffic to them can be measured. A route with its `next_hop` elsewhere and
-VPN routes aren't answered. An example:
+so traffic to them can be measured. A route with its `next_hop` elsewhere isn't
+answered, and a VPN route only [with its label](flows.md#flows-in-a-vpn). An example:
 [Traffic to BGP routes](examples/bgp-routes.md).
 
 ## Actions
@@ -85,7 +85,9 @@ Peer `families` add `ipv4-vpn`, `ipv6-vpn`, `evpn` and `l2vpn` (and the
 [SR policy](#sr-policies) families):
 
 - **VPNv4 / VPNv6**: a route with an `rd`, with `label` and
-  `route_targets`. The VPNv6 next hop is IPv4-mapped over IPv4, as 6VPE.
+  `route_targets`. The VPNv6 next hop is IPv4-mapped over IPv4, as 6VPE, and a route
+  can set an IPv4 `next_hop`. [Flows in a VPN](flows.md#flows-in-a-vpn) use the
+  routes received, and the device takes traffic with the labels it advertised.
 - **EVPN** (`evpn` entries): MAC/IP (counting MACs and IPs up), inclusive
   multicast (PMSI tunnel, ingress replication), Ethernet A-D (ESI label,
   single-active), Ethernet segment and IP prefix routes. They use MPLS

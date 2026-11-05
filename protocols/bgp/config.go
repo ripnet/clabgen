@@ -181,7 +181,9 @@ func (r Route) expand() ([]netip.Prefix, error) {
 	}
 	if r.NextHop != "" {
 		nh, err := netip.ParseAddr(r.NextHop)
-		if err != nil || nh.Is4() != p.Addr().Is4() {
+		// A VPNv6 route may have an IPv4 next hop, as an IPv4-mapped address
+		// (RFC 4659 3.2.1): a PE reached over an IPv4 core.
+		if err != nil || nh.Is4() != p.Addr().Is4() && !(r.RD != "" && nh.Is4()) {
 			return nil, fmt.Errorf("route %s: next_hop %q must be an address of the same family", p, r.NextHop)
 		}
 	}

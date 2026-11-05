@@ -166,6 +166,7 @@ type pathInfo struct {
 	ExtCommunities   []string `json:"ext_communities,omitempty"`
 	AtomicAggregate  bool     `json:"atomic_aggregate,omitempty"`
 	Other            []string `json:"other_attributes,omitempty"`
+	RouteTargets     []string `json:"route_targets,omitempty"`
 	asns             []uint32 // every AS in the path (loop detection)
 }
 
@@ -232,6 +233,9 @@ func summarize(attrs []gb.PathAttributeInterface) *pathInfo {
 		case *gb.PathAttributeExtendedCommunities:
 			for _, c := range x.Value {
 				p.ExtCommunities = append(p.ExtCommunities, extText(c))
+				if _, st := c.GetTypes(); st == gb.EC_SUBTYPE_ROUTE_TARGET {
+					p.RouteTargets = append(p.RouteTargets, c.String())
+				}
 			}
 		case *gb.PathAttributeMpReachNLRI, *gb.PathAttributeMpUnreachNLRI:
 		default:

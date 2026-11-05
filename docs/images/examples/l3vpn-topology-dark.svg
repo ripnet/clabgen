@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 400" width="1240" height="400" role="img" aria-label="pe agent, SR-SIM sr1, SR-SIM sr2 with VPRN 100, ce agent">
+<style>
+  .box { fill: #22272e; stroke-width: 2.5; }
+  .agent { stroke: #4c8dff; }
+  .router { stroke: #2dd4bf; }
+  .title { font: 600 26px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #e6edf3; }
+  .kind { font: 17px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #9198a1; }
+  .line { font: 19px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #e6edf3; }
+  .port { font: 15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #9198a1; }
+  .note { font: 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #9198a1; }
+  .wire { stroke: #768390; stroke-width: 3; }
+  .flow { stroke: #f59e0b; stroke-width: 2.5; fill: none; stroke-dasharray: 8 5; }
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/></marker></defs>
+<line x1="220" y1="195.0" x2="330" y2="195.0" class="wire"/>
+<text x="226" y="185.0" class="port" text-anchor="start">eth1</text>
+<text x="324" y="185.0" class="port" text-anchor="end">c1/1</text>
+<text x="275.0" y="223.0" class="note" text-anchor="middle">IS-IS, LDP</text>
+<line x1="530" y1="195.0" x2="710" y2="195.0" class="wire"/>
+<text x="536" y="185.0" class="port" text-anchor="start">c2/1</text>
+<text x="704" y="185.0" class="port" text-anchor="end">c1/1</text>
+<text x="620.0" y="223.0" class="note" text-anchor="middle">IS-IS, LDP</text>
+<line x1="910" y1="195.0" x2="1020" y2="195.0" class="wire"/>
+<text x="916" y="185.0" class="port" text-anchor="start">c2/1</text>
+<text x="1014" y="185.0" class="port" text-anchor="end">eth1</text>
+<text x="965.0" y="223.0" class="note" text-anchor="middle">eBGP</text>
+<rect x="20" y="110" width="200" height="170" rx="10" class="box agent"/>
+<text x="120.0" y="150" class="title" text-anchor="middle">pe</text>
+<text x="120.0" y="174" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="120.0" y="210" class="line" text-anchor="middle">the far PE,</text>
+<text x="120.0" y="236" class="line" text-anchor="middle">flows in the VPN</text>
+<rect x="330" y="110" width="200" height="170" rx="10" class="box router"/>
+<text x="430.0" y="150" class="title" text-anchor="middle">sr1</text>
+<text x="430.0" y="174" class="kind" text-anchor="middle">Nokia SR-SIM</text>
+<text x="430.0" y="210" class="line" text-anchor="middle">P: switches</text>
+<text x="430.0" y="236" class="line" text-anchor="middle">the LDP label</text>
+<rect x="710" y="110" width="200" height="170" rx="10" class="box router"/>
+<text x="810.0" y="150" class="title" text-anchor="middle">sr2</text>
+<text x="810.0" y="174" class="kind" text-anchor="middle">Nokia SR-SIM</text>
+<text x="810.0" y="210" class="line" text-anchor="middle">PE: VPRN 100</text>
+<text x="810.0" y="236" class="line" text-anchor="middle">takes the VPN label</text>
+<rect x="1020" y="110" width="200" height="170" rx="10" class="box agent"/>
+<text x="1120.0" y="150" class="title" text-anchor="middle">ce</text>
+<text x="1120.0" y="174" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="1120.0" y="210" class="line" text-anchor="middle">a customer site,</text>
+<text x="1120.0" y="236" class="line" text-anchor="middle">plain IP</text>
+<path d="M120.0,102 V76 H810.0 V100" class="flow" marker-end="url(#arrow)"/>
+<text x="465.0" y="64" class="note" text-anchor="middle">iBGP VPNv4 and VPNv6 between loopbacks; packets take labels from it</text>
+<text x="620.0" y="340" class="note" text-anchor="middle">Route target 65000:100 · pe 192.0.2.1 · sr2 192.0.2.12</text>
+</svg>

@@ -22,6 +22,7 @@ import (
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/prefixset"
 	"github.com/ripnet/clabgen/internal/protocol"
+	"github.com/ripnet/clabgen/internal/vpnrib"
 )
 
 // Config is a device's IP configuration.
@@ -161,7 +162,12 @@ type Stack struct {
 	localSets []*prefixset.Set   // AddLocalPrefixes sets
 	labels    map[uint32]int     // AddLocalLabel labels (reference counts)
 	tunnels   map[string]*protocol.Tunnel
-	tcp       *tcpStack // netstack for TCP (created on first use)
+	tunnelsTo map[netip.Addr]map[string]*protocol.Tunnel
+	vpn       *vpnrib.Table
+	vpnOwners map[string]map[uint32]protocol.VPNLabel
+	vpnLabels map[uint32]*vpnContext
+	resolving map[netip.Addr]bool // next hops of VPN routes being resolved
+	tcp       *tcpStack           // netstack for TCP (created on first use)
 
 	ipID     atomic.Uint32
 	counters counters
@@ -174,7 +180,7 @@ type dynamic struct {
 }
 
 func New(mac pkt.MAC, cfg Config, send SendFunc, emit EmitFunc) *Stack {
-	s := &Stack{mac: mac, send: send, emit: emit, now: time.Now, neighbors: map[netip.Addr]*neighbor{}, flows: flowrx.New(), ownFlows: map[uint32]int{}, locals: map[netip.Addr]int{}}
+	s := &Stack{mac: mac, send: send, emit: emit, now: time.Now, neighbors: map[netip.Addr]*neighbor{}, flows: flowrx.New(), ownFlows: map[uint32]int{}, locals: map[netip.Addr]int{}, vpn: vpnrib.New()}
 	s.SetConfig(cfg)
 	return s
 }
@@ -360,6 +366,23 @@ func (s *Stack) IsLocal(a netip.Addr) bool {
 	return s.forUs(a.Unmap())
 }
 
+// IsLocalRx implements protocol.IP.
+func (s *Stack) IsLocalRx(f *pkt.Frame, a netip.Addr) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.forUsRx(f, a.Unmap())
+}
+
+// forUsRx is forUs for a received packet: one in a VPN is also for us if it's
+// to a prefix behind the label it came with. Caller holds mu.
+func (s *Stack) forUsRx(f *pkt.Frame, a netip.Addr) bool {
+	if s.forUs(a) {
+		return true
+	}
+	c := s.vpnContextLocked(f)
+	return c != nil && c.set.Contains(a)
+}
+
 // AddLocalPrefixes implements protocol.IP.
 func (s *Stack) AddLocalPrefixes(set *prefixset.Set) func() {
 	s.mu.Lock()
@@ -450,24 +473,27 @@ func (s *Stack) HandleRx(f *pkt.Frame) bool {
 	return false
 }
 
-// rxMPLS pops a label stack whose top label is ours and handles the IP
-// packet inside. There is no label switching: it's the end of the LSP.
-func (s *Stack) rxMPLS(f *pkt.Frame) bool {
+// PopMPLS takes the label stack off a frame whose top label is ours and
+// returns the IP frame inside, or nil. There is no label switching: it's the
+// end of the LSP. Everything on the device handles the inner frame as usual.
+func (s *Stack) PopMPLS(f *pkt.Frame) *pkt.Frame {
 	b := f.Payload
 	if len(b) < 4 {
-		return false
+		return nil
 	}
 	top := binary.BigEndian.Uint32(b) >> 12
 	s.mu.Lock()
-	ours := s.labels[top] > 0
+	ours := s.labels[top] > 0 || s.vpnLabels[top] != nil
 	s.mu.Unlock()
 	if !ours {
-		return false
+		return nil
 	}
+	var labels []uint32
 	for {
 		if len(b) < 4 {
-			return false
+			return nil
 		}
+		labels = append(labels, binary.BigEndian.Uint32(b)>>12)
 		bottom := b[2]&1 != 0
 		b = b[4:]
 		if bottom {
@@ -475,33 +501,202 @@ func (s *Stack) rxMPLS(f *pkt.Frame) bool {
 		}
 	}
 	if len(b) == 0 {
-		return false
+		return nil
 	}
 	inner := *f
-	inner.Payload = b
+	inner.Payload, inner.Labels = b, labels
 	switch b[0] >> 4 {
 	case 4:
 		inner.EtherType = pkt.EtherTypeIPv4
-		return s.rxIPv4(&inner)
 	case 6:
 		inner.EtherType = pkt.EtherTypeIPv6
-		return s.rxIPv6(&inner)
+	default:
+		return nil
 	}
-	return false
+	return &inner
+}
+
+func (s *Stack) rxMPLS(f *pkt.Frame) bool {
+	inner := s.PopMPLS(f)
+	return inner != nil && s.HandleRx(inner)
+}
+
+// ---- VPNs ----
+
+// vpnContext is what's behind a label advertised with VPN routes.
+type vpnContext struct {
+	set     *prefixset.Set
+	targets []string
+}
+
+// vpnContextLocked is the VPN a received packet is in: that of the label
+// nearest the packet, which identifies it. Caller holds mu.
+func (s *Stack) vpnContextLocked(f *pkt.Frame) *vpnContext {
+	if len(f.Labels) == 0 {
+		return nil
+	}
+	return s.vpnLabels[f.Labels[len(f.Labels)-1]]
+}
+
+// VPNRIB implements protocol.IP.
+func (s *Stack) VPNRIB() *vpnrib.Table { return s.vpn }
+
+// SetVPNLabels implements protocol.IP.
+func (s *Stack) SetVPNLabels(owner string, labels map[uint32]protocol.VPNLabel) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.vpnOwners == nil {
+		s.vpnOwners = map[string]map[uint32]protocol.VPNLabel{}
+	}
+	if len(labels) == 0 {
+		delete(s.vpnOwners, owner)
+	} else {
+		s.vpnOwners[owner] = labels
+	}
+	merged := map[uint32]*protocol.VPNLabel{}
+	for _, m := range s.vpnOwners {
+		for l, v := range m {
+			x := merged[l]
+			if x == nil {
+				x = &protocol.VPNLabel{}
+				merged[l] = x
+			}
+			x.Prefixes = append(x.Prefixes, v.Prefixes...)
+			for _, t := range v.Targets {
+				if n, ok := vpnrib.NormalizeTarget(t); ok && !slices.Contains(x.Targets, n) {
+					x.Targets = append(x.Targets, n)
+				}
+			}
+		}
+	}
+	s.vpnLabels = make(map[uint32]*vpnContext, len(merged))
+	for l, x := range merged {
+		set := &prefixset.Set{}
+		set.Update(x.Prefixes)
+		s.vpnLabels[l] = &vpnContext{set: set, targets: x.Targets}
+	}
+}
+
+// VPNResolve implements protocol.IP.
+func (s *Stack) VPNResolve(targets []string, lsp string, dst netip.Addr) (*protocol.VPNSend, error) {
+	p := s.vpn.LookupAny(targets, dst)
+	if p == nil {
+		return nil, fmt.Errorf("no VPN route to %s", dst)
+	}
+	var t *protocol.Tunnel
+	if lsp != "" {
+		if t = s.Tunnel(lsp); t == nil {
+			return nil, fmt.Errorf("LSP %s is down", lsp)
+		}
+	} else {
+		t = s.TunnelTo(p.NextHop)
+	}
+	if t != nil {
+		labels := make([]uint32, 0, len(t.Labels)+len(p.Labels))
+		labels = append(append(labels, t.Labels...), p.Labels...)
+		return &protocol.VPNSend{Labels: labels, NextHop: t.NextHop, MAC: t.MAC, Path: p}, nil
+	}
+	// No LSP: only a next hop on the link can be sent to, with the VPN label
+	// alone. Past a router it would be an unknown label there.
+	s.mu.Lock()
+	onLink := false
+	for _, a := range s.addrs {
+		if a.Contains(p.NextHop) {
+			onLink = true
+			break
+		}
+	}
+	s.mu.Unlock()
+	if !onLink {
+		return nil, fmt.Errorf("no LSP to next hop %s of the VPN route to %s", p.NextHop, p.Prefix)
+	}
+	mac, ok := s.cachedMAC(p.NextHop)
+	if !ok {
+		s.resolveInBackground(p.NextHop)
+		return nil, fmt.Errorf("resolving next hop %s of the VPN route to %s", p.NextHop, p.Prefix)
+	}
+	return &protocol.VPNSend{Labels: p.Labels, NextHop: p.NextHop, MAC: mac, Path: p}, nil
+}
+
+// resolveInBackground resolves a neighbor for packets that can't wait, once
+// at a time however many ask.
+func (s *Stack) resolveInBackground(a netip.Addr) {
+	s.mu.Lock()
+	if s.resolving[a] {
+		s.mu.Unlock()
+		return
+	}
+	if s.resolving == nil {
+		s.resolving = map[netip.Addr]bool{}
+	}
+	s.resolving[a] = true
+	s.mu.Unlock()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), resolveWait*resolveTries)
+		defer cancel()
+		s.Resolve(ctx, a)
+		s.mu.Lock()
+		delete(s.resolving, a)
+		s.mu.Unlock()
+	}()
+}
+
+// Reply implements protocol.IP.
+func (s *Stack) Reply(f *pkt.Frame, dst netip.Addr, et uint16, b []byte) error {
+	s.mu.Lock()
+	c := s.vpnContextLocked(f)
+	s.mu.Unlock()
+	if c == nil {
+		return s.send(f.Src, et, b)
+	}
+	v, err := s.VPNResolve(c.targets, "", dst)
+	if err != nil {
+		s.counters.vpnRepliesDropped.Add(1)
+		return err
+	}
+	s.counters.vpnReplies.Add(1)
+	return s.send(v.MAC, pkt.EtherTypeMPLS, pkt.PushLabels(v.Labels, 0, 64, b))
 }
 
 // SetTunnel implements protocol.IP.
 func (s *Stack) SetTunnel(name string, t *protocol.Tunnel) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if old := s.tunnels[name]; old != nil && old.To.IsValid() {
+		delete(s.tunnelsTo[old.To], name)
+		if len(s.tunnelsTo[old.To]) == 0 {
+			delete(s.tunnelsTo, old.To)
+		}
+	}
 	if t == nil {
 		delete(s.tunnels, name)
 		return
 	}
 	if s.tunnels == nil {
 		s.tunnels = map[string]*protocol.Tunnel{}
+		s.tunnelsTo = map[netip.Addr]map[string]*protocol.Tunnel{}
 	}
 	s.tunnels[name] = t
+	if t.To.IsValid() {
+		if s.tunnelsTo[t.To] == nil {
+			s.tunnelsTo[t.To] = map[string]*protocol.Tunnel{}
+		}
+		s.tunnelsTo[t.To][name] = t
+	}
+}
+
+// TunnelTo implements protocol.IP.
+func (s *Stack) TunnelTo(a netip.Addr) *protocol.Tunnel {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var best *protocol.Tunnel
+	var bestName string
+	for name, t := range s.tunnelsTo[a.Unmap()] {
+		if best == nil || t.Preference < best.Preference || t.Preference == best.Preference && name < bestName {
+			best, bestName = t, name
+		}
+	}
+	return best
 }
 
 // Tunnel implements protocol.IP.
@@ -616,7 +811,7 @@ func (s *Stack) rxIPv4(f *pkt.Frame) bool {
 		return false
 	}
 	s.mu.Lock()
-	forUs := s.forUs(h.Dst)
+	forUs := s.forUsRx(f, h.Dst)
 	s.mu.Unlock()
 	if !forUs {
 		return false
@@ -657,7 +852,7 @@ func (s *Stack) rxIPv4(f *pkt.Frame) bool {
 	s.recordFlow(f, "icmp", h.Src, h.Dst, 0, 0, m[8:], len(m))
 	reply := pkt.ICMPEcho(pkt.ICMPEchoReply, binary.BigEndian.Uint16(m[4:]), binary.BigEndian.Uint16(m[6:]), m[8:])
 	out := pkt.IPv4{TOS: h.TOS, ID: uint16(s.ipID.Add(1)), TTL: 64, Protocol: pkt.ProtoICMP, Src: h.Dst, Dst: h.Src, Payload: reply}
-	if s.send(f.Src, pkt.EtherTypeIPv4, out.Encode()) == nil {
+	if s.Reply(f, h.Src, pkt.EtherTypeIPv4, out.Encode()) == nil {
 		s.counters.icmpEchoReplies.Add(1)
 	}
 	return true
@@ -673,7 +868,7 @@ func (s *Stack) rxIPv6(f *pkt.Frame) bool {
 		return false
 	}
 	s.mu.Lock()
-	forUs := s.forUs(h.Dst)
+	forUs := s.forUsRx(f, h.Dst)
 	if !forUs && len(s.addrs) > 0 && h.Dst.IsMulticast() {
 		forUs = h.Dst == allNodes
 		for _, p := range s.addrs {
@@ -716,7 +911,7 @@ func (s *Stack) rxIPv6(f *pkt.Frame) bool {
 		reply := append([]byte{pkt.ICMPv6EchoReply, 0, 0, 0}, m[4:]...)
 		pkt.ICMPv6Checksum(h.Dst, h.Src, reply)
 		out := pkt.IPv6{TrafficClass: h.TrafficClass, NextHeader: pkt.ProtoICMPv6, HopLimit: 64, Src: h.Dst, Dst: h.Src, Payload: reply}
-		if s.send(f.Src, pkt.EtherTypeIPv6, out.Encode()) == nil {
+		if s.Reply(f, h.Src, pkt.EtherTypeIPv6, out.Encode()) == nil {
 			s.counters.icmpv6EchoReplies.Add(1)
 		}
 	case pkt.ICMPv6NeighborSol:
@@ -1095,6 +1290,7 @@ type counters struct {
 	ipv6Rx, ipv6Errors, ipv6Unhandled                                         atomic.Uint64
 	icmpEchoRequests, icmpEchoReplies, icmpRxOther                            atomic.Uint64
 	icmpv6EchoRequests, icmpv6EchoReplies, icmpv6RxOther                      atomic.Uint64
+	vpnReplies, vpnRepliesDropped                                             atomic.Uint64
 	resolveFailures, addressConflicts                                         atomic.Uint64
 	udpRx, udpErrors                                                          atomic.Uint64
 	tcpRx, tcpTx, tcpTxErrors                                                 atomic.Uint64
@@ -1111,6 +1307,7 @@ func (c *counters) snapshot() map[string]uint64 {
 		"ipv4_fragments": c.ipv4Fragments.Load(), "ipv4_unhandled": c.ipv4Unhandled.Load(),
 		"ipv6_rx": c.ipv6Rx.Load(), "ipv6_errors": c.ipv6Errors.Load(), "ipv6_unhandled": c.ipv6Unhandled.Load(),
 		"icmp_echo_requests": c.icmpEchoRequests.Load(), "icmp_echo_replies": c.icmpEchoReplies.Load(),
+		"vpn_replies": c.vpnReplies.Load(), "vpn_replies_dropped": c.vpnRepliesDropped.Load(),
 		"icmp_rx_other":        c.icmpRxOther.Load(),
 		"icmpv6_echo_requests": c.icmpv6EchoRequests.Load(), "icmpv6_echo_replies": c.icmpv6EchoReplies.Load(),
 		"icmpv6_rx_other":  c.icmpv6RxOther.Load(),

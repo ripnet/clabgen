@@ -634,6 +634,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .route-picker { margin-bottom: 12px; }
 .route-picker-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); }
 .route-picker-list { max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.vpn-choice { align-self: flex-start; }
 .route-picker-row { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 13px; }
 .ldp-peer { margin-top: 10px; }
 .ldp-peer h3 { margin: 0; }

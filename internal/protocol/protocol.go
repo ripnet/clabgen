@@ -23,6 +23,7 @@ import (
 	"github.com/ripnet/clabgen/internal/outage"
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/prefixset"
+	"github.com/ripnet/clabgen/internal/vpnrib"
 )
 
 // Device is the emulated endpoint a session is bound to.
@@ -74,9 +75,27 @@ type IP interface {
 	SetTunnel(name string, t *Tunnel)
 	// Tunnel is an LSP's current state, or nil when it's down.
 	Tunnel(name string) *Tunnel
+	// TunnelTo is the preferred LSP ending at addr, or nil.
+	TunnelTo(addr netip.Addr) *Tunnel
+	// VPNRIB is the device's table of received VPN routes.
+	VPNRIB() *vpnrib.Table
+	// SetVPNLabels says which labels an owner advertised VPN routes with and
+	// what's behind them (nil: none any more). Packets arriving with such a
+	// label are for this device if they're to one of its prefixes, and
+	// replies to them go back through the VPN.
+	SetVPNLabels(owner string, labels map[uint32]VPNLabel)
+	// VPNResolve finds what it takes to send to dst in a VPN: its route under
+	// the targets, and how to reach the route's next hop (through the named
+	// LSP if any, else an LSP to it, else directly when it's on-link).
+	VPNResolve(targets []string, lsp string, dst netip.Addr) (*VPNSend, error)
 	// IsLocal reports whether packets to addr are for this device: one of its
 	// addresses, a local address, or one in a local prefix set.
 	IsLocal(addr netip.Addr) bool
+	// IsLocalRx is IsLocal for a received packet, which may be in a VPN.
+	IsLocalRx(f *pkt.Frame, addr netip.Addr) bool
+	// Reply sends an IP packet answering a received frame: back to the frame's
+	// sender, or through the VPN it arrived on.
+	Reply(f *pkt.Frame, dst netip.Addr, etherType uint16, b []byte) error
 	// AddAddress gives the device an address on the link (prefix the
 	// on-link subnet), a default gateway, or both (either may be the zero
 	// value), as a DHCP client does with a lease. The device owns the
@@ -97,6 +116,30 @@ type Tunnel struct {
 	Labels  []uint32
 	NextHop netip.Addr
 	MAC     pkt.MAC
+	// To is where the LSP ends; Preference picks among LSPs to one place,
+	// lowest first.
+	To         netip.Addr
+	Preference int
+}
+
+// Preferences of LSPs to the same place, as routers commonly rank them.
+const (
+	PreferenceRSVP = 7
+	PreferenceLDP  = 9
+)
+
+// VPNLabel is what's behind a label advertised with VPN routes.
+type VPNLabel struct {
+	Prefixes []netip.Prefix
+	Targets  []string
+}
+
+// VPNSend is how to send a packet to a destination in a VPN.
+type VPNSend struct {
+	Labels  []uint32 // to push, outermost first
+	NextHop netip.Addr
+	MAC     pkt.MAC
+	Path    *vpnrib.Path
 }
 
 // Env is what the agent provides to a running session.

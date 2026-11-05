@@ -175,6 +175,7 @@ func (s *session) accept(l net.Listener) {
 func (s *session) Stop() {
 	close(s.stop)
 	s.releaseAnswer()
+	s.env.IP().SetVPNLabels(s.env.InstanceName(), nil)
 	s.closeListeners()
 	s.mu.Lock()
 	var conns []*conn
@@ -197,8 +198,9 @@ func (s *session) event(kind, msg string) { s.env.Emit(kind, msg, nil) }
 // syncAnswerLocked makes the device answer for the routes we advertise as
 // the next hop of, so traffic to them is received here. A route with its
 // next hop elsewhere isn't ours to answer. VPN routes aren't in s.out: their
-// traffic would arrive labelled, which the IP stack doesn't take.
+// traffic arrives labelled, and is only ours with that label.
 func (s *session) syncAnswerLocked() {
+	s.vpnLabelsLocked()
 	ps := make([]netip.Prefix, 0, len(s.out))
 	for p, t := range s.out {
 		if !t.nextHop.IsValid() {
@@ -546,6 +548,7 @@ func (s *session) changeRoutes(add bool, a *RouteArgs) (any, error) {
 type RIBRoute struct {
 	Prefix string `json:"prefix"`
 	Family string `json:"family"`
+	vpnFields
 	*pathInfo
 }
 
@@ -587,7 +590,7 @@ func (s *session) rib(a *RIBArgs) (any, error) {
 				break
 			}
 			r := p.adjX[f.rf][k]
-			out = append(out, RIBRoute{Prefix: r.text, Family: f.name, pathInfo: r.info})
+			out = append(out, RIBRoute{Prefix: r.text, Family: f.name, vpnFields: r.vpn, pathInfo: r.info})
 		}
 	}
 	for _, f := range []family{famIPv4, famIPv6} {

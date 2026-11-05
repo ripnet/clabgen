@@ -11,6 +11,9 @@ import (
 	"strings"
 
 	gb "github.com/osrg/gobgp/v3/pkg/packet/bgp"
+
+	"github.com/ripnet/clabgen/internal/protocol"
+	"github.com/ripnet/clabgen/internal/vpnrib"
 )
 
 // VPN families: VPNv4/VPNv6 (RFC 4364, 4659), EVPN (RFC 7432: Ethernet
@@ -36,6 +39,10 @@ type xroute struct {
 	nlri []byte
 	text string
 	t    *tmpl
+	// A VPNv4/v6 route: what traffic to it arrives with.
+	prefix  netip.Prefix
+	label   uint32
+	targets []string
 }
 
 // EVPNRoute is an EVPN route (or count MAC/IP or IP prefix routes).
@@ -157,12 +164,30 @@ func (r Route) vpnRoutes(t *tmpl) ([]*xroute, error) {
 			return nil, err
 		}
 		x.text += fmt.Sprintf(" label %d", label)
+		x.prefix, x.label, x.targets = p, label, r.RouteTargets
 		out = append(out, x)
 	}
 	return out, nil
 }
 
 const defaultVPNLabel = 30000
+
+// vpnLabelsLocked says which labels our VPN routes are advertised with and
+// what's behind them. The label makes a packet ours, whatever next hop the
+// route was given. Caller holds s.mu.
+func (s *session) vpnLabelsLocked() {
+	m := map[uint32]protocol.VPNLabel{}
+	for _, x := range s.xout {
+		if !x.prefix.IsValid() {
+			continue
+		}
+		v := m[x.label]
+		v.Prefixes = append(v.Prefixes, x.prefix)
+		v.Targets = append(v.Targets, x.targets...)
+		m[x.label] = v
+	}
+	s.env.IP().SetVPNLabels(s.env.InstanceName(), m)
+}
 
 func newXRoute(f family, n gb.AddrPrefixInterface, t *tmpl) (*xroute, error) {
 	b, err := n.Serialize()
@@ -540,10 +565,75 @@ func rxText(n gb.AddrPrefixInterface, vxlan bool) string {
 	return s
 }
 
+// vpnParts takes a VPNv4/v6 NLRI apart.
+func vpnParts(n gb.AddrPrefixInterface) (rd string, prefix netip.Prefix, labels []uint32, ok bool) {
+	var x *gb.LabeledVPNIPAddrPrefix
+	switch v := n.(type) {
+	case *gb.LabeledVPNIPAddrPrefix:
+		x = v
+	case *gb.LabeledVPNIPv6AddrPrefix:
+		x = &v.LabeledVPNIPAddrPrefix
+	default:
+		return "", netip.Prefix{}, nil, false
+	}
+	a, good := netip.AddrFromSlice(x.Prefix)
+	if !good || x.RD == nil {
+		return "", netip.Prefix{}, nil, false
+	}
+	p, err := a.Unmap().Prefix(int(x.IPPrefixLen()))
+	if err != nil {
+		return "", netip.Prefix{}, nil, false
+	}
+	return x.RD.String(), p, x.Labels.Labels, true
+}
+
+// vpnSource names a peer as the source of routes in the device's VPN table.
+func (p *peer) vpnSource() string { return p.s.env.InstanceName() + "/" + p.addr.String() }
+
+// vpnReceive puts a received VPN route in the device's VPN table, for flows.
+// Our own routes, coming back from a route reflector, aren't a way anywhere.
+// Withdrawn labels (RFC 8277: 0x800000) don't count either.
+func (p *peer) vpnReceive(n gb.AddrPrefixInterface, in *pathInfo) {
+	rd, prefix, labels, ok := vpnParts(n)
+	if !ok {
+		return
+	}
+	ip := p.s.env.IP()
+	nh, err := netip.ParseAddr(strings.Fields(in.NextHop + " x")[0])
+	if err != nil || len(labels) == 0 || ip.IsLocal(nh.Unmap()) {
+		p.vpnWithdraw(n)
+		return
+	}
+	v := vpnrib.Path{Source: p.vpnSource(), RD: rd, Prefix: prefix, Labels: labels, NextHop: nh, LocalPref: 100, ASPathLen: len(in.asns)}
+	if in.LocalPref != nil {
+		v.LocalPref = *in.LocalPref
+	}
+	if in.MED != nil {
+		v.MED = *in.MED
+	}
+	v.Targets = in.RouteTargets
+	ip.VPNRIB().Add(v)
+}
+
+func (p *peer) vpnWithdraw(n gb.AddrPrefixInterface) {
+	if rd, prefix, _, ok := vpnParts(n); ok {
+		p.s.env.IP().VPNRIB().Remove(p.vpnSource(), rd, prefix)
+	}
+}
+
 // rxRoute is a received route of a VPN family.
 type rxRoute struct {
 	text string
 	info *pathInfo
+	vpn  vpnFields
+}
+
+// vpnFields are what a client needs of a received VPNv4/v6 route, which its
+// text only spells out.
+type vpnFields struct {
+	RD        string   `json:"rd,omitempty"`
+	VPNPrefix string   `json:"vpn_prefix,omitempty"`
+	Labels    []uint32 `json:"labels,omitempty"`
 }
 
 func isXFamily(rf gb.RouteFamily) bool {

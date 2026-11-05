@@ -281,7 +281,18 @@ export function IpFlowView({ status, agentId, name, extra }: { status: JsonObjec
           <span className={`pill ${running ? "pill-on" : ""}`}>{s.state}</span> {s.source || "?"} → <b>{s.destination}</b>
           {s.next_hop && s.next_hop !== s.destination && <span className="muted"> via {s.next_hop}</span>}
           {s.dst_mac && <span className="muted"> ({s.dst_mac})</span>}
-          {s.lsp && (
+          {s.route_target && (
+            <span className={s.vpn_resolved ? "muted" : "warn-text"}>
+              {" "}
+              in VPN <span className="mono">{s.route_target}</span>
+              {s.lsp ? <> over LSP <span className="mono">{s.lsp}</span></> : null}
+              {s.vpn_resolved
+                ? `, labels ${s.vpn_labels?.join(" ")} (route ${s.vpn_route}, to PE ${s.vpn_peer})`
+                : ": no way there, packets count as lost"}
+              {(s.vpn_destinations ?? 0) > 1 ? `, ${(s.vpn_resolved ?? 0).toLocaleString()} of ${s.vpn_destinations?.toLocaleString()} destinations reachable` : ""}
+            </span>
+          )}
+          {s.lsp && !s.route_target && (
             <span className={s.lsp_up ? "muted" : "warn-text"}>
               {" "}
               in LSP <span className="mono">{s.lsp}</span>

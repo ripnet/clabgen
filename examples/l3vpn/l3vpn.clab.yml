@@ -1,0 +1,25 @@
+# An L3VPN through Nokia SR-SIMs, with clabgen as the far PE and as the CE.
+#   pe:eth1 -- sr1:1/1/c1/1: 10.0.1.2/30, IS-IS, LDP, iBGP VPNv4/v6 to sr2
+#   sr1:1/1/c2/1 -- sr2:1/1/c1/1: the core, LDP
+#   ce:eth1 -- sr2:1/1/c2/1: 172.16.0.2/24 in VPRN 100, eBGP
+name: l3vpn
+topology:
+  defaults:
+    kind: nokia_srsim
+  nodes:
+    sr1: {image: "nokia_srsim:26.10.R1", startup-config: sr1.partial.txt}
+    sr2: {image: "nokia_srsim:26.10.R1", startup-config: sr2.partial.txt}
+    pe:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]   # the topology folder: the scenario, and the saved config in clab-<lab>/pe/
+      env: {CLABGEN_SCENARIO: pe.yml}
+    ce:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: ce.yml}
+  links:
+    - endpoints: [pe:eth1, sr1:1/1/c1/1]
+    - endpoints: [sr1:1/1/c2/1, sr2:1/1/c1/1]
+    - endpoints: [ce:eth1, sr2:1/1/c2/1]

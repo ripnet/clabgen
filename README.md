@@ -115,6 +115,9 @@ Good to know:
 - **RSVP-TE**: head and tail of LSPs, explicit routes and fast reroute requests,
   and flows sending into LSPs; tear down, re-signal, send errors or go silent
   ([docs](docs/rsvp.md)).
+- **L3VPN traffic**: flows in a VPN taking a label for each packet from the VPNv4 and
+  VPNv6 routes BGP received, over LDP or RSVP-TE, and following them as they change
+  ([docs](docs/flows.md#flows-in-a-vpn)).
 - **IS-IS**: point-to-point and LAN, L1/L2, multi-topology, SR-MPLS,
   SRv6 and flex-algo, keychain authentication, BFD, graceful restart.
 - **OSPFv2 / OSPFv3**: areas (stub, NSSA, virtual links), segment routing,

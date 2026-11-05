@@ -246,7 +246,9 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 	var targets []protocol.Session
 	var tapRx []func(*pkt.Frame)
 	var stacks, l2 []*ipstack.Stack
-	isIP := f.EtherType == pkt.EtherTypeARP || f.EtherType == pkt.EtherTypeIPv4 || f.EtherType == pkt.EtherTypeIPv6 || f.EtherType == pkt.EtherTypeMPLS
+	isIP := f.EtherType == pkt.EtherTypeARP || f.EtherType == pkt.EtherTypeIPv4 || f.EtherType == pkt.EtherTypeIPv6
+	isMPLS := f.EtherType == pkt.EtherTypeMPLS
+	var labelled []*device
 	e.mu.RLock()
 	for _, d := range e.byPort[port] {
 		if d == from {
@@ -260,6 +262,10 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 		}
 		if f.EtherType != pkt.EtherTypeCFM {
 			d.dataRx.Add(1)
+		}
+		if isMPLS {
+			labelled = append(labelled, d)
+			continue
 		}
 		if !isIP && f.EtherType != pkt.EtherTypeCFM && f.EtherType != pkt.EtherTypeLLC {
 			l2 = append(l2, d.ip) // raw L2 streams are counted where they land
@@ -280,6 +286,11 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 	}
 	e.mu.RUnlock()
 	used := false
+	for _, d := range labelled {
+		if e.receiveLabelled(d, f) {
+			used = true
+		}
+	}
 	for _, s := range stacks {
 		if s.HandleRx(f) {
 			used = true
@@ -297,6 +308,39 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 		rx(f)
 	}
 	return used || len(targets) > 0 || len(tapRx) > 0
+}
+
+// receiveLabelled hands what's inside an MPLS frame to a device's IP stack
+// and protocols, as if it had come unlabelled: replies to a flow, requests to
+// a responder. It reports whether the labels were the device's.
+func (e *Engine) receiveLabelled(d *device, f *pkt.Frame) bool {
+	inner := d.ip.PopMPLS(f)
+	if inner == nil {
+		return false
+	}
+	var targets []protocol.Session
+	var tapRx []func(*pkt.Frame)
+	e.mu.RLock()
+	for _, in := range d.insts {
+		if in.sess != nil && in.ets[inner.EtherType] {
+			targets = append(targets, in.sess)
+		}
+	}
+	for _, t := range d.taps {
+		if t.in.ets[inner.EtherType] {
+			tapRx = append(tapRx, t.rx)
+		}
+	}
+	e.mu.RUnlock()
+	d.ip.HandleRx(inner)
+	for _, s := range targets {
+		s.HandleRx(inner)
+	}
+	for _, rx := range tapRx {
+		rx(inner)
+	}
+	f.FlowCounted = f.FlowCounted || inner.FlowCounted
+	return true
 }
 
 // indexLocked adds d to its port's devices, standalone devices ahead of

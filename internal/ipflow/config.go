@@ -10,6 +10,7 @@ import (
 
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/prefixset"
+	"github.com/ripnet/clabgen/internal/vpnrib"
 )
 
 // Config parts shared by IP flow types. A type embeds them (in this order,
@@ -80,10 +81,11 @@ type Run struct {
 }
 
 type Addressing struct {
-	Source string `json:"source,omitempty" jsonschema:"description=Source address. Default: the device's address on the destination's subnet; else its first address of that family"`
-	DstMAC string `json:"dst_mac,omitempty" jsonschema:"description=Destination MAC. Default: resolve the next hop (destination or gateway) with ARP/ND"`
-	PCP    *uint8 `json:"vlan_pcp,omitempty" jsonschema:"minimum=0,maximum=7,description=PCP on every VLAN tag. Default: the device's"`
-	LSP    string `json:"lsp,omitempty" jsonschema:"description=Send into this LSP: one that an RSVP instance on the device signals. Packets count as lost while it's down"`
+	Source      string `json:"source,omitempty" jsonschema:"description=Source address. Default: the device's address on the destination's subnet; else its first address of that family"`
+	DstMAC      string `json:"dst_mac,omitempty" jsonschema:"description=Destination MAC. Default: resolve the next hop (destination or gateway) with ARP/ND"`
+	PCP         *uint8 `json:"vlan_pcp,omitempty" jsonschema:"minimum=0,maximum=7,description=PCP on every VLAN tag. Default: the device's"`
+	LSP         string `json:"lsp,omitempty" jsonschema:"description=Send into this LSP: one that an RSVP instance on the device signals. Packets count as lost while it's down"`
+	RouteTarget string `json:"route_target,omitempty" jsonschema:"description=Send in this VPN: each packet takes the label of the VPN route BGP received for its destination under this route target and goes through an LSP to the route's next hop. Needs source. Packets count as lost while there's no route or no LSP"`
 }
 
 type IPHeader struct {
@@ -181,11 +183,22 @@ func (s Spec) Validate() (netip.Addr, error) {
 		}
 	}
 	if s.LSP != "" {
-		if !dst.Is4() {
+		if !dst.Is4() && s.RouteTarget == "" {
 			return dst, errors.New("lsp carries IPv4 only")
 		}
 		if s.DstMAC != "" {
 			return dst, errors.New("set either lsp or dst_mac")
+		}
+	}
+	if s.RouteTarget != "" {
+		if _, ok := vpnrib.NormalizeTarget(s.RouteTarget); !ok {
+			return dst, fmt.Errorf("route_target %q is not a route target, e.g. 65100:500", s.RouteTarget)
+		}
+		if s.DstMAC != "" {
+			return dst, errors.New("set either route_target or dst_mac")
+		}
+		if s.Source == "" {
+			return dst, errors.New("route_target needs source: an address the far end reaches through the VPN")
 		}
 	}
 	if err := s.Run.Validate(); err != nil {

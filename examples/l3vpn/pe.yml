@@ -1,0 +1,63 @@
+# The far PE of an L3VPN: routes in the VPN, and flows that take their labels
+# from what it hears from sr2.
+devices:
+  - {name: core, port: eth1, addresses: [10.0.1.2/30], gateway4: 10.0.1.1}
+protocols:
+  - name: isis
+    type: isis
+    device: core
+    config:
+      system_id: 0000.0000.0001
+      hostname: pe
+      level: L2
+      areas: ["49.0001"]
+      loopbacks: [192.0.2.1/32]
+  - name: ldp
+    type: ldp
+    device: core
+    config:
+      router_id: 192.0.2.1
+      fecs:
+        - {prefix: 192.0.2.1/32, mode: implicit-null}
+  - name: bgp
+    type: bgp
+    device: core
+    config:
+      local_as: 65000
+      router_id: 192.0.2.1
+      peers:
+        - address: 192.0.2.12
+          remote_as: 65000
+          local_address: 192.0.2.1
+          families: [ipv4-vpn, ipv6-vpn]
+      routes:
+        - prefix: 198.51.100.0/24
+          count: 10
+          next_hop: 192.0.2.1
+          rd: "65000:1"
+          label: 3001
+          route_targets: ["65000:100"]
+        - prefix: 2001:db8:1::/48
+          next_hop: 192.0.2.1
+          rd: "65000:1"
+          label: 3001
+          route_targets: ["65000:100"]
+  # Echo: out with the labels of sr2's route, back with ours.
+  - name: to-ce
+    type: icmp
+    device: core
+    config:
+      destinations: [{prefix: 203.0.113.0/24, count: 10}]
+      source: 198.51.100.1
+      route_target: "65000:100"
+      rate: 100
+      auto_start: true
+  - name: to-ce-v6
+    type: icmp
+    device: core
+    config:
+      destination: 2001:db8:c::1
+      source: 2001:db8:1::1
+      route_target: "65000:100"
+      rate: 100
+      auto_start: true

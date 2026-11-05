@@ -99,6 +99,21 @@ type Frame struct {
 	RxTime      time.Time
 	Local       bool
 	FlowCounted bool
+	// Labels: the MPLS labels taken off the frame, outermost first.
+	Labels []uint32
+}
+
+// PushLabels puts an MPLS label stack (outermost first) on a packet.
+func PushLabels(labels []uint32, tc, ttl uint8, b []byte) []byte {
+	out := make([]byte, 0, 4*len(labels)+len(b))
+	for i, l := range labels {
+		e := l<<12 | uint32(tc&7)<<9 | uint32(ttl)
+		if i == len(labels)-1 {
+			e |= 1 << 8
+		}
+		out = binary.BigEndian.AppendUint32(out, e)
+	}
+	return append(out, b...)
 }
 
 func IsTPID(v uint16) bool { return v == TPIDDot1Q || v == TPIDDot1AD || v == TPIDQinQ }

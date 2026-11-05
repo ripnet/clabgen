@@ -23,6 +23,7 @@ import (
 	"github.com/ripnet/clabgen/internal/outage"
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/protocol"
+	"github.com/ripnet/clabgen/internal/vpnrib"
 )
 
 // Flow states.
@@ -359,8 +360,8 @@ func (f *Flow) prepare(ctx context.Context) error {
 		f.mu.Unlock()
 		return nil
 	}
-	if f.Spec.LSP != "" {
-		return nil // the LSP says where each packet goes
+	if f.labelled() {
+		return nil // the LSP or the VPN route says where each packet goes
 	}
 	return f.resolve(ctx)
 }
@@ -412,7 +413,7 @@ func (f *Flow) run(ctx context.Context, cancel context.CancelFunc, done chan str
 	f.mu.Unlock()
 
 	// Keep following the next hop (e.g. a gateway that fails over).
-	if f.Spec.DstMAC == "" && f.Spec.LSP == "" {
+	if f.Spec.DstMAC == "" && !f.labelled() {
 		go func() {
 			t := time.NewTicker(5 * time.Second)
 			defer t.Stop()
@@ -464,9 +465,9 @@ func (f *Flow) sendOne() {
 	if f.Echo {
 		tr.Sent(n, now)
 	}
-	if f.Spec.LSP != "" {
+	if f.labelled() {
 		var err error
-		if b, et, mac, err = f.intoLSP(b, et); err != nil {
+		if b, et, mac, err = f.intoLSP(n, b, et); err != nil {
 			f.SetError(err.Error())
 			tr.TxError(n, now, err)
 			return
@@ -481,28 +482,42 @@ func (f *Flow) sendOne() {
 	}
 }
 
-// intoLSP puts an IP packet into the flow's LSP: its labels, and its next hop.
-func (f *Flow) intoLSP(b []byte, et uint16) ([]byte, uint16, pkt.MAC, error) {
-	t := f.Env.IP().Tunnel(f.Spec.LSP)
-	if t == nil {
-		return nil, 0, pkt.MAC{}, fmt.Errorf("LSP %s is down", f.Spec.LSP)
+// labelled reports whether the flow's packets go out with MPLS labels.
+func (f *Flow) labelled() bool { return f.Spec.LSP != "" || f.Spec.RouteTarget != "" }
+
+// target is the flow's route target, as the VPN table spells it.
+func (f *Flow) target() string {
+	t, _ := vpnrib.NormalizeTarget(f.Spec.RouteTarget)
+	return t
+}
+
+// intoLSP puts packet n into the flow's LSP or VPN: its labels, and its next
+// hop. They're looked up for each packet, so a flow follows routes as they
+// change.
+func (f *Flow) intoLSP(n uint64, b []byte, et uint16) ([]byte, uint16, pkt.MAC, error) {
+	var labels []uint32
+	var mac pkt.MAC
+	if f.Spec.RouteTarget != "" {
+		v, err := f.Env.IP().VPNResolve([]string{f.target()}, f.Spec.LSP, f.DstFor(n))
+		if err != nil {
+			return nil, 0, pkt.MAC{}, err
+		}
+		labels, mac = v.Labels, v.MAC
+	} else {
+		t := f.Env.IP().Tunnel(f.Spec.LSP)
+		if t == nil {
+			return nil, 0, pkt.MAC{}, fmt.Errorf("LSP %s is down", f.Spec.LSP)
+		}
+		labels, mac = t.Labels, t.MAC
 	}
-	if len(t.Labels) == 0 {
-		return b, et, t.MAC, nil // the next hop pops it
+	if len(labels) == 0 {
+		return b, et, mac, nil // the next hop pops it
 	}
-	out := make([]byte, 0, 4*len(t.Labels)+len(b))
 	ttl := f.Spec.TTL
 	if ttl == 0 {
 		ttl = 64
 	}
-	for i, l := range t.Labels {
-		e := l<<12 | uint32(f.Spec.DSCP>>3)<<9 | uint32(ttl)
-		if i == len(t.Labels)-1 {
-			e |= 1 << 8
-		}
-		out = binary.BigEndian.AppendUint32(out, e)
-	}
-	return append(out, b...), pkt.EtherTypeMPLS, t.MAC, nil
+	return pkt.PushLabels(labels, f.Spec.DSCP>>3, ttl, b), pkt.EtherTypeMPLS, mac, nil
 }
 
 // ---- status and actions ----
@@ -532,6 +547,16 @@ type Base struct {
 	LSP       string   `json:"lsp,omitempty"`
 	LSPUp     bool     `json:"lsp_up,omitempty"`
 	LSPLabels []uint32 `json:"lsp_labels,omitempty"`
+	// With route_target: the VPN, how many destinations have a way there, and
+	// what packets to the first of them take now: its route, the labels (the
+	// LSP's, then the VPN's) and the far PE.
+	RouteTarget     string   `json:"route_target,omitempty"`
+	VPNDestinations int      `json:"vpn_destinations,omitempty"`
+	VPNResolved     int      `json:"vpn_resolved,omitempty"`
+	VPNDestination  string   `json:"vpn_destination,omitempty"`
+	VPNRoute        string   `json:"vpn_route,omitempty"`
+	VPNLabels       []uint32 `json:"vpn_labels,omitempty"`
+	VPNPeer         string   `json:"vpn_peer,omitempty"`
 }
 
 // BaseStatus returns the shared status; the flow type sets Kind and may
@@ -569,7 +594,14 @@ func (f *Flow) BaseStatus() Base {
 	if f.Dst.Is6() {
 		hdr = 40
 	}
-	if f.Spec.LSP != "" {
+	if f.Spec.RouteTarget != "" {
+		s.RouteTarget = f.target()
+		s.NextHop, s.DstMAC = "", ""
+		s.LSP = f.Spec.LSP
+		if ip := f.Env.IP(); ip != nil {
+			hdr += f.vpnStatus(ip, &s)
+		}
+	} else if f.Spec.LSP != "" {
 		s.LSP = f.Spec.LSP
 		if t := f.Env.IP().Tunnel(f.Spec.LSP); t != nil {
 			s.LSPUp, s.LSPLabels, s.NextHop, s.DstMAC = true, t.Labels, t.NextHop.String(), t.MAC.String()
@@ -590,6 +622,42 @@ func (f *Flow) BaseStatus() Base {
 		s.Elapsed = end.Sub(f.started).Seconds()
 	}
 	return s
+}
+
+// vpnStatusMax caps the destinations a status checks one by one.
+const vpnStatusMax = 1 << 16
+
+// vpnStatus fills in where the flow's packets go in the VPN, shown for the
+// first destination with a route, and returns the bytes their labels add.
+func (f *Flow) vpnStatus(ip protocol.IP, s *Base) int {
+	addrs := []netip.Addr{f.Dst}
+	if f.dsts != nil {
+		addrs = f.dsts.addrs
+	}
+	s.VPNDestinations = len(addrs)
+	if len(addrs) > vpnStatusMax {
+		addrs = addrs[:vpnStatusMax]
+	}
+	var first *protocol.VPNSend
+	var firstAddr netip.Addr
+	for _, a := range addrs {
+		v, err := ip.VPNResolve([]string{f.target()}, f.Spec.LSP, a)
+		if err != nil {
+			continue
+		}
+		s.VPNResolved++
+		if first == nil {
+			first, firstAddr = v, a
+		}
+	}
+	if first == nil {
+		return 0
+	}
+	s.LSPUp = true
+	s.VPNLabels, s.VPNRoute = first.Labels, first.Path.Prefix.String()
+	s.VPNDestination, s.VPNPeer = firstAddr.String(), first.Path.NextHop.String()
+	s.NextHop, s.DstMAC = first.NextHop.String(), first.MAC.String()
+	return 4 * len(first.Labels)
 }
 
 // Convergence reports what the flow lost since a moment.
@@ -690,9 +758,9 @@ func (f *Flow) preview(ctx context.Context) (any, error) {
 	if !src.IsValid() {
 		return nil, fmt.Errorf("no source address for %s on device %s", f.Dst, f.Env.Device().Name())
 	}
-	if f.Spec.LSP != "" {
+	if f.labelled() {
 		var err error
-		if b, et, mac, err = f.intoLSP(b, et); err != nil {
+		if b, et, mac, err = f.intoLSP(n, b, et); err != nil {
 			return nil, err
 		}
 		have = true

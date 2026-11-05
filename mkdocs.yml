@@ -33,6 +33,7 @@ nav:
       - Traffic to BGP routes: examples/bgp-routes.md
       - LDP with traffic in the LSPs: examples/ldp.md
       - RSVP-TE fast reroute: examples/rsvp.md
+      - L3VPN traffic with learned labels: examples/l3vpn.md
   - CLI: cli.md
   - Python and pytest: python.md
   - API: api.md

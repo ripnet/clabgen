@@ -216,10 +216,51 @@ flow's form. An example: [RSVP-TE fast reroute](examples/rsvp.md).
   label or path applies at once, and a tail that pops the label gets plain IP.
 - **While the LSP is down, packets count as lost** and aren't sent, and the flow's
   page says why. They don't fall back to plain IP.
-- IPv4 only. `dst_mac` doesn't go with it.
+- IPv4 only, unless the flow is [in a VPN](#flows-in-a-vpn). `dst_mac` doesn't go
+  with it.
 - **Replies aren't in the LSP.** The far end sends them as plain IP, so an echo flow
   also measures the way back. To measure just the LSP, use a one-way flow, measured
   at a clabgen receiver.
+
+## Flows in a VPN
+
+An `icmp` or `udp` flow can send in an L3VPN: `route_target` names the VPN, or
+**In a VPN…** in the flow's form picks one from the routes received. An example:
+[L3VPN traffic with learned labels](examples/l3vpn.md).
+
+```yaml
+  - name: to-ce
+    type: icmp
+    device: core
+    config:
+      destinations: [{prefix: 203.0.113.0/24, count: 10}]
+      source: 198.51.100.1
+      route_target: "65000:100"
+      rate: 100
+```
+
+- **Each packet looks up its destination** in the VPNv4 or VPNv6 routes
+  [BGP](bgp.md#vpn-families) on the device received with that route target: the
+  longest match, then highest local preference, shortest AS path, lowest MED. So a
+  new label, a withdrawn route or a peer going down applies at once.
+- **On top goes a way to the route's next hop:** the LSP named in `lsp`, else an LSP
+  ending there, from [RSVP-TE](rsvp.md) if there is one and otherwise
+  [LDP](ldp.md). LDP's count for a `/32` FEC from a peer on the link. A next hop on
+  the device's link needs no LSP: the VPN label goes alone.
+- **While there's no route or no LSP, packets count as lost** and aren't sent, and
+  the flow's page says why. A label sent to a router that isn't the PE would only be
+  dropped there.
+- `source` is required, and should be in a prefix the far end reaches through the VPN.
+  Advertise it with the same route target for replies to come back.
+- IPv6 works over an IPv4 core, with the route's IPv4-mapped next hop (6VPE).
+  `dst_mac` doesn't go with it.
+
+**Receiving:** a route the device advertises with an `rd` makes its `label` the
+device's. A packet arriving with it is for this device if it's to a prefix behind
+that label, and only then: the same address without the label isn't answered. Echo
+replies, and those of `udp-echo`, go back through the VPN, using the routes received
+with the route targets of the one the packet came in on. Give each VPN its own
+label, as a label is what tells them apart.
 
 ## Flows to many prefixes
 

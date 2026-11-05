@@ -51,6 +51,7 @@ func (ldpType) Actions() []protocol.Action {
 type adjacency struct {
 	targeted bool
 	src      netip.Addr
+	mac      pkt.MAC
 	hold     time.Duration
 	expires  time.Time
 	since    time.Time
@@ -295,6 +296,9 @@ func (s *session) tick(now time.Time) {
 				delete(n.adjs, k)
 				s.counters["adjacencies_expired"]++
 				go s.event("adjacency-down", fmt.Sprintf("%s adjacency with %s on %s: hold time expired", adjKind(a), lsr, a.src))
+				if n.conn != nil {
+					s.publishAllLocked(n.conn)
+				}
 			}
 		}
 		if len(n.adjs) == 0 {
@@ -432,12 +436,12 @@ func (s *session) HandleRx(fr *pkt.Frame) {
 	}
 	for i := range p.Messages {
 		if p.Messages[i].Type == MsgHello {
-			s.rxHello(p.ID, h.Src, h.Dst == allRouters, &p.Messages[i])
+			s.rxHello(p.ID, h.Src, fr.Src, h.Dst == allRouters, &p.Messages[i])
 		}
 	}
 }
 
-func (s *session) rxHello(id ID, src netip.Addr, multicast bool, m *Message) {
+func (s *session) rxHello(id ID, src netip.Addr, mac pkt.MAC, multicast bool, m *Message) {
 	t := m.tlv(TLVCommonHello)
 	if t == nil {
 		s.count("rx_bad_hello")
@@ -490,7 +494,76 @@ func (s *session) rxHello(id ID, src netip.Addr, multicast bool, m *Message) {
 		n.adjs[k] = a
 		go s.event("adjacency-up", fmt.Sprintf("%s adjacency with %s from %s", adjKind(a), id.LSR, src))
 	}
-	a.hold, a.expires = hold, now.Add(hold)
+	changed := !a.targeted && a.mac != mac
+	a.mac, a.hold, a.expires = mac, hold, now.Add(hold)
+	if changed && n.conn != nil {
+		s.publishAllLocked(n.conn)
+	}
+}
+
+// ---- tunnels ----
+
+// linkHop is where packets to a neighbor go: the far end of a link adjacency.
+// Over a targeted one alone the neighbor isn't next door, and its labels mean
+// nothing to the router that is.
+func (n *neighbor) linkHop() (*adjacency, bool) {
+	var best *adjacency
+	for _, a := range n.adjs {
+		if !a.targeted && (best == nil || a.src.Less(best.src)) {
+			best = a
+		}
+	}
+	return best, best != nil
+}
+
+func (s *session) tunnelName(c *conn, p netip.Prefix) string {
+	return fmt.Sprintf("ldp/%s/%s/%s", s.env.InstanceName(), c.peer.LSR, p.Addr())
+}
+
+// publishLocked offers flows on the device the LSP a label gives: to the
+// router a /32 FEC names. Only a session in use counts.
+func (s *session) publishLocked(c *conn, p netip.Prefix, label uint32) {
+	if p.Bits() != 32 || c.n == nil || c.n.conn != c {
+		return
+	}
+	a, ok := c.n.linkHop()
+	if !ok {
+		return
+	}
+	var labels []uint32
+	if label != LabelImplicitNull {
+		labels = []uint32{label}
+	}
+	c.published[p] = true
+	s.env.IP().SetTunnel(s.tunnelName(c, p), &protocol.Tunnel{Labels: labels, NextHop: a.src, MAC: a.mac, To: p.Addr(), Preference: protocol.PreferenceLDP})
+}
+
+func (s *session) unpublishLocked(c *conn, p netip.Prefix) {
+	if c.published[p] {
+		delete(c.published, p)
+		s.env.IP().SetTunnel(s.tunnelName(c, p), nil)
+	}
+}
+
+// publishAllLocked brings a session's tunnels up to date with its labels and
+// its neighbor's adjacencies.
+func (s *session) publishAllLocked(c *conn) {
+	for p := range c.published {
+		if _, have := c.lib[p]; !have {
+			s.unpublishLocked(c, p)
+		}
+	}
+	if c.n != nil {
+		if _, ok := c.n.linkHop(); !ok {
+			for p := range c.published {
+				s.unpublishLocked(c, p)
+			}
+			return
+		}
+	}
+	for p, l := range c.lib {
+		s.publishLocked(c, p, l)
+	}
 }
 
 // ---- status ----

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { client } from "../api";
 import type { ConfigEditorProps } from "../protocols/registry";
 import { RoutePicker } from "./RoutePicker";
+import { VPNPicker } from "./VPNPicker";
 
 type LSP = { name: string; to: string; instance: string };
 
@@ -61,6 +62,7 @@ export function FlowExtras(p: ConfigEditorProps) {
   return (
     <>
       <LSPPicker {...p} />
+      <VPNPicker {...p} />
       <RoutePicker {...p} />
     </>
   );

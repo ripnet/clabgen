@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ripnet/clabgen/internal/pkt"
+	"github.com/ripnet/clabgen/internal/protocol"
 )
 
 // wire connects stacks as if they were on one L2 segment and records every
@@ -447,5 +448,62 @@ func TestAddAddress(t *testing.T) {
 	relGW()
 	if fmt.Sprint(a.Addresses()) != "[10.0.1.5/24]" || a.Status().Gateway6 != "" {
 		t.Fatalf("released: %v %q", a.Addresses(), a.Status().Gateway6)
+	}
+}
+
+func TestTunnelToPrefersByPreference(t *testing.T) {
+	s := New(pkt.MAC{2}, Config{}, func(pkt.MAC, uint16, []byte) error { return nil }, func(string, string, map[string]any) {})
+	to := netip.MustParseAddr("192.0.2.1")
+	if s.TunnelTo(to) != nil {
+		t.Fatal("no tunnels yet")
+	}
+	s.SetTunnel("ldp", &protocol.Tunnel{To: to, Labels: []uint32{1}, Preference: protocol.PreferenceLDP})
+	if got := s.TunnelTo(to); got == nil || got.Labels[0] != 1 {
+		t.Fatalf("%+v", got)
+	}
+	s.SetTunnel("rsvp", &protocol.Tunnel{To: to, Labels: []uint32{2}, Preference: protocol.PreferenceRSVP})
+	if got := s.TunnelTo(to); got.Labels[0] != 2 {
+		t.Fatalf("RSVP goes first: %+v", got)
+	}
+	// Re-pointing an LSP moves it; a down one is no way there.
+	s.SetTunnel("rsvp", &protocol.Tunnel{To: netip.MustParseAddr("192.0.2.9"), Preference: protocol.PreferenceRSVP})
+	if got := s.TunnelTo(to); got.Labels[0] != 1 {
+		t.Fatalf("%+v", got)
+	}
+	s.SetTunnel("ldp", nil)
+	if s.TunnelTo(to) != nil || len(s.tunnelsTo) != 1 {
+		t.Fatalf("left behind: %v", s.tunnelsTo)
+	}
+}
+
+func TestPopMPLS(t *testing.T) {
+	s := New(pkt.MAC{2}, Config{}, func(pkt.MAC, uint16, []byte) error { return nil }, func(string, string, map[string]any) {})
+	ip := (&pkt.IPv4{TTL: 64, Protocol: pkt.ProtoICMP, Src: netip.MustParseAddr("1.1.1.1"), Dst: netip.MustParseAddr("2.2.2.2")}).Encode()
+	frame := func(labels ...uint32) *pkt.Frame {
+		return &pkt.Frame{EtherType: pkt.EtherTypeMPLS, Payload: pkt.PushLabels(labels, 0, 64, ip)}
+	}
+	if s.PopMPLS(frame(100)) != nil {
+		t.Fatal("not our label")
+	}
+	release := s.AddLocalLabel(100)
+	in := s.PopMPLS(frame(100, 200))
+	if in == nil || in.EtherType != pkt.EtherTypeIPv4 || len(in.Labels) != 2 || in.Labels[1] != 200 {
+		t.Fatalf("%+v", in)
+	}
+	release()
+	if s.PopMPLS(frame(100, 200)) != nil {
+		t.Fatal("released")
+	}
+	s.SetVPNLabels("o", map[uint32]protocol.VPNLabel{200: {Prefixes: []netip.Prefix{netip.MustParsePrefix("2.2.2.0/24")}, Targets: []string{"1:1"}}})
+	in = s.PopMPLS(frame(200))
+	if in == nil {
+		t.Fatal("a VPN label is ours")
+	}
+	if !s.IsLocalRx(in, netip.MustParseAddr("2.2.2.2")) || s.IsLocalRx(in, netip.MustParseAddr("3.3.3.3")) || s.IsLocal(netip.MustParseAddr("2.2.2.2")) {
+		t.Fatal("the prefix is ours with the label, and only then")
+	}
+	s.SetVPNLabels("o", nil)
+	if s.PopMPLS(frame(200)) != nil {
+		t.Fatal("owner gone")
 	}
 }

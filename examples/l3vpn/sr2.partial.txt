@@ -1,0 +1,52 @@
+/configure card 1 card-type iom-1
+/configure card 1 mda 1 mda-type me6-100gb-qsfp28
+/configure port 1/1/c1 admin-state enable
+/configure port 1/1/c1 connector breakout c1-100g
+/configure port 1/1/c1/1 admin-state enable
+/configure port 1/1/c1/1 ethernet mode network
+/configure port 1/1/c2 admin-state enable
+/configure port 1/1/c2 connector breakout c1-100g
+/configure port 1/1/c2/1 admin-state enable
+/configure port 1/1/c2/1 ethernet mode access
+/configure router "Base" autonomous-system 65000
+/configure router "Base" interface "system" ipv4 primary address 192.0.2.12 prefix-length 32
+/configure router "Base" interface "to-sr1" port 1/1/c1/1
+/configure router "Base" interface "to-sr1" ipv4 primary address 10.0.12.2 prefix-length 30
+/configure router "Base" isis 0 admin-state enable
+/configure router "Base" isis 0 area-address [49.0001]
+/configure router "Base" isis 0 level-capability 2
+/configure router "Base" isis 0 level 2 wide-metrics-only true
+/configure router "Base" isis 0 interface "system" passive true
+/configure router "Base" isis 0 interface "to-sr1" interface-type point-to-point
+/configure router "Base" ldp admin-state enable
+/configure router "Base" ldp interface-parameters interface "to-sr1" ipv4 admin-state enable
+/configure router "Base" bgp admin-state enable
+/configure router "Base" bgp min-route-advertisement 1
+/configure router "Base" bgp rapid-withdrawal true
+/configure router "Base" bgp rapid-update vpn-ipv4 true
+/configure router "Base" bgp rapid-update vpn-ipv6 true
+/configure router "Base" bgp group "pes" peer-as 65000
+/configure router "Base" bgp group "pes" family vpn-ipv4 true
+/configure router "Base" bgp group "pes" family vpn-ipv6 true
+/configure router "Base" bgp neighbor "192.0.2.1" group "pes"
+/configure service vprn "100" admin-state enable
+/configure service vprn "100" service-id 100
+/configure service vprn "100" customer "1"
+/configure service vprn "100" autonomous-system 65000
+/configure service vprn "100" bgp-ipvpn mpls admin-state enable
+/configure service vprn "100" bgp-ipvpn mpls route-distinguisher "65000:100"
+/configure service vprn "100" bgp-ipvpn mpls vrf-target community "target:65000:100"
+/configure service vprn "100" bgp-ipvpn mpls auto-bind-tunnel resolution filter
+/configure service vprn "100" bgp-ipvpn mpls auto-bind-tunnel resolution-filter ldp true
+/configure service vprn "100" interface "to-ce" ipv4 primary address 172.16.0.1 prefix-length 24
+/configure service vprn "100" interface "to-ce" sap 1/1/c2/1 
+/configure service vprn "100" interface "to-ce" ipv6 address 2001:db8:ce::1 prefix-length 64
+/configure service vprn "100" bgp admin-state enable
+/configure service vprn "100" bgp group "ce" peer-as 65001
+/configure service vprn "100" bgp group "ce" family ipv4 true
+/configure service vprn "100" bgp group "ce" family ipv6 true
+/configure service vprn "100" bgp group "ce" import policy ["accept-all"]
+/configure service vprn "100" bgp group "ce" export policy ["accept-all"]
+/configure service vprn "100" bgp neighbor "172.16.0.2" group "ce"
+/configure service vprn "100" bgp neighbor "2001:db8:ce::2" group "ce"
+/configure policy-options policy-statement "accept-all" default-action action-type accept

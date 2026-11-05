@@ -17,6 +17,13 @@ export type FlowStatus = {
   lsp?: string;
   lsp_up?: boolean;
   lsp_labels?: number[];
+  route_target?: string;
+  vpn_destinations?: number;
+  vpn_resolved?: number;
+  vpn_destination?: string;
+  vpn_route?: string;
+  vpn_labels?: number[];
+  vpn_peer?: string;
   kind?: string;
   rate: number;
   mode?: string;

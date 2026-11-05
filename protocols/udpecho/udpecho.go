@@ -72,12 +72,12 @@ func (echoType) Start(env protocol.Env, c any) (protocol.Session, error) {
 	return r, nil
 }
 
-func (r *responder) ours(a netip.Addr) bool {
+func (r *responder) ours(fr *pkt.Frame, a netip.Addr) bool {
 	ip := r.env.IP()
 	if ip == nil {
 		return false
 	}
-	return ip.IsLocal(a)
+	return ip.IsLocalRx(fr, a)
 }
 
 func (r *responder) HandleRx(fr *pkt.Frame) {
@@ -102,7 +102,7 @@ func (r *responder) HandleRx(fr *pkt.Frame) {
 	default:
 		return
 	}
-	if len(b) < 8 || !r.ports[binary.BigEndian.Uint16(b[2:])] || !r.ours(dst) {
+	if len(b) < 8 || !r.ports[binary.BigEndian.Uint16(b[2:])] || !r.ours(fr, dst) {
 		return
 	}
 	n := int(binary.BigEndian.Uint16(b[4:]))
@@ -132,7 +132,7 @@ func (r *responder) HandleRx(fr *pkt.Frame) {
 		h := pkt.IPv6{NextHeader: pkt.ProtoUDP, HopLimit: r.cfg.TTL, Src: dst, Dst: src, Payload: out}
 		ipb, et = h.Encode(), pkt.EtherTypeIPv6
 	}
-	err := r.env.Send(fr.Src, et, ipb, protocol.SendOpts{})
+	err := r.env.IP().Reply(fr, src, et, ipb)
 	r.mu.Lock()
 	r.rx++
 	if err != nil {

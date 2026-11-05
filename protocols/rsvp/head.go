@@ -171,7 +171,7 @@ func (s *session) publishLocked(h *head, mac pkt.MAC) {
 	if a.label != LabelImplicitNull {
 		labels = []uint32{a.label}
 	}
-	s.env.IP().SetTunnel(h.cfg.Name, &protocol.Tunnel{Labels: labels, NextHop: a.hop.Addr, MAC: mac})
+	s.env.IP().SetTunnel(h.cfg.Name, &protocol.Tunnel{Labels: labels, NextHop: a.hop.Addr, MAC: mac, To: h.sess.To, Preference: protocol.PreferenceRSVP})
 }
 
 func (s *session) rxResvLocked(m *Message, src pkt.MAC, now time.Time) []out {
