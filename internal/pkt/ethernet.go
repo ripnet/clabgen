@@ -15,6 +15,9 @@ const (
 	TPIDQinQ   uint16 = 0x9100
 
 	EtherTypeCFM uint16 = 0x8902
+	// MACsec (802.1AE) and EAPOL (802.1X, which carries MKA).
+	EtherTypeMACsec uint16 = 0x88e5
+	EtherTypeEAPOL  uint16 = 0x888e
 
 	// EtherTypeLLC stands for an IEEE 802.3 frame whose type field is a
 	// length (< 0x600), i.e. one carrying an LLC header (IS-IS, STP, …).
@@ -159,9 +162,14 @@ func Decode(b []byte) (*Frame, error) {
 }
 
 // Encode serialises the frame, padding to the 60-byte Ethernet minimum.
-func (f *Frame) Encode() []byte {
+func (f *Frame) Encode() []byte { return f.encode(true) }
+
+// EncodeUnpadded serialises the frame without padding, for MACsec to protect.
+func (f *Frame) EncodeUnpadded() []byte { return f.encode(false) }
+
+func (f *Frame) encode(pad bool) []byte {
 	n := 14 + 4*len(f.Tags) + len(f.Payload)
-	if n < 60 {
+	if pad && n < 60 {
 		n = 60
 	}
 	b := make([]byte, n)

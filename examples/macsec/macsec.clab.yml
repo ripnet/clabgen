@@ -1,0 +1,29 @@
+# MACsec through two Epipes between Nokia SR-SIMs, with clabgen as the
+# customer routers at both ends. The routers carry the MACsec frames and the
+# MKA key exchange; they aren't MACsec peers themselves.
+#   ce-a:eth1 -- sr1:1/1/c1/1 ... sr2:1/1/c1/1 -- ce-b:eth1   Epipe "epl": port-based (null SAP)
+#   ce-a:eth2 -- sr1:1/1/c3/1 ... sr2:1/1/c3/1 -- ce-b:eth2   Epipe "evpl": VLAN 100 (dot1q SAP)
+#   sr1:1/1/c2/1 -- sr2:1/1/c2/1: the core, IS-IS and LDP
+name: macsec
+topology:
+  defaults:
+    kind: nokia_srsim
+  nodes:
+    sr1: {image: "nokia_srsim:26.10.R1", startup-config: sr1.partial.txt}
+    sr2: {image: "nokia_srsim:26.10.R1", startup-config: sr2.partial.txt}
+    ce-a:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: ce-a.yml}
+    ce-b:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: ce-b.yml}
+  links:
+    - endpoints: [sr1:1/1/c2/1, sr2:1/1/c2/1]
+    - endpoints: [ce-a:eth1, sr1:1/1/c1/1]
+    - endpoints: [ce-b:eth1, sr2:1/1/c1/1]
+    - endpoints: [ce-a:eth2, sr1:1/1/c3/1]
+    - endpoints: [ce-b:eth2, sr2:1/1/c3/1]

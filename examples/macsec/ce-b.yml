@@ -1,0 +1,21 @@
+# A customer router: MACsec over both circuits, keyed by MKA with a shared CAK.
+devices:
+  - {name: epl, port: eth1, mac: "02:00:00:0b:01:01", addresses: [10.0.1.2/24]}
+  - {name: evpl, port: eth2, mac: "02:00:00:0b:02:01", vlans: [{vid: 100}], addresses: [10.0.2.2/24]}
+protocols:
+  # Port-level MACsec: the frame's VLAN tags (none here) are encrypted.
+  - name: epl-macsec
+    type: macsec
+    device: epl
+    config:
+      mka:
+        cak: "00112233445566778899aabbccddeeff"
+        ckn: "6570"
+  # Under VLAN 100: the tag stays in front of the SecTAG for the SAP to match.
+  - name: evpl-macsec
+    type: macsec
+    device: evpl
+    config:
+      mka:
+        cak: "ffeeddccbbaa99887766554433221100"
+        ckn: "657670"

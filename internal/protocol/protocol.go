@@ -41,6 +41,10 @@ type SendOpts struct {
 	PCP    uint8
 	// Src, when set, replaces the device's MAC as the source address.
 	Src pkt.MAC
+	// When SetTags is true, Tags replace the device's VLAN tags (e.g. MKA
+	// sends with only the tags in front of the SecTAG).
+	SetTags bool
+	Tags    []pkt.VLANTag
 }
 
 // IP is the device's IP stack, for protocols that send IP packets.
@@ -244,6 +248,31 @@ type ConfigEtherTypes interface{ EtherTypesFor(cfg any) []uint16 }
 // replies to them), until release is called.
 type MACClaimer interface {
 	ClaimMACs(macs []pkt.MAC) (release func())
+}
+
+// SecureLink protects the frames of the devices behind it (MACsec). The
+// engine sends their frames, except EAPOL, through Protect, and hands it the
+// MACsec frames they receive.
+type SecureLink interface {
+	// Protect sends f protected, through send.
+	Protect(f *pkt.Frame, send func([]byte) error) error
+	// Validate checks a received MACsec frame (f decoded from b) and returns
+	// the frame it carries, or nil when it's dropped.
+	Validate(f *pkt.Frame, b []byte) []byte
+	// Unprotected is told about a frame without a SecTAG for a device behind
+	// the link; true delivers it anyway.
+	Unprotected(f *pkt.Frame) bool
+	// EAPOL is an EAPOL frame (MKA) with the link's clear VLAN tags.
+	EAPOL(f *pkt.Frame)
+	// ClearTags is how many VLAN tags are in front of the SecTAG.
+	ClearTags() int
+}
+
+// Securer may be implemented by an Env: Secure puts the session's device
+// (port false) or every device on its port behind l, until release is
+// called. It fails if they're behind another link already.
+type Securer interface {
+	Secure(l SecureLink, port bool) (release func(), err error)
 }
 
 // Categorized may be implemented by a Type to group it in UIs. Types

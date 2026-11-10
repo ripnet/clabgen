@@ -877,6 +877,39 @@ func summary(p *v1.Protocol) string {
 		}
 		return out
 	}
+	if p.Type == "macsec" {
+		where := "untagged"
+		if m["scope"] == "port" {
+			where = "port"
+		} else if l, _ := m["clear_vlans"].([]any); len(l) > 0 {
+			where = fmt.Sprintf("vlan %v", l[0])
+			for _, v := range l[1:] {
+				where += fmt.Sprintf(".%v", v)
+			}
+		}
+		out := fmt.Sprintf("%v %v +%vB", where, m["cipher"], m["overhead"])
+		if k, ok := m["mka"].(map[string]any); ok {
+			out += fmt.Sprintf(" mka=%v", k["state"])
+			if k["key_server"] == true {
+				out += " key-server"
+			}
+			if l, ok := k["latest_key"].(map[string]any); ok {
+				out += fmt.Sprintf(" sak=%v an=%v", l["kn"], l["an"])
+			}
+			live := 0
+			if ps, ok := k["peers"].([]any); ok {
+				for _, x := range ps {
+					if x.(map[string]any)["live"] == true {
+						live++
+					}
+				}
+			}
+			out += fmt.Sprintf(" peers=%d", live)
+		} else {
+			out += fmt.Sprintf(" static secured=%v", m["secured"])
+		}
+		return out
+	}
 	if p.Type == "ldp" {
 		var ps []string
 		if l, ok := m["peers"].([]any); ok {

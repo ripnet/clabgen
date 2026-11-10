@@ -1,0 +1,46 @@
+/configure card 1 card-type iom-1
+/configure card 1 mda 1 mda-type me6-100gb-qsfp28
+/configure port 1/1/c1 admin-state enable
+/configure port 1/1/c1 connector breakout c1-100g
+/configure port 1/1/c1/1 admin-state enable
+/configure port 1/1/c1/1 ethernet mode access
+/configure port 1/1/c1/1 ethernet encap-type null
+/configure port 1/1/c1/1 ethernet mtu 1546
+/configure port 1/1/c1/1 ethernet dot1x tunneling true
+/configure port 1/1/c2 admin-state enable
+/configure port 1/1/c2 connector breakout c1-100g
+/configure port 1/1/c2/1 admin-state enable
+/configure port 1/1/c2/1 ethernet mode network
+/configure port 1/1/c3 admin-state enable
+/configure port 1/1/c3 connector breakout c1-100g
+/configure port 1/1/c3/1 admin-state enable
+/configure port 1/1/c3/1 ethernet mode access
+/configure port 1/1/c3/1 ethernet encap-type dot1q
+/configure port 1/1/c3/1 ethernet mtu 1550
+/configure router "Base" interface "system" ipv4 primary address 192.0.2.12 prefix-length 32
+/configure router "Base" interface "core" port 1/1/c2/1
+/configure router "Base" interface "core" ipv4 primary address 10.0.12.2 prefix-length 30
+/configure router "Base" isis 0 admin-state enable
+/configure router "Base" isis 0 area-address [49.0001]
+/configure router "Base" isis 0 level-capability 2
+/configure router "Base" isis 0 level 2 wide-metrics-only true
+/configure router "Base" isis 0 interface "system" passive true
+/configure router "Base" isis 0 interface "core" interface-type point-to-point
+/configure router "Base" ldp admin-state enable
+/configure router "Base" ldp interface-parameters interface "core" ipv4 admin-state enable
+/configure service sdp 1 admin-state enable
+/configure service sdp 1 delivery-type mpls
+/configure service sdp 1 ldp true
+/configure service sdp 1 far-end ip-address 192.0.2.11
+/configure service epipe "epl" admin-state enable
+/configure service epipe "epl" service-id 10
+/configure service epipe "epl" customer "1"
+/configure service epipe "epl" service-mtu 1546
+/configure service epipe "epl" sap 1/1/c1/1 admin-state enable
+/configure service epipe "epl" spoke-sdp 1:10 admin-state enable
+/configure service epipe "evpl" admin-state enable
+/configure service epipe "evpl" service-id 20
+/configure service epipe "evpl" customer "1"
+/configure service epipe "evpl" service-mtu 1546
+/configure service epipe "evpl" sap 1/1/c3/1:100 admin-state enable
+/configure service epipe "evpl" spoke-sdp 1:20 admin-state enable

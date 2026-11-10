@@ -25,6 +25,7 @@ nav:
       - LDP: ldp.md
       - RSVP-TE: rsvp.md
       - LLDP: lldp.md
+      - MACsec: macsec.md
       - DHCP: dhcp.md
   - Examples:
       - examples/index.md
@@ -34,6 +35,7 @@ nav:
       - LDP with traffic in the LSPs: examples/ldp.md
       - RSVP-TE fast reroute: examples/rsvp.md
       - L3VPN traffic with learned labels: examples/l3vpn.md
+      - MACsec through Epipes: examples/macsec.md
   - CLI: cli.md
   - Python and pytest: python.md
   - API: api.md

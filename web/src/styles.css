@@ -646,3 +646,15 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .rsvp-path { overflow-wrap: anywhere; }
 .lsp-picker { display: block; margin-bottom: 10px; }
 .lsp-picker select { display: block; margin-top: 4px; width: auto; }
+
+/* MACsec frame layout */
+.ms-frame { display: flex; flex-wrap: wrap; gap: 3px; margin: 4px 0 6px; font-family: var(--mono); font-size: 12.5px; }
+.ms-seg { padding: 5px 9px; border-radius: 5px; border: 1px solid var(--border); white-space: nowrap; }
+.ms-seg.ms-enc { flex: 1 1 auto; text-align: center; }
+.ms-clear { background: var(--surface-2); color: var(--text); }
+.ms-tag { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+.ms-enc { background: var(--ok-soft); color: var(--text); border-color: transparent; }
+.ms-auth { background: var(--warn-soft); color: var(--text); border-color: transparent; }
+.ms-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
+.ms-key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); padding: 0; }
+.ms-legend .ms-key:not(:first-child) { margin-left: 8px; }

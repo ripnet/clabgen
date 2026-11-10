@@ -113,6 +113,9 @@ type device struct {
 	// More unicast MACs the device accepts (protocol.MACClaimer), with
 	// claim counts. Guarded by Engine.mu.
 	extraMACs map[pkt.MAC]int
+	// sec is the device's own secure link (MACsec); a port's is in
+	// Engine.portSec. Guarded by Engine.mu.
+	sec protocol.SecureLink
 }
 
 func (d *device) Name() string         { return d.name }
@@ -129,7 +132,7 @@ func (e *Engine) newDevice(s DeviceSpec, mac pkt.MAC, cfg ipstack.Config) *devic
 	send := func(dst pkt.MAC, et uint16, payload []byte) error {
 		f := pkt.Frame{Dst: dst, Src: mac, Tags: d.vlans, EtherType: et, Payload: payload}
 		d.dataTx.Add(1)
-		return e.transmit(d, f.Encode())
+		return e.send(d, &f)
 	}
 	emit := func(kind, msg string, data map[string]any) { e.publish("device/"+d.name, kind, msg, data) }
 	d.ip = ipstack.New(mac, cfg, send, emit)
@@ -168,6 +171,8 @@ type Engine struct {
 	insts   map[string]*instance
 	groups  map[string]*group
 	gmu     sync.Mutex // serialises group changes
+	// Ports whose devices are all behind one secure link (MACsec, port scope).
+	portSec map[string]*portLink
 
 	// Frames a device sends are also delivered to the other devices on the
 	// same port, like hosts on one segment (the port only sends them out).
@@ -177,6 +182,12 @@ type Engine struct {
 	capMu sync.RWMutex
 	caps  []*Capture
 	capN  atomic.Int32
+}
+
+// portLink is a secure link for a whole port, and the instance holding it.
+type portLink struct {
+	l     protocol.SecureLink
+	owner string
 }
 
 type localFrame struct {
@@ -189,7 +200,7 @@ type localFrame struct {
 func New(ports PortIO, bus *events.Bus, log *slog.Logger) *Engine {
 	host, _ := os.Hostname()
 	e := &Engine{ports: ports, bus: bus, log: log, host: host,
-		devices: map[string]*device{}, byPort: map[string][]*device{}, insts: map[string]*instance{}, groups: map[string]*group{},
+		devices: map[string]*device{}, byPort: map[string][]*device{}, insts: map[string]*instance{}, groups: map[string]*group{}, portSec: map[string]*portLink{},
 		local: make(chan localFrame, 4096)}
 	go func() {
 		// One worker keeps local frames in order.
@@ -238,11 +249,30 @@ func (e *Engine) Receive(port string, b []byte, ts time.Time) bool {
 // receive dispatches a frame to the port's devices, except `from` (the
 // sender of a locally delivered frame).
 func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool {
+	return e.receiveVia(port, b, ts, from, nil)
+}
+
+// receiveVia dispatches a frame that came through a secure link (via: what
+// it carried, already validated), or none.
+func (e *Engine) receiveVia(port string, b []byte, ts time.Time, from *device, via protocol.SecureLink) bool {
 	f, err := pkt.Decode(b)
 	if err != nil {
 		return false
 	}
 	f.Port, f.RxTime, f.Local = port, ts, from != nil
+	if f.EtherType == pkt.EtherTypeMACsec && via == nil {
+		if used, ok := e.receiveSecured(port, f, b, ts, from); ok {
+			return used
+		}
+	}
+	if f.EtherType == pkt.EtherTypeEAPOL && via == nil {
+		if links := e.linksFor(port, f, from); len(links) > 0 {
+			for _, l := range links {
+				l.EAPOL(f)
+			}
+			return true
+		}
+	}
 	var targets []protocol.Session
 	var tapRx []func(*pkt.Frame)
 	var stacks, l2 []*ipstack.Stack
@@ -259,6 +289,13 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 		}
 		if !pkt.SameVLANs(d.vlans, f.Tags) {
 			continue
+		}
+		// Behind a secure link, a device takes only what came through it,
+		// and EAPOL (MKA) from the uncontrolled port.
+		if l := e.linkOfLocked(d); l != via {
+			if via != nil || (f.EtherType != pkt.EtherTypeEAPOL && !l.Unprotected(f)) {
+				continue
+			}
 		}
 		if f.EtherType != pkt.EtherTypeCFM {
 			d.dataRx.Add(1)
@@ -308,6 +345,81 @@ func (e *Engine) receive(port string, b []byte, ts time.Time, from *device) bool
 		rx(f)
 	}
 	return used || len(targets) > 0 || len(tapRx) > 0
+}
+
+// receiveSecured hands a MACsec frame to the secure links it may be for:
+// the port's, or those of devices whose clear VLAN tags it has and whose MAC
+// it's to. The first that validates it gets what it carries. ok is false when
+// no link could take it, so it's an ordinary frame (e.g. a raw L2 stream with
+// the MACsec ethertype); used, whether a link validated it.
+func (e *Engine) receiveSecured(port string, f *pkt.Frame, b []byte, ts time.Time, from *device) (used, ok bool) {
+	links := e.linksFor(port, f, from)
+	var own protocol.SecureLink // the sender's, for a frame delivered locally
+	if from != nil {
+		e.mu.RLock()
+		own = e.linkOfLocked(from)
+		e.mu.RUnlock()
+	}
+	for _, l := range links {
+		if inner := l.Validate(f, b); inner != nil {
+			return e.receiveVia(port, inner, ts, from, l), true
+		}
+	}
+	// A frame back at the SecY that protected it is dropped: devices behind
+	// one SecY don't reach each other through it.
+	return false, len(links) > 0 || own != nil
+}
+
+// linksFor are the secure links a frame on a port may be for: the port's,
+// or those of devices whose clear VLAN tags it has and whose MAC it's to;
+// not the sender's own (for a frame delivered locally).
+func (e *Engine) linksFor(port string, f *pkt.Frame, from *device) []protocol.SecureLink {
+	var links []protocol.SecureLink
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	var own protocol.SecureLink
+	if from != nil {
+		own = e.linkOfLocked(from)
+	}
+	if pl := e.portSec[port]; pl != nil && len(f.Tags) == 0 && pl.l != own {
+		links = append(links, pl.l)
+	}
+	for _, d := range e.byPort[port] {
+		l := d.sec
+		if l == nil || l == own || d == from || slices.Contains(links, l) || l.ClearTags() != len(f.Tags) {
+			continue
+		}
+		if f.Dst != d.mac && !f.Dst.IsMulticast() && d.extraMACs[f.Dst] == 0 {
+			continue
+		}
+		if len(d.vlans) < len(f.Tags) || !pkt.SameVLANs(d.vlans[:len(f.Tags)], f.Tags) {
+			continue
+		}
+		links = append(links, l)
+	}
+	return links
+}
+
+// linkOfLocked is the secure link d is behind: its port's, else its own.
+func (e *Engine) linkOfLocked(d *device) protocol.SecureLink {
+	if pl := e.portSec[d.port]; pl != nil {
+		return pl.l
+	}
+	return d.sec
+}
+
+// send transmits a device's frame, protected if it's behind a secure link
+// (EAPOL is MKA's own, sent as it is).
+func (e *Engine) send(d *device, f *pkt.Frame) error {
+	if f.EtherType != pkt.EtherTypeEAPOL {
+		e.mu.RLock()
+		l := e.linkOfLocked(d)
+		e.mu.RUnlock()
+		if l != nil {
+			return l.Protect(f, func(b []byte) error { return e.transmit(d, b) })
+		}
+	}
+	return e.transmit(d, f.Encode())
 }
 
 // receiveLabelled hands what's inside an MPLS frame to a device's IP stack
@@ -1165,6 +1277,9 @@ func (v *env) ClaimMACs(macs []pkt.MAC) func() {
 // sendFrom transmits a payload from a device, adding its MAC and VLANs.
 func (e *Engine) sendFrom(d *device, dst pkt.MAC, et uint16, payload []byte, opt protocol.SendOpts) error {
 	tags := d.vlans
+	if opt.SetTags {
+		tags = opt.Tags
+	}
 	if opt.SetPCP && len(tags) > 0 {
 		tags = append([]pkt.VLANTag(nil), tags...)
 		for i := range tags {
@@ -1179,7 +1294,7 @@ func (e *Engine) sendFrom(d *device, dst pkt.MAC, et uint16, payload []byte, opt
 	if et != pkt.EtherTypeCFM {
 		d.dataTx.Add(1)
 	}
-	return e.transmit(d, f.Encode())
+	return e.send(d, &f)
 }
 
 func (v *env) Emit(kind, msg string, data map[string]any) {
