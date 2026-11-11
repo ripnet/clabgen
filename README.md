@@ -122,6 +122,10 @@ Good to know:
   encrypted, keyed by MKA with a pre-shared CAK or by static keys; every flow on the
   device runs over it, to test circuits that must carry MACsec end to end
   ([docs](docs/macsec.md)).
+- **Monitoring a mirrored link**: a monitor port on a router's port mirror takes
+  MPLS frames apart (labels, control word, the frame inside) and shows, per service
+  and direction, the VLAN tags of clabgen flows and of CFM/Y.1731 frames; flows check
+  them against what they expect ([docs](docs/wire.md)).
 - **IS-IS**: point-to-point and LAN, L1/L2, multi-topology, SR-MPLS,
   SRv6 and flex-algo, keychain authentication, BFD, graceful restart.
 - **OSPFv2 / OSPFv3**: areas (stub, NSSA, virtual links), segment routing,
@@ -171,8 +175,11 @@ Also at **https://clabgen.dev/**.
   and devices
 - [Traffic flows](docs/flows.md) and [device groups](docs/device-groups.md)
 - Protocols: [CFM and Y.1731](docs/cfm.md), [IS-IS](docs/isis.md),
-  [BGP](docs/bgp.md), [OSPF](docs/ospf.md), [LLDP](docs/lldp.md),
+  [BGP](docs/bgp.md), [OSPF](docs/ospf.md), [LDP](docs/ldp.md),
+  [RSVP-TE](docs/rsvp.md), [LLDP](docs/lldp.md), [MACsec](docs/macsec.md),
   [DHCP](docs/dhcp.md)
+- [Monitoring a mirrored link](docs/wire.md): VLAN tags inside MPLS services
+- [Examples](docs/examples/index.md): worked labs, each built around a real test
 - [CLI](docs/cli.md): `clabgenctl`
 - [API](docs/api.md)
 - [Python and pytest](docs/python.md): the `clabgen` package

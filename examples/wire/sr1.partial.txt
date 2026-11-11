@@ -1,0 +1,62 @@
+/configure card 1 card-type iom-1
+/configure card 1 mda 1 mda-type me6-100gb-qsfp28
+/configure port 1/1/c1 admin-state enable
+/configure port 1/1/c1 connector breakout c1-100g
+/configure port 1/1/c1/1 admin-state enable
+/configure port 1/1/c1/1 ethernet mode access
+/configure port 1/1/c1/1 ethernet encap-type null
+/configure port 1/1/c2 admin-state enable
+/configure port 1/1/c2 connector breakout c1-100g
+/configure port 1/1/c2/1 admin-state enable
+/configure port 1/1/c2/1 ethernet mode network
+/configure port 1/1/c3 admin-state enable
+/configure port 1/1/c3 connector breakout c1-100g
+/configure port 1/1/c3/1 admin-state enable
+/configure port 1/1/c3/1 ethernet mode access
+/configure port 1/1/c3/1 ethernet encap-type dot1q
+/configure port 1/1/c4 admin-state enable
+/configure port 1/1/c4 connector breakout c1-100g
+/configure port 1/1/c4/1 admin-state enable
+/configure port 1/1/c4/1 ethernet mode access
+/configure port 1/1/c4/1 ethernet encap-type qinq
+/configure port 1/1/c5 admin-state enable
+/configure port 1/1/c5 connector breakout c1-100g
+/configure port 1/1/c5/1 admin-state enable
+/configure port 1/1/c5/1 description "mirror of the core link, to tap"
+/configure port 1/1/c5/1 ethernet mode access
+/configure port 1/1/c5/1 ethernet mtu 9212
+/configure mirror mirror-dest "core" admin-state enable
+/configure mirror mirror-dest "core" service-id 900
+/configure mirror mirror-dest "core" sap 1/1/c5/1
+/configure mirror mirror-source "core" port 1/1/c2/1 ingress true
+/configure mirror mirror-source "core" port 1/1/c2/1 egress true
+/configure router "Base" interface "system" ipv4 primary address 192.0.2.11 prefix-length 32
+/configure router "Base" interface "core" port 1/1/c2/1
+/configure router "Base" interface "core" ipv4 primary address 10.0.12.1 prefix-length 30
+/configure router "Base" isis 0 admin-state enable
+/configure router "Base" isis 0 area-address [49.0001]
+/configure router "Base" isis 0 level-capability 2
+/configure router "Base" isis 0 level 2 wide-metrics-only true
+/configure router "Base" isis 0 interface "system" passive true
+/configure router "Base" isis 0 interface "core" interface-type point-to-point
+/configure router "Base" ldp admin-state enable
+/configure router "Base" ldp interface-parameters interface "core" ipv4 admin-state enable
+/configure service sdp 1 admin-state enable
+/configure service sdp 1 delivery-type mpls
+/configure service sdp 1 ldp true
+/configure service sdp 1 far-end ip-address 192.0.2.12
+/configure service epipe "epl" admin-state enable
+/configure service epipe "epl" service-id 10
+/configure service epipe "epl" customer "1"
+/configure service epipe "epl" sap 1/1/c1/1 admin-state enable
+/configure service epipe "epl" spoke-sdp 1:10 admin-state enable
+/configure service epipe "evpl" admin-state enable
+/configure service epipe "evpl" service-id 20
+/configure service epipe "evpl" customer "1"
+/configure service epipe "evpl" sap 1/1/c3/1:3162 admin-state enable
+/configure service epipe "evpl" spoke-sdp 1:20 admin-state enable
+/configure service epipe "enni" admin-state enable
+/configure service epipe "enni" service-id 30
+/configure service epipe "enni" customer "1"
+/configure service epipe "enni" sap 1/1/c4/1:3162.163 admin-state enable
+/configure service epipe "enni" spoke-sdp 1:30 admin-state enable

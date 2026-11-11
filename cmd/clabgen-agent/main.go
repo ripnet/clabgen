@@ -40,6 +40,7 @@ import (
 	_ "github.com/ripnet/clabgen/protocols/ldp"
 	_ "github.com/ripnet/clabgen/protocols/lldp"
 	_ "github.com/ripnet/clabgen/protocols/macsec"
+	_ "github.com/ripnet/clabgen/protocols/monitor"
 	_ "github.com/ripnet/clabgen/protocols/ospf"
 	_ "github.com/ripnet/clabgen/protocols/packet"
 	_ "github.com/ripnet/clabgen/protocols/rsvp"

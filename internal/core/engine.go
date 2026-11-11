@@ -173,6 +173,8 @@ type Engine struct {
 	gmu     sync.Mutex // serialises group changes
 	// Ports whose devices are all behind one secure link (MACsec, port scope).
 	portSec map[string]*portLink
+	// Monitor ports: what arrives goes to the monitor only; nothing is sent.
+	portMon map[string]*portMonitor
 
 	// Frames a device sends are also delivered to the other devices on the
 	// same port, like hosts on one segment (the port only sends them out).
@@ -200,7 +202,7 @@ type localFrame struct {
 func New(ports PortIO, bus *events.Bus, log *slog.Logger) *Engine {
 	host, _ := os.Hostname()
 	e := &Engine{ports: ports, bus: bus, log: log, host: host,
-		devices: map[string]*device{}, byPort: map[string][]*device{}, insts: map[string]*instance{}, groups: map[string]*group{}, portSec: map[string]*portLink{},
+		devices: map[string]*device{}, byPort: map[string][]*device{}, insts: map[string]*instance{}, groups: map[string]*group{}, portSec: map[string]*portLink{}, portMon: map[string]*portMonitor{},
 		local: make(chan localFrame, 4096)}
 	go func() {
 		// One worker keeps local frames in order.
@@ -214,6 +216,12 @@ func New(ports PortIO, bus *events.Bus, log *slog.Logger) *Engine {
 // transmit sends a device's frame out of its port and to the other
 // devices on that port.
 func (e *Engine) transmit(d *device, frame []byte) error {
+	e.mu.RLock()
+	m := e.portMon[d.port]
+	e.mu.RUnlock()
+	if m != nil {
+		return fmt.Errorf("port %s is a monitor port (%s): it sends nothing", d.port, m.owner)
+	}
 	err := e.ports.Send(d.port, frame)
 	if err == nil {
 		e.tap(d.port, "tx", frame, time.Now())
@@ -243,6 +251,13 @@ var (
 // consumed it.
 func (e *Engine) Receive(port string, b []byte, ts time.Time) bool {
 	e.tap(port, "rx", b, ts)
+	e.mu.RLock()
+	m := e.portMon[port]
+	e.mu.RUnlock()
+	if m != nil {
+		m.rx(b, ts)
+		return true
+	}
 	return e.receive(port, b, ts, nil)
 }
 

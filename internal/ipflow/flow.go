@@ -24,6 +24,7 @@ import (
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/protocol"
 	"github.com/ripnet/clabgen/internal/vpnrib"
+	"github.com/ripnet/clabgen/internal/wire"
 )
 
 // Flow states.
@@ -557,6 +558,9 @@ type Base struct {
 	VPNRoute        string   `json:"vpn_route,omitempty"`
 	VPNLabels       []uint32 `json:"vpn_labels,omitempty"`
 	VPNPeer         string   `json:"vpn_peer,omitempty"`
+	// Wire: what the flow expects on a monitored link (the config's), for
+	// views that judge it against monitors.
+	Wire *wire.Expect `json:"wire,omitempty"`
 }
 
 // BaseStatus returns the shared status; the flow type sets Kind and may

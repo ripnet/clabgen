@@ -7,6 +7,7 @@ import (
 
 	"github.com/ripnet/clabgen/internal/ipflow"
 	"github.com/ripnet/clabgen/internal/pkt"
+	"github.com/ripnet/clabgen/internal/wire"
 )
 
 // Config is one ICMP flow: the shared IP flow parts plus the ICMP header.
@@ -26,6 +27,7 @@ type Config struct {
 	ipflow.Payload
 
 	Checks ipflow.Checks `json:"checks" jsonschema:"description=Pass/fail limits on what the flow measures since it started or was cleared"`
+	Wire   *wire.Expect  `json:"wire,omitempty" jsonschema_description:"VLAN tags the flow's frames and its service's OAM should carry on a monitored link (a monitor instance on a router's port mirror), per direction" jsonschema_extras:"x-title=expected on the wire"`
 }
 
 func defaultConfig() *Config {
@@ -40,6 +42,9 @@ func (c *Config) spec() ipflow.Spec {
 func (c *Config) Validate() error {
 	dst, err := c.spec().Validate()
 	if err != nil {
+		return err
+	}
+	if err := c.Wire.Validate(); err != nil {
 		return err
 	}
 	if err := ipflow.CheckChecksumMode(c.ICMPChecksum); err != nil {

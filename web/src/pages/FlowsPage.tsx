@@ -1,3 +1,5 @@
+import { WireCell } from "../components/Wire";
+import { combined, judgeStatus, useMonitors } from "../wire";
 import { useEffect, useMemo, useState } from "react";
 import type { JsonObject } from "@bufbuild/protobuf";
 import { client, errorText } from "../api";
@@ -74,19 +76,25 @@ export function FlowsPage() {
       ),
     [agents, by, traffic, info],
   );
+  const mons = useMonitors().list;
+  const wireOf = (r: Row) => judgeStatus(r.p.status as Record<string, unknown> | undefined, mons);
+  const wires = new Map(all.map((r) => [r, wireOf(r)]));
+  const showWire = mons.length > 0 || all.some((r) => (r.p.status as { wire?: unknown } | undefined)?.wire);
+  // A flow's result: its checks and, judged against the monitors, its wire.
+  const resultOf = (r: Row) => combined(verdictOf(r.p), wires.get(r)?.verdict || undefined);
   const f = filter.trim().toLowerCase();
   const rows = all.filter(
     (r) =>
-      (!failing || verdictOf(r.p) === "fail") &&
+      (!failing || resultOf(r) === "fail") &&
       (!f || [r.agent, r.lab ?? "", r.p.name, r.p.device, r.p.type, asFlow(r.p.status ?? {}).destination ?? ""].some((x) => x.toLowerCase().includes(f))),
   );
   const count = (pred: (r: Row) => boolean) => all.filter(pred).length;
   const stats = {
     flows: all.length,
     running: count((r) => running(r.p)),
-    pass: count((r) => verdictOf(r.p) === "pass"),
-    fail: count((r) => verdictOf(r.p) === "fail"),
-    pending: count((r) => verdictOf(r.p) === "pending"),
+    pass: count((r) => resultOf(r) === "pass"),
+    fail: count((r) => resultOf(r) === "fail"),
+    pending: count((r) => resultOf(r) === "pending"),
   };
   const errors = agents.filter((a) => by[a.id]?.error).map((a) => `${agentLabel(a, info[a.id])}: ${by[a.id]!.error}`);
 
@@ -162,13 +170,13 @@ export function FlowsPage() {
                 <tr>
                   <th>Agent</th>
                   <th>Flow</th>
-                  <th>Path</th>
                   <th>State</th>
                   <th className="num">Sent</th>
                   <th className="num">Lost</th>
                   <th className="num" title="Longest outage (consecutive losses)">Outage</th>
                   <th className="num">RTT avg</th>
                   <th>Checks</th>
+                  {showWire && <th title="VLAN tags of the flow's frames and of its service's OAM on monitored links: → from its device, ← back">Wire</th>}
                 </tr>
               </thead>
               <tbody>
@@ -182,14 +190,16 @@ export function FlowsPage() {
                         {r.agent}
                         {r.lab && <span className="tag">{r.lab}</span>}
                       </td>
-                      <td className="mono strong">
-                        <a href={link} onClick={(e) => e.stopPropagation()}>
+                      <td className="cell-wrap">
+                        <a className="mono strong" href={link} onClick={(e) => e.stopPropagation()}>
                           {r.p.name}
                         </a>
-                      </td>
-                      <td className="mono">
-                        <span className="muted">{r.p.device} · </span>
-                        {s?.source || "?"} → {s?.destination ?? "?"}
+                        <div className="mono muted small-note">
+                          {r.p.device} ·{" "}
+                          <span className="keep">
+                            {s?.source || "?"} → {s?.destination ?? "?"}
+                          </span>
+                        </div>
                       </td>
                       <td>
                         {/* A failed check shows in the Checks column; the state stays short. */}
@@ -206,6 +216,11 @@ export function FlowsPage() {
                       <td>
                         <VerdictBadge v={s?.verdict} />
                       </td>
+                      {showWire && (
+                        <td>
+                          <WireCell v={wires.get(r)} />
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

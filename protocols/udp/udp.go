@@ -16,6 +16,7 @@ import (
 	"github.com/ripnet/clabgen/internal/ipflow"
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/protocol"
+	"github.com/ripnet/clabgen/internal/wire"
 )
 
 const TypeName = "udp"
@@ -37,6 +38,7 @@ type Config struct {
 	ipflow.Payload
 
 	Checks ipflow.Checks `json:"checks" jsonschema:"description=Pass/fail limits on what the flow measures since it started or was cleared"`
+	Wire   *wire.Expect  `json:"wire,omitempty" jsonschema_description:"VLAN tags the flow's frames and its service's OAM should carry on a monitored link (a monitor instance on a router's port mirror), per direction" jsonschema_extras:"x-title=expected on the wire"`
 }
 
 func defaultConfig() *Config {
@@ -50,6 +52,9 @@ func (c *Config) spec() ipflow.Spec {
 
 func (c *Config) Validate() error {
 	if _, err := c.spec().Validate(); err != nil {
+		return err
+	}
+	if err := c.Wire.Validate(); err != nil {
 		return err
 	}
 	if c.DstPort == 0 {
@@ -183,6 +188,7 @@ type Status struct {
 
 func (f *flow) Status() any {
 	s := Status{Base: f.BaseStatus(), DstPort: f.cfg.DstPort, SrcPorts: fmt.Sprint(f.sport)}
+	s.Wire = f.cfg.Wire
 	if f.cfg.SrcPortCount > 1 {
 		s.SrcPorts = fmt.Sprintf("%d-%d", f.sport, int(f.sport)+int(f.cfg.SrcPortCount)-1)
 	}

@@ -9,8 +9,10 @@ import { StepInput, fmtStep, isStep } from "./Stepped";
 // a large form keeps back what isn't set or required), x-summary (an object list's item
 // line, e.g. "{address} AS {remote_as}[ · {description}]": bracketed parts
 // only when their fields are set) and x-show-if ("type=a|b" or "type!=c":
-// the field applies only for those values of a sibling field).
+// the field applies only for those values of a sibling field), x-title (a
+// section's name in place of its field's).
 export type Schema = {
+  "x-title"?: string;
   "x-group"?: string;
   "x-advanced"?: boolean | string;
   "x-common"?: boolean | string;
@@ -924,7 +926,7 @@ function Sectioned({
               className={cls.filter(Boolean).join(" ")}
               onClick={() => setSel(k)}
             >
-              <span>{k === "general" ? "general" : label(k)}</span>
+              <span>{k === "general" ? "general" : (schema.properties![k]?.["x-title"] ?? label(k))}</span>
               <span className="section-marks">
                 {changed(k) && (
                   <span className="section-changed" title="changed">

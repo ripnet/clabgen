@@ -419,7 +419,7 @@ func main() {
 		}})
 
 	root.AddCommand(nodesCmd(), convergenceCmd(), captureCmd(), wiresharkCmd(), portsCmd(), portCmd(), devicesCmd(), deviceCmd(), typesCmd(), protocolsCmd(), protoCmd(), previewCmd(), groupsCmd(), groupCmd(), eventsCmd(), scenarioCmd(),
-		flowCmd("start"), flowCmd("stop"), pingCmd(), receivedCmd())
+		flowCmd("start"), flowCmd("stop"), pingCmd(), receivedCmd(), wireCmd())
 
 	if err := root.Execute(); err != nil {
 		var ce *connect.Error
@@ -874,6 +874,29 @@ func summary(p *v1.Protocol) string {
 		}
 		if m["max_metric"] == true {
 			out += " max-metric"
+		}
+		return out
+	}
+	if p.Type == "monitor" {
+		flows, oam := map[string]bool{}, 0
+		svcs, _ := m["services"].([]any)
+		mpls := 0
+		for _, x := range svcs {
+			s := x.(map[string]any)
+			if s["label"] != nil {
+				mpls++
+			}
+			for _, d := range asList(s["data"]) {
+				flows[fmt.Sprint(d.(map[string]any)["flow_id"])] = true
+			}
+			oam += len(asList(s["oam"]))
+		}
+		out := fmt.Sprintf("frames=%v mpls=%v services=%d flows=%d oam=%d", m["frames"], m["mpls"], mpls, len(flows), oam)
+		if d, _ := m["direction"].(string); d != "" {
+			out += " " + d
+		}
+		if m["truncated"] == true {
+			out += " truncated"
 		}
 		return out
 	}

@@ -1,0 +1,23 @@
+# The customer at the a end: one device per Epipe, each sending 3162 (outer)
+# and 163 (inner), with a CFM MEP (level 4) and a ping to the far end that checks
+# the tags its frames and its service's CCMs carry on the core link (wire).
+devices:
+  - {name: epl,  port: eth1, mac: "02:00:00:01:01:01", vlans: [{vid: 3162}, {vid: 163}], addresses: [10.1.0.1/24]}
+  - {name: evpl, port: eth2, mac: "02:00:00:01:02:01", vlans: [{vid: 3162}, {vid: 163}], addresses: [10.2.0.1/24]}
+  - {name: enni, port: eth3, mac: "02:00:00:01:03:01", vlans: [{vid: 3162}, {vid: 163}], addresses: [10.3.0.1/24]}
+protocols:
+  - {name: epl-mep,  type: cfm-mep, device: epl,  config: {level: 4, mep_id: 1, remote_meps: [2], md_format: string, md_name: cust, ma_name: epl}}
+  - {name: evpl-mep, type: cfm-mep, device: evpl, config: {level: 4, mep_id: 1, remote_meps: [2], md_format: string, md_name: cust, ma_name: evpl}}
+  - {name: enni-mep, type: cfm-mep, device: enni, config: {level: 4, mep_id: 1, remote_meps: [2], md_format: string, md_name: cust, ma_name: enni}}
+  - name: epl-ping
+    type: icmp
+    device: epl
+    config: {destination: 10.1.0.2, rate: 5, auto_start: true, wire: {data: "3162,163", oam: "3162,163"}}
+  - name: evpl-ping
+    type: icmp
+    device: evpl
+    config: {destination: 10.2.0.2, rate: 5, auto_start: true, wire: {data: "163", oam: "163"}}
+  - name: enni-ping
+    type: icmp
+    device: enni
+    config: {destination: 10.3.0.2, rate: 5, auto_start: true, wire: {data: untagged, oam: untagged}}

@@ -23,6 +23,7 @@ import (
 	"github.com/ripnet/clabgen/internal/outage"
 	"github.com/ripnet/clabgen/internal/pkt"
 	"github.com/ripnet/clabgen/internal/protocol"
+	"github.com/ripnet/clabgen/internal/wire"
 )
 
 const TypeName = "l2"
@@ -54,6 +55,7 @@ type Config struct {
 	ipflow.Run
 
 	Checks ipflow.Checks `json:"checks" jsonschema:"description=Pass/fail limits on what the stream measures (echo) since it started or was cleared"`
+	Wire   *wire.Expect  `json:"wire,omitempty" jsonschema_description:"VLAN tags the flow's frames and its service's OAM should carry on a monitored link (a monitor instance on a router's port mirror), per direction" jsonschema_extras:"x-title=expected on the wire"`
 }
 
 func defaultConfig() *Config {
@@ -102,6 +104,9 @@ func (c *Config) Validate() error {
 		return errors.New("reply must be none or echo")
 	}
 	if err := c.Run.Validate(); err != nil {
+		return err
+	}
+	if err := c.Wire.Validate(); err != nil {
 		return err
 	}
 	return c.Checks.Validate()
@@ -351,6 +356,7 @@ func (f *stream) Status() any {
 		s.OutageCurrentMs = 0
 	}
 	s.Verdict = f.cfg.Checks.Evaluate(s.Stats, f.echo)
+	s.Wire = f.cfg.Wire
 	if !f.started.IsZero() {
 		e := now
 		if !f.stopped.IsZero() {

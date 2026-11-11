@@ -15,6 +15,7 @@ import "./protocols/lldp";
 import "./protocols/bgp";
 import "./protocols/ldp";
 import "./protocols/macsec";
+import "./protocols/monitor";
 import "./protocols/ospf";
 import "./protocols/rsvp";
 import "./protocols/dhcp";

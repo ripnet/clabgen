@@ -658,3 +658,29 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .ms-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
 .ms-key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); padding: 0; }
 .ms-legend .ms-key:not(:first-child) { margin-left: 8px; }
+/* Wire: monitored links (protocols/monitor.tsx, components/Wire.tsx). */
+.wire-frame { display: flex; flex-wrap: wrap; gap: 3px; margin: 4px 0 2px; font-family: var(--mono); font-size: 11.5px; }
+.wire-frame .ms-seg { padding: 2px 7px; }
+.wire-frame .ms-seg.ms-enc { flex: 0 1 auto; }
+.wire-transport { background: var(--surface-2); color: var(--text-3); }
+.wire-tags { display: inline-flex; gap: 3px; vertical-align: middle; }
+.wire-tag { display: inline-block; font-family: var(--mono); font-size: 12px; padding: 0 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent-text); }
+.wire-untagged { background: var(--surface-2); color: var(--text-3); }
+.wire-tpid { opacity: 0.7; font-size: 10.5px; }
+.wire-class { display: flex; flex-direction: column; gap: 3px; }
+.wire-seen.ok .wire-tag { background: var(--ok-soft); color: var(--ok); }
+.wire-seen.bad .wire-tag { background: var(--bad-soft); color: var(--bad); }
+.wire-list { display: flex; flex-direction: column; gap: 3px; }
+.wire-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 8px; }
+.wire-filter .input { max-width: 320px; }
+.wire-table td { vertical-align: top; }
+.wire-head { display: flex; align-items: center; gap: 8px; }
+.cell-wrap .small-note { margin-top: 2px; }
+.keep { white-space: nowrap; }
+.wire-cell { display: flex; flex-direction: column; gap: 3px; }
+.wire-cell-line { display: flex; align-items: center; gap: 3px; flex-wrap: nowrap; }
+.wire-cell .wire-tag { padding: 0 4px; font-size: 11.5px; }
+.wire-k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-3); width: 30px; }
+.wire-dir { color: var(--text-3); font-size: 12px; margin-left: 2px; }
+.wire-none { font-size: 11.5px; color: var(--text-3); font-style: italic; }
+.wire-none.warn { color: var(--warn); font-style: normal; font-weight: 600; }

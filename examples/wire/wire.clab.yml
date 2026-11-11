@@ -1,0 +1,40 @@
+# Which VLAN tags customer frames and OAM carry inside three Epipes, seen on
+# the core link through a port mirror. Two Nokia SR-SIM PEs, clabgen CEs at
+# both ends, and a clabgen monitor on sr1's mirror of the core link:
+#   ce-a:eth1 -- sr1:1/1/c1/1 ... sr2:1/1/c1/1 -- ce-b:eth1   Epipe "epl":  null SAP
+#   ce-a:eth2 -- sr1:1/1/c3/1 ... sr2:1/1/c3/1 -- ce-b:eth2   Epipe "evpl": dot1q SAP :3162
+#   ce-a:eth3 -- sr1:1/1/c4/1 ... sr2:1/1/c4/1 -- ce-b:eth3   Epipe "enni": QinQ SAP :3162.163
+#   sr1:1/1/c2/1 -- sr2:1/1/c2/1: the core, IS-IS and LDP
+#   sr1:1/1/c5/1 -- tap:eth1: sr1's mirror of 1/1/c2/1, both directions
+# Every customer device sends 3162 (outer) and 163 (inner).
+name: wire
+topology:
+  defaults:
+    kind: nokia_srsim
+  nodes:
+    sr1: {image: "nokia_srsim:26.10.R1", startup-config: sr1.partial.txt}
+    sr2: {image: "nokia_srsim:26.10.R1", startup-config: sr2.partial.txt}
+    ce-a:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: ce-a.yml}
+    ce-b:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: ce-b.yml}
+    tap:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: tap.yml}
+  links:
+    - endpoints: [sr1:1/1/c2/1, sr2:1/1/c2/1]
+    - endpoints: [ce-a:eth1, sr1:1/1/c1/1]
+    - endpoints: [ce-b:eth1, sr2:1/1/c1/1]
+    - endpoints: [ce-a:eth2, sr1:1/1/c3/1]
+    - endpoints: [ce-b:eth2, sr2:1/1/c3/1]
+    - endpoints: [ce-a:eth3, sr1:1/1/c4/1]
+    - endpoints: [ce-b:eth3, sr2:1/1/c4/1]
+    - endpoints: [sr1:1/1/c5/1, tap:eth1]

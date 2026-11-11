@@ -6,6 +6,8 @@ import { agentLabel, useAgents } from "../agents";
 import { href } from "../router";
 import { useBusy } from "../ui";
 import { asFlow, dur, FlowLog, FlowTiles, FlowTimeline, ms, VerdictPanel, type FlowStatus } from "./Flow";
+import { WireSection } from "./Wire";
+import { flowSource, type Expect } from "../wire";
 
 // One received flow at a clabgen device (internal/flowrx).
 export type RxFlow = {
@@ -333,6 +335,7 @@ export function IpFlowView({ status, agentId, name, extra }: { status: JsonObjec
       {s.tracks_replies !== false && <FlowTimeline s={s} />}
       {prefixes && <PrefixCard p={prefixes} />}
       {flowId && <Receivers flowId={flowId} s={s} />}
+      {flowId && <WireSection flowId={flowId} from={flowSource(s.source)} expect={(status as { wire?: Expect }).wire} />}
       {(s.tracks_replies !== false || s.recent.length > 0) && (
         <>
           <h4>Packets</h4>

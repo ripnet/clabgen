@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { DeviceGroup, Port, Protocol } from "../gen/clabgen/v1/agent_pb";
 import { client, errorText } from "../api";
 import { agentLabel, useAgents } from "../agents";
-import { href } from "../router";
+import { agentHref, href } from "../router";
 import { summarize, type Health } from "../protocols/registry";
 import { Dot, Empty, HealthText } from "../ui";
 import { groupHealth, groupStatus } from "./GroupsTab";
@@ -105,7 +105,7 @@ export function Overview() {
           const i = info[a.id];
           const portsUp = s?.ports?.filter((p) => p.adminUp && p.operUp).length ?? 0;
           return (
-            <a key={a.id} className="agent-card" href={href({ page: "agent", agent: a.id, tab: "protocols" })}>
+            <a key={a.id} className="agent-card" href={agentHref(a.id)}>
               <div className="agent-card-head">
                 <Dot health={i?.reachable ? "ok" : i ? "bad" : "idle"} />
                 <span className="agent-card-name">{agentLabel(a, i)}</span>

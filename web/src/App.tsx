@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { agentsApi, type AgentRef } from "./api";
 import { agentLabel, useAgents } from "./agents";
-import { href, useRoute } from "./router";
+import { agentHref, useRoute } from "./router";
 import { Dot, ErrorBox, Modal, useBusy, useTheme, type Theme } from "./ui";
 import { Overview } from "./pages/Overview";
 import { FlowsPage } from "./pages/FlowsPage";
@@ -110,7 +110,7 @@ function Sidebar({ current, page }: { current?: string; page: string }) {
               <a
                 key={a.id}
                 className={`side-link ${current === a.id ? "active" : ""}`}
-                href={href({ page: "agent", agent: a.id, tab: "protocols" })}
+                href={agentHref(a.id)}
                 title={i?.reachable ? `${i.hostname} · ${displayVersion(i.version)} · ${a.url ?? "local"}${k && k.kind !== "differs" ? `\n${k.text}` : ""}` : i?.error}
               >
                 <Dot health={i?.reachable ? "ok" : i ? "bad" : "idle"} />

@@ -275,6 +275,14 @@ type Securer interface {
 	Secure(l SecureLink, port bool) (release func(), err error)
 }
 
+// Monitorer may be implemented by an Env: Monitor makes the session's port a
+// monitor port (a router's port mirror goes to it): every frame arriving on
+// the port goes to rx and to nothing else there, and nothing is sent from the
+// port, until release is called. b is only valid during the call.
+type Monitorer interface {
+	Monitor(rx func(b []byte, ts time.Time)) (release func(), err error)
+}
+
 // Categorized may be implemented by a Type to group it in UIs. Types
 // without it are in CategoryProtocol.
 type Categorized interface{ Category() string }

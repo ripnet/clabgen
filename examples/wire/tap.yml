@@ -1,0 +1,6 @@
+# The monitor: eth1 gets sr1's mirror of the core link (both directions) and
+# sends nothing.
+devices:
+  - {name: tap, port: eth1}
+protocols:
+  - {name: core, type: monitor, device: tap}

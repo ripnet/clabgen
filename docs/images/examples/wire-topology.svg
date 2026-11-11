@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1460 560" width="1460" height="560" role="img" aria-label="ce-a agent, SR-SIM sr1, SR-SIM sr2, ce-b agent with three Epipes; sr1 mirrors the core link to the tap agent">
+<style>
+  .box { fill: #f6f8fa; stroke-width: 2.5; }
+  .agent { stroke: #2563eb; }
+  .router { stroke: #0f766e; }
+  .title { font: 600 26px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #1f2328; }
+  .kind { font: 17px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #59636e; }
+  .line { font: 19px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #1f2328; }
+  .port { font: 15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #59636e; }
+  .note { font: 17px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #59636e; }
+  .flowlbl { font: 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #d97706; }
+  .wire { stroke: #8c959f; stroke-width: 3; }
+  .flow { stroke: #d97706; stroke-width: 2.5; fill: none; stroke-dasharray: 8 5; }
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d97706"/></marker></defs>
+<rect x="20" y="40" width="210" height="270" rx="10" class="box agent"/>
+<text x="125.0" y="80" class="title" text-anchor="middle">ce-a</text>
+<text x="125.0" y="104" class="kind" text-anchor="middle">clabgen agent</text>
+<rect x="380" y="40" width="210" height="270" rx="10" class="box router"/>
+<text x="485.0" y="80" class="title" text-anchor="middle">sr1</text>
+<text x="485.0" y="104" class="kind" text-anchor="middle">Nokia SR-SIM</text>
+<rect x="870" y="40" width="210" height="270" rx="10" class="box router"/>
+<text x="975.0" y="80" class="title" text-anchor="middle">sr2</text>
+<text x="975.0" y="104" class="kind" text-anchor="middle">Nokia SR-SIM</text>
+<rect x="1230" y="40" width="210" height="270" rx="10" class="box agent"/>
+<text x="1335.0" y="80" class="title" text-anchor="middle">ce-b</text>
+<text x="1335.0" y="104" class="kind" text-anchor="middle">clabgen agent</text>
+<line x1="230" y1="145" x2="380" y2="145" class="wire"/>
+<text x="238" y="136" class="port" text-anchor="start">eth1</text>
+<text x="372" y="136" class="port" text-anchor="end">c1/1</text>
+<line x1="1080" y1="145" x2="1230" y2="145" class="wire"/>
+<text x="1088" y="136" class="port" text-anchor="start">c1/1</text>
+<text x="1222" y="136" class="port" text-anchor="end">eth1</text>
+<text x="485.0" y="151" class="line" text-anchor="middle">epl: null SAP</text>
+<text x="975.0" y="151" class="line" text-anchor="middle">epl: null SAP</text>
+<text x="125.0" y="151" class="line" text-anchor="middle">epl: 3162 · 163</text>
+<text x="1335.0" y="151" class="line" text-anchor="middle">epl: 3162 · 163</text>
+<line x1="230" y1="210" x2="380" y2="210" class="wire"/>
+<text x="238" y="201" class="port" text-anchor="start">eth2</text>
+<text x="372" y="201" class="port" text-anchor="end">c3/1</text>
+<line x1="1080" y1="210" x2="1230" y2="210" class="wire"/>
+<text x="1088" y="201" class="port" text-anchor="start">c3/1</text>
+<text x="1222" y="201" class="port" text-anchor="end">eth2</text>
+<text x="485.0" y="216" class="line" text-anchor="middle">evpl: SAP :3162</text>
+<text x="975.0" y="216" class="line" text-anchor="middle">evpl: SAP :3162</text>
+<text x="125.0" y="216" class="line" text-anchor="middle">evpl: 3162 · 163</text>
+<text x="1335.0" y="216" class="line" text-anchor="middle">evpl: 3162 · 163</text>
+<line x1="230" y1="275" x2="380" y2="275" class="wire"/>
+<text x="238" y="266" class="port" text-anchor="start">eth3</text>
+<text x="372" y="266" class="port" text-anchor="end">c4/1</text>
+<line x1="1080" y1="275" x2="1230" y2="275" class="wire"/>
+<text x="1088" y="266" class="port" text-anchor="start">c4/1</text>
+<text x="1222" y="266" class="port" text-anchor="end">eth3</text>
+<text x="485.0" y="281" class="line" text-anchor="middle">enni: SAP :3162.163</text>
+<text x="975.0" y="281" class="line" text-anchor="middle">enni: SAP :3162.163</text>
+<text x="125.0" y="281" class="line" text-anchor="middle">enni: 3162 · 163</text>
+<text x="1335.0" y="281" class="line" text-anchor="middle">enni: 3162 · 163</text>
+<line x1="590" y1="145" x2="870" y2="145" class="wire"/>
+<text x="598" y="136" class="port" text-anchor="start">c2/1</text>
+<text x="862" y="136" class="port" text-anchor="end">c2/1</text>
+<text x="730.0" y="171" class="note" text-anchor="middle">IS-IS, LDP</text>
+<text x="730.0" y="193" class="note" text-anchor="middle">a pseudowire per Epipe</text>
+<rect x="630.0" y="420" width="200" height="120" rx="10" class="box agent"/>
+<text x="730.0" y="460" class="title" text-anchor="middle">tap</text>
+<text x="730.0" y="484" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="730.0" y="520" class="line" text-anchor="middle">monitor</text>
+<line x1="550" y1="310" x2="550" y2="490" class="wire"/>
+<line x1="550" y1="490" x2="630.0" y2="490" class="wire"/>
+<text x="558" y="332" class="port" text-anchor="start">c5/1</text>
+<text x="622.0" y="482" class="port" text-anchor="end">eth1</text>
+<path d="M730.0,209 V408" class="flow" marker-end="url(#arrow)"/>
+<text x="742.0" y="384" class="flowlbl" text-anchor="start">sr1 mirrors c2/1, both ways</text>
+</svg>

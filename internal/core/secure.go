@@ -17,6 +17,9 @@ func (v *env) Secure(l protocol.SecureLink, port bool) (func(), error) {
 	if pl := e.portSec[d.port]; pl != nil {
 		return nil, fmt.Errorf("port %s is secured as a whole by %s", d.port, pl.owner)
 	}
+	if m := e.portMon[d.port]; m != nil {
+		return nil, fmt.Errorf("port %s is a monitor port (%s)", d.port, m.owner)
+	}
 	if port {
 		for _, o := range e.byPort[d.port] {
 			if o.sec != nil {

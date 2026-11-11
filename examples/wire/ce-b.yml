@@ -1,0 +1,10 @@
+# The customer at the b end: one device per Epipe, each sending 3162 (outer)
+# and 163 (inner), with a CFM MEP (level 4) and answering pings.
+devices:
+  - {name: epl,  port: eth1, mac: "02:00:00:02:01:01", vlans: [{vid: 3162}, {vid: 163}], addresses: [10.1.0.2/24]}
+  - {name: evpl, port: eth2, mac: "02:00:00:02:02:01", vlans: [{vid: 3162}, {vid: 163}], addresses: [10.2.0.2/24]}
+  - {name: enni, port: eth3, mac: "02:00:00:02:03:01", vlans: [{vid: 3162}, {vid: 163}], addresses: [10.3.0.2/24]}
+protocols:
+  - {name: epl-mep,  type: cfm-mep, device: epl,  config: {level: 4, mep_id: 2, remote_meps: [1], md_format: string, md_name: cust, ma_name: epl}}
+  - {name: evpl-mep, type: cfm-mep, device: evpl, config: {level: 4, mep_id: 2, remote_meps: [1], md_format: string, md_name: cust, ma_name: evpl}}
+  - {name: enni-mep, type: cfm-mep, device: enni, config: {level: 4, mep_id: 2, remote_meps: [1], md_format: string, md_name: cust, ma_name: enni}}

@@ -161,6 +161,7 @@ type Status struct {
 
 func (f *flow) Status() any {
 	s := Status{Base: f.BaseStatus(), Identifier: f.ident}
+	s.Wire = f.cfg.Wire
 	s.Kind = fmt.Sprintf("type %d code %d", f.cfg.icmpType(f.Dst), f.cfg.ICMPCode)
 	if f.Echo {
 		s.Kind = "echo"

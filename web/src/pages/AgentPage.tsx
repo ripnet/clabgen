@@ -1,5 +1,5 @@
 import { agentLabel, useAgents } from "../agents";
-import { agentTabs, href, type AgentTab } from "../router";
+import { agentHref, agentTabs, href, type AgentTab } from "../router";
 import { Dot, Empty } from "../ui";
 import { ago } from "../components/ValueView";
 import { displayVersion, skew } from "../version";
@@ -53,7 +53,7 @@ export function Crumbs({ agentId, trail, current }: { agentId: string; trail: { 
           ←
         </a>
       )}
-      <a href={href({ page: "agent", agent: agentId, tab: "protocols" })}>{agentLabel(agents.find((a) => a.id === agentId), info[agentId])}</a>
+      <a href={agentHref(agentId)}>{agentLabel(agents.find((a) => a.id === agentId), info[agentId])}</a>
       {trail.map((t) => (
         <span key={t.href} className="crumb">
           <span className="crumb-sep">›</span>

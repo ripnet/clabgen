@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { WireCell } from "../components/Wire";
+import { judgeStatus, useMonitors } from "../wire";
 import { client, usePoll } from "../api";
 import { asFlow, dur, flowSummary, ms, VerdictBadge } from "../components/Flow";
 import { href, navigate } from "../router";
@@ -31,6 +33,8 @@ export function TrafficTab({ agentId }: { agentId: string }) {
     return rs.length ? { rx: rs.reduce((a, r) => a + r.f.rx, 0), lost: rs.reduce((a, r) => a + r.f.lost, 0) } : undefined;
   };
   const flows = (list.data?.protocols ?? []).filter((p) => traffic.has(p.type));
+  const mons = useMonitors().list;
+  const showWire = mons.length > 0 || flows.some((p) => (p.status as { wire?: unknown } | undefined)?.wire);
   const running = (p: (typeof flows)[number]) => {
     const st = p.status ? asFlow(p.status).state : "";
     return st === "running" || st === "resolving";
@@ -76,16 +80,14 @@ export function TrafficTab({ agentId }: { agentId: string }) {
             <thead>
               <tr>
                 <th>Flow</th>
-                <th>Path</th>
                 <th>Kind</th>
-                <th className="num">Rate</th>
                 <th>State</th>
-                <th className="num">Sent</th>
-                <th className="num">Received</th>
+                <th className="num" title="Packets sent / received back (one way: at clabgen receivers, ↦)">Sent / rcvd</th>
                 <th className="num">Lost</th>
-                <th className="num">Longest outage</th>
+                <th className="num" title="Longest outage (consecutive losses)">Outage</th>
                 <th className="num">RTT avg</th>
                 <th title="Pass/fail checks (set in the flow's config)">Checks</th>
+                {showWire && <th title="VLAN tags of the flow's frames and of its service's OAM on monitored links: → from its device, ← back">Wire</th>}
                 <th />
               </tr>
             </thead>
@@ -98,26 +100,28 @@ export function TrafficTab({ agentId }: { agentId: string }) {
                 const owPct = ow && ow.rx + ow.lost ? (100 * ow.lost) / (ow.rx + ow.lost) : 0;
                 return (
                   <tr key={p.name} onClick={() => navigate({ page: "protocol", agent: agentId, protocol: p.name })}>
-                    <td className="mono strong">
-                      <a href={href({ page: "protocol", agent: agentId, protocol: p.name })} onClick={(e) => e.stopPropagation()}>
+                    <td className="cell-wrap">
+                      <a className="mono strong" href={href({ page: "protocol", agent: agentId, protocol: p.name })} onClick={(e) => e.stopPropagation()}>
                         {p.name}
                       </a>
-                    </td>
-                    <td className="mono">
-                      <span className="muted">{p.device} · </span>
-                      {s?.source || <span title="expected source (not started yet)">{guessSource(p.device, s?.destination) ?? "?"}</span>} → {s?.destination ?? "?"}
+                      <div className="mono muted small-note">
+                        {p.device} ·{" "}
+                        <span className="keep">
+                          {s?.source || <span title="expected source (not started yet)">{guessSource(p.device, s?.destination) ?? "?"}</span>} → {s?.destination ?? "?"}
+                        </span>
+                      </div>
                     </td>
                     <td className="mono">
                       {p.type}
                       {s?.kind ? ` ${s.kind}` : ""}
+                      <div className="muted small-note">{s ? `${s.rate} pps` : "—"}</div>
                     </td>
-                    <td className="num mono">{s ? `${s.rate} pps` : "—"}</td>
                     <td>
                       <HealthText health={sum.health}>{s && (sum.health !== "bad" || s.verdict?.result === "fail") ? s.state : sum.text}</HealthText>
                     </td>
-                    <td className="num mono">{s?.tx.toLocaleString() ?? "—"}</td>
                     <td className="num mono" title={ow ? "Received at clabgen receivers (one way)" : undefined}>
-                      {s && s.tracks_replies !== false ? s.rx.toLocaleString() : ow ? `${ow.rx.toLocaleString()} ↦` : "—"}
+                      {s?.tx.toLocaleString() ?? "—"}
+                      <div className="muted small-note">{s && s.tracks_replies !== false ? s.rx.toLocaleString() : ow ? `${ow.rx.toLocaleString()} ↦` : "—"}</div>
                     </td>
                     <td className={s?.lost || ow?.lost ? "num mono bad-text" : "num mono"}>
                       {s && s.tracks_replies !== false ? `${s.lost.toLocaleString()} (${s.loss_pct.toFixed(2)}%)` : ow ? `${ow.lost.toLocaleString()} (${owPct.toFixed(2)}%)` : "—"}
@@ -129,6 +133,11 @@ export function TrafficTab({ agentId }: { agentId: string }) {
                     <td>
                       <VerdictBadge v={s?.verdict} />
                     </td>
+                    {showWire && (
+                      <td>
+                        <WireCell v={judgeStatus(p.status as Record<string, unknown> | undefined, mons)} />
+                      </td>
+                    )}
                     <td className="actions">
                       <button
                         className="btn small"
