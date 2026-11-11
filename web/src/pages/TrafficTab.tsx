@@ -35,6 +35,8 @@ export function TrafficTab({ agentId }: { agentId: string }) {
   const flows = (list.data?.protocols ?? []).filter((p) => traffic.has(p.type));
   const mons = useMonitors().list;
   const showWire = mons.length > 0 || flows.some((p) => (p.status as { wire?: unknown } | undefined)?.wire);
+  // Checks only take a column when some flow has them.
+  const showChecks = flows.some((p) => p.status && asFlow(p.status).verdict);
   const running = (p: (typeof flows)[number]) => {
     const st = p.status ? asFlow(p.status).state : "";
     return st === "running" || st === "resolving";
@@ -82,11 +84,15 @@ export function TrafficTab({ agentId }: { agentId: string }) {
                 <th>Flow</th>
                 <th>Kind</th>
                 <th>State</th>
-                <th className="num" title="Packets sent / received back (one way: at clabgen receivers, ↦)">Sent / rcvd</th>
+                <th className="num" title="Packets sent / received back (one way: at clabgen receivers, ↦)">
+                  Sent
+                  <br />
+                  rcvd
+                </th>
                 <th className="num">Lost</th>
                 <th className="num" title="Longest outage (consecutive losses)">Outage</th>
                 <th className="num">RTT avg</th>
-                <th title="Pass/fail checks (set in the flow's config)">Checks</th>
+                {showChecks && <th title="Pass/fail checks (set in the flow's config)">Checks</th>}
                 {showWire && <th title="VLAN tags of the flow's frames and of its service's OAM on monitored links: → from its device, ← back">Wire</th>}
                 <th />
               </tr>
@@ -111,12 +117,12 @@ export function TrafficTab({ agentId }: { agentId: string }) {
                         </span>
                       </div>
                     </td>
-                    <td className="mono">
+                    <td className="mono kind-cell">
                       {p.type}
                       {s?.kind ? ` ${s.kind}` : ""}
                       <div className="muted small-note">{s ? `${s.rate} pps` : "—"}</div>
                     </td>
-                    <td>
+                    <td className="state-cell">
                       <HealthText health={sum.health}>{s && (sum.health !== "bad" || s.verdict?.result === "fail") ? s.state : sum.text}</HealthText>
                     </td>
                     <td className="num mono" title={ow ? "Received at clabgen receivers (one way)" : undefined}>
@@ -124,15 +130,29 @@ export function TrafficTab({ agentId }: { agentId: string }) {
                       <div className="muted small-note">{s && s.tracks_replies !== false ? s.rx.toLocaleString() : ow ? `${ow.rx.toLocaleString()} ↦` : "—"}</div>
                     </td>
                     <td className={s?.lost || ow?.lost ? "num mono bad-text" : "num mono"}>
-                      {s && s.tracks_replies !== false ? `${s.lost.toLocaleString()} (${s.loss_pct.toFixed(2)}%)` : ow ? `${ow.lost.toLocaleString()} (${owPct.toFixed(2)}%)` : "—"}
+                      {s && s.tracks_replies !== false ? (
+                        <>
+                          {s.lost.toLocaleString()}
+                          <div className="muted small-note">{s.loss_pct.toFixed(2)}%</div>
+                        </>
+                      ) : ow ? (
+                        <>
+                          {ow.lost.toLocaleString()}
+                          <div className="muted small-note">{owPct.toFixed(2)}% ↦</div>
+                        </>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className={s?.outage_current_ms ? "num mono bad-text" : "num mono"}>
                       {s?.outage_current_ms ? `now ${dur(s.outage_current_ms)}` : s?.outage_max_ms ? dur(s.outage_max_ms) : "—"}
                     </td>
                     <td className="num mono">{ms(s?.rtt?.avg_us)}</td>
-                    <td>
-                      <VerdictBadge v={s?.verdict} />
-                    </td>
+                    {showChecks && (
+                      <td>
+                        <VerdictBadge v={s?.verdict} />
+                      </td>
+                    )}
                     {showWire && (
                       <td>
                         <WireCell v={judgeStatus(p.status as Record<string, unknown> | undefined, mons)} />
@@ -140,14 +160,16 @@ export function TrafficTab({ agentId }: { agentId: string }) {
                     )}
                     <td className="actions">
                       <button
-                        className="btn small"
+                        className="icon-btn row-icon"
                         disabled={busy || p.state !== "running"}
+                        title={on ? "Stop" : "Start"}
+                        aria-label={`${on ? "Stop" : "Start"} ${p.name}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           run(() => c.runProtocolAction({ name: p.name, action: on ? "stop" : "start" })).then(list.refresh);
                         }}
                       >
-                        {on ? "Stop" : "Start"}
+                        {on ? "■" : "▶"}
                       </button>
                       <button
                         className="icon-btn row-clear"
@@ -162,14 +184,16 @@ export function TrafficTab({ agentId }: { agentId: string }) {
                         ↺
                       </button>
                       <button
-                        className="btn small danger-ghost"
+                        className="icon-btn row-icon row-delete"
                         disabled={busy}
+                        title="Delete"
+                        aria-label={`Delete ${p.name}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           if (confirm(`Delete flow ${p.name}?`)) run(() => c.deleteProtocol({ name: p.name }), `Deleted ${p.name}`).then(list.refresh);
                         }}
                       >
-                        Delete
+                        ✕
                       </button>
                     </td>
                   </tr>

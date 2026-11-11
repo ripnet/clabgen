@@ -70,3 +70,20 @@ test("lab-wide flows with checks", async ({ page }) => {
   await expect(panel.locator("tbody tr").nth(1)).toContainText("120 ms");
   await expect(panel.locator("tbody tr").nth(1).locator(".verdict")).toHaveText("fail");
 });
+
+test("without checks on any flow, the flow lists have no Checks column", async ({ page }) => {
+  const plain = flow("ping-plain", {});
+  delete (plain.status as Record<string, unknown>).verdict;
+  await mockAgent(page, plain, () => undefined);
+  await page.goto("./#/flows");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("thead th", { hasText: "Checks" })).toHaveCount(0);
+  await page.goto("./#/a/a1/traffic");
+  await expect(page.locator("tbody tr").filter({ hasText: "ping-plain" })).toHaveCount(1);
+  await expect(page.locator("thead th", { hasText: "Checks" })).toHaveCount(0);
+
+  // A flow with checks brings it back.
+  await mockAgent(page, flow("ping-ok", { result: "pass", checks: [] }), () => undefined, { more: [plain] });
+  await page.reload();
+  await expect(page.locator("thead th", { hasText: "Checks" })).toHaveCount(1);
+});

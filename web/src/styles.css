@@ -420,6 +420,13 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .sub-head h3 { margin: 0; font-size: 15px; }
 .small-note { font-size: 12px; margin: -4px 0 10px; }
 .table .actions .row-clear { margin-left: 4px; font-size: 15px; vertical-align: middle; }
+.table .actions .row-icon { width: 26px; height: 26px; font-size: 13px; vertical-align: middle; }
+.table .actions .row-delete { color: var(--bad); margin-left: 2px; }
+.table .actions .row-delete:hover:not(:disabled) { background: var(--bad-soft); }
+.table .actions .icon-btn:disabled { opacity: 0.4; cursor: default; }
+/* A flow's state: short when it runs; a failure's reason wraps. */
+.table td.state-cell { white-space: normal; min-width: 90px; max-width: 170px; }
+.table td.kind-cell { white-space: normal; min-width: 70px; max-width: 110px; }
 .lsp-detail td { background: var(--surface-2); white-space: normal; }
 .lsp-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 4px 2px; }
 .pfx-list { max-height: 240px; overflow: auto; columns: 2 180px; font-size: 12px; }

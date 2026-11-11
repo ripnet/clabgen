@@ -80,6 +80,8 @@ export function FlowsPage() {
   const wireOf = (r: Row) => judgeStatus(r.p.status as Record<string, unknown> | undefined, mons);
   const wires = new Map(all.map((r) => [r, wireOf(r)]));
   const showWire = mons.length > 0 || all.some((r) => (r.p.status as { wire?: unknown } | undefined)?.wire);
+  // Checks only take a column when some flow has them.
+  const showChecks = all.some((r) => verdictOf(r.p));
   // A flow's result: its checks and, judged against the monitors, its wire.
   const resultOf = (r: Row) => combined(verdictOf(r.p), wires.get(r)?.verdict || undefined);
   const f = filter.trim().toLowerCase();
@@ -181,7 +183,7 @@ export function FlowsPage() {
                   <th className="num">Lost</th>
                   <th className="num" title="Longest outage (consecutive losses)">Outage</th>
                   <th className="num">RTT avg</th>
-                  <th>Checks</th>
+                  {showChecks && <th>Checks</th>}
                   {showWire && <th title="VLAN tags of the flow's frames and of its service's OAM on monitored links: → from its device, ← back">Wire</th>}
                 </tr>
               </thead>
@@ -207,21 +209,30 @@ export function FlowsPage() {
                           </span>
                         </div>
                       </td>
-                      <td>
-                        {/* A failed check shows in the Checks column; the state stays short. */}
+                      <td className="state-cell">
+                        {/* A failed check shows in the Checks column (there when some flow has checks); the state stays short. */}
                         <HealthText health={sum.health}>{s && (sum.health !== "bad" || s.verdict?.result === "fail") ? s.state : sum.text}</HealthText>
                       </td>
                       <td className="num mono">{s?.tx.toLocaleString() ?? "—"}</td>
                       <td className={s?.lost ? "num mono bad-text" : "num mono"}>
-                        {s && s.tracks_replies !== false ? `${s.lost.toLocaleString()} (${s.loss_pct.toFixed(2)}%)` : "one way"}
+                        {s && s.tracks_replies !== false ? (
+                          <>
+                            {s.lost.toLocaleString()}
+                            <div className="muted small-note">{s.loss_pct.toFixed(2)}%</div>
+                          </>
+                        ) : (
+                          "one way"
+                        )}
                       </td>
                       <td className={s?.outage_current_ms ? "num mono bad-text" : "num mono"}>
                         {s?.outage_current_ms ? `now ${dur(s.outage_current_ms)}` : s?.outage_max_ms ? dur(s.outage_max_ms) : "—"}
                       </td>
                       <td className="num mono">{ms(s?.rtt?.avg_us)}</td>
-                      <td>
-                        <VerdictBadge v={s?.verdict} />
-                      </td>
+                      {showChecks && (
+                        <td>
+                          <VerdictBadge v={s?.verdict} />
+                        </td>
+                      )}
                       {showWire && (
                         <td>
                           <WireCell v={wires.get(r)} />

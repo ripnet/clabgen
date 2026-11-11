@@ -117,8 +117,10 @@ test("the flow lists show each flow's tags and its OAM's, both ways, red where t
   const cell = page.locator(".wire-cell");
   await expect(cell).toHaveCount(1);
   const [data, oam] = [cell.locator(".wire-cell-line").nth(0), cell.locator(".wire-cell-line").nth(1)];
-  await expect(data.locator(".wire-seen.ok")).toHaveCount(2); // both ways as expected
-  await expect(oam.locator(".wire-seen.bad")).toHaveCount(2); // one tag each way, two expected
+  // Alike both ways: shown once (⇄).
+  await expect(data.locator(".wire-dir")).toHaveText("⇄");
+  await expect(data.locator(".wire-seen.ok")).toHaveCount(1); // as expected
+  await expect(oam.locator(".wire-seen.bad")).toHaveCount(1); // one tag, two expected
   await expect(oam.locator(".wire-seen.bad").first()).toHaveAttribute("title", "want 2101,101");
   // The wire failure is a failure: the Fail tile counts it.
   await expect(page.locator(".stat").filter({ hasText: "Fail" })).toContainText("1");
@@ -128,8 +130,8 @@ test("the flow lists show each flow's tags and its OAM's, both ways, red where t
   for (const s of (noOAM.status as { services: { oam?: unknown[] }[] }).services) s.oam = [];
   await mockAgent(page, ping({ data: "2101,101", oam: "2101" }), () => undefined, { more: [noOAM] });
   await page.goto("/#/a/a1/traffic");
-  await expect(page.locator(".wire-cell .wire-none.warn")).toHaveCount(2);
-  await expect(page.locator(".wire-cell .wire-seen.ok")).toHaveCount(2);
+  await expect(page.locator(".wire-cell .wire-none.warn")).toHaveCount(2); // each way: none isn't shown once
+  await expect(page.locator(".wire-cell .wire-seen.ok")).toHaveCount(1);
 });
 
 test("the form calls the wire fields what they are: what's expected", async ({ page }) => {

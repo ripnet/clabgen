@@ -197,6 +197,13 @@ function Stacks({ c }: { c: Class }) {
   );
 }
 
+// sameBothWays: the two directions show alike (the same stacks, old or not,
+// and the same verdict), so a list can show them once.
+function sameBothWays(a: Class, b: Class) {
+  const key = (c: Class) => c.seen.map((s) => `${s.tags}${s.stale ? "~" : ""}`).sort().join(" ");
+  return a.seen.length > 0 && a.verdict === b.verdict && a.expect === b.expect && key(a) === key(b);
+}
+
 // WireCell is a flow's wire in a list: the tags of its data and of its
 // service's OAM, each way, red where they aren't what it expects.
 export function WireCell({ v }: { v?: WireVerdict }) {
@@ -207,10 +214,19 @@ export function WireCell({ v }: { v?: WireVerdict }) {
       {(["data", "oam"] as const).map((k) => (
         <div key={k} className="wire-cell-line">
           <span className="wire-k">{k === "data" ? "Data" : "OAM"}</span>
-          <span className="wire-dir" title="from the flow's device">→</span>
-          <Stacks c={d["a-to-z"][k]} />
-          <span className="wire-dir" title="back">←</span>
-          <Stacks c={d["z-to-a"][k]} />
+          {sameBothWays(d["a-to-z"][k], d["z-to-a"][k]) ? (
+            <>
+              <span className="wire-dir" title="both ways: from the flow's device and back">⇄</span>
+              <Stacks c={d["a-to-z"][k]} />
+            </>
+          ) : (
+            <>
+              <span className="wire-dir" title="from the flow's device">→</span>
+              <Stacks c={d["a-to-z"][k]} />
+              <span className="wire-dir" title="back">←</span>
+              <Stacks c={d["z-to-a"][k]} />
+            </>
+          )}
         </div>
       ))}
     </div>
