@@ -169,6 +169,13 @@ func (f *flow) Status() any {
 	return s
 }
 
+// Brief is the status without its timeline and recent packets, for lists.
+func (f *flow) Brief() any {
+	s := f.Status().(Status)
+	s.Trim()
+	return s
+}
+
 func (f *flow) Action(ctx context.Context, name string, args any) (any, error) {
 	return f.Flow.Action(ctx, name, args)
 }

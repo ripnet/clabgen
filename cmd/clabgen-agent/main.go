@@ -60,6 +60,7 @@ func main() {
 		fmt.Println(version.Version)
 		return
 	}
+	reapChildren()
 
 	var lvl slog.Level
 	if err := lvl.UnmarshalText([]byte(*logLevel)); err != nil {

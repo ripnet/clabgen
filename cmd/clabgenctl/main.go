@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -1529,7 +1530,9 @@ func pingCmd() *cobra.Command {
 			"  clabgenctl ping v400 192.0.2.9 --keep    # leave the flow (ping-v400) running",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+			// Killed (timeout, a closed terminal) as well as Ctrl-C: the
+			// temporary flow is deleted either way.
+			c, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()
 			cl := client()
 			name := "ping-" + args[0]

@@ -140,3 +140,37 @@ test("the form calls the wire fields what they are: what's expected", async ({ p
   await expect(nav.getByRole("button", { name: /expected on the wire/ })).toBeVisible();
   await expect(nav.getByRole("button", { name: /^wire/ })).toHaveCount(0);
 });
+
+test("OAM a reused label carried before the flow isn't the flow's; an old stack is shown, not judged", async ({ page }) => {
+  const flow = (tags: string, first_s: number, last_s: number) => ({ flow_id: "55a7d087", kind: "icmp", tags, src: "02:00:00:00:0a:01", ip_src: "192.168.101.1", count: 20, first_s, last_s });
+  const old = { kind: "CCM", level: 4, mep_id: 1, ma: "string(DOMAIN4)/string(E2050)", tags: "2050", count: 400, first_s: 900, last_s: 300 };
+  const reused = {
+    ...monitor,
+    status: {
+      ...(monitor.status as Record<string, unknown>),
+      // Before this flow, the label carried another service (E2050), and the
+      // flow itself first went with one tag too many.
+      services: [svc(524286, peA, peB, [flow("2101,2101,101", 120, 60), flow("2101,101", 50, 0.3)], [old, { ...ccm("2101"), first_s: 119 }])],
+    },
+  } as unknown as Protocol;
+  await mockAgent(page, ping({ data: "2101,101", oam: "2101", direction: "a-to-z" }), () => undefined, { more: [reused] });
+  await page.goto("/#/a/a1/p/ping-2101");
+  await expect(page.locator(".wire-head")).toContainText("pass");
+  const row = page.locator(".wire-table tbody tr").filter({ hasText: "a-to-z" });
+  await expect(row.locator(".wire-seen.stale")).toContainText("old");
+  await expect(row.locator(".wire-seen.ok")).toHaveCount(2); // data now, and E2101's CCMs
+  await expect(row).not.toContainText("2050");
+});
+
+test("Clear monitors clears every monitor", async ({ page }) => {
+  await mockAgent(page, ping({ data: "2101,101" }), () => undefined, { more: [monitor] });
+  const cleared: string[] = [];
+  await page.route("**/agents/a1/*/RunProtocolAction", (r) => {
+    const req = r.request().postDataJSON() as { name: string; action: string };
+    cleared.push(`${req.name} ${req.action}`);
+    return r.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
+  await page.goto("/#/a/a1/p/ping-2101");
+  await page.locator(".wire-head-row").getByRole("button", { name: /Clear monitors/ }).click();
+  await expect.poll(() => cleared).toEqual(["mon clear"]);
+});

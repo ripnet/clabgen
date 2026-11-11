@@ -1,5 +1,6 @@
 import { href } from "../router";
-import { byDirection, judge, stackParts, useMonitors, type Class, type Expect, type Service, type WireVerdict } from "../wire";
+import { useState } from "react";
+import { byDirection, clearMonitors, judge, stackParts, useMonitors, type Class, type Expect, type Service, type StackCount, type WireVerdict } from "../wire";
 
 const dirText: Record<string, string> = { "a-to-z": "from this flow's device", "z-to-a": "back (replies)" };
 
@@ -58,6 +59,11 @@ export function Layout({ s, tags }: { s: Service; tags?: string }) {
   );
 }
 
+// seenClass colours a stack against what's expected; an old one (not seen
+// lately, while another is) isn't judged.
+const seenClass = (c: Class, s: StackCount) => (s.stale ? "stale" : c.expect ? (s.tags === c.expect ? "ok" : "bad") : "");
+const staleTitle = (s: StackCount) => `×${s.count}, last seen ${Math.round(s.last_s)} s ago, before the stacks seen now: not judged`;
+
 function ClassCell({ c }: { c: Class }) {
   if (!c.seen.length)
     return c.expect ? (
@@ -70,8 +76,9 @@ function ClassCell({ c }: { c: Class }) {
   return (
     <span className="wire-class">
       {c.seen.map((s) => (
-        <span key={s.tags} className={`wire-seen ${c.expect ? (s.tags === c.expect ? "ok" : "bad") : ""}`}>
+        <span key={s.tags} className={`wire-seen ${seenClass(c, s)}`} title={s.stale ? staleTitle(s) : undefined}>
           <Tags tags={s.tags} /> <span className="muted small-note">×{s.count.toLocaleString()}</span>
+          {s.stale && <span className="muted small-note"> · old</span>}
         </span>
       ))}
       {c.verdict === "fail" && (
@@ -88,15 +95,29 @@ function ClassCell({ c }: { c: Class }) {
 // against its wire expectation.
 export function WireSection({ flowId, from, expect }: { flowId: string; from: { mac?: string; ip?: string }; expect?: Expect }) {
   const { list, loading } = useMonitors();
+  const [clearing, setClearing] = useState(false);
   if (!list.length && !expect) return null;
   const v = judge(flowId, from, expect, list);
   const seen = v.rows.some((r) => r.monitor);
   if (!seen && !expect) return null;
   return (
     <div className="wire-section">
-      <h4 className="wire-head">
-        Wire {v.verdict && <span className={`verdict ${v.verdict}`}>{v.verdict}</span>}
-      </h4>
+      <div className="wire-head-row">
+        <h4 className="wire-head">Wire {v.verdict && <span className={`verdict ${v.verdict}`}>{v.verdict}</span>}</h4>
+        {list.length > 0 && (
+          <button
+            className="btn small"
+            disabled={clearing}
+            onClick={() => {
+              setClearing(true);
+              clearMonitors(list).finally(() => setClearing(false));
+            }}
+            title="Clear what every monitor saw (all flows), for a fresh verdict after a change"
+          >
+            ↺ Clear monitors
+          </button>
+        )}
+      </div>
       {expect && (
         <p className="muted small-note">
           Expected inside the service: data {expect.data ? <Tags tags={expect.data} /> : "not checked"}, OAM {expect.oam ? <Tags tags={expect.oam} /> : "not checked"}
@@ -168,7 +189,7 @@ function Stacks({ c }: { c: Class }) {
   return (
     <>
       {c.seen.map((s) => (
-        <span key={s.tags} className={`wire-seen ${c.expect ? (s.tags === c.expect ? "ok" : "bad") : ""}`} title={c.expect && s.tags !== c.expect ? `want ${c.expect}` : `×${s.count}`}>
+        <span key={s.tags} className={`wire-seen ${seenClass(c, s)}`} title={s.stale ? staleTitle(s) : c.expect && s.tags !== c.expect ? `want ${c.expect}` : `×${s.count}`}>
           <Tags tags={s.tags} />
         </span>
       ))}

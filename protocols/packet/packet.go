@@ -440,6 +440,13 @@ func (f *stream) Status() any {
 	return s
 }
 
+// Brief is the status without its timeline and recent packets, for lists.
+func (f *stream) Brief() any {
+	s := f.Status().(ipflow.Base)
+	s.Trim()
+	return s
+}
+
 // describe names the packet: "Ethernet/IPv4/UDP" and its endpoints.
 func describe(ls []Layer) (kind, dst, src string) {
 	var names []string

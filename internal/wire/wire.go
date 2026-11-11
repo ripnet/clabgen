@@ -240,6 +240,7 @@ type Seen struct {
 	IPSrc  string  `json:"ip_src,omitempty"`
 	IPDst  string  `json:"ip_dst,omitempty"`
 	Count  uint64  `json:"count"`
+	FirstS float64 `json:"first_s,omitempty"` // seconds since first seen
 	LastS  float64 `json:"last_s"`
 }
 
@@ -288,9 +289,22 @@ type Class struct {
 }
 
 type StackCount struct {
-	Tags  string `json:"tags"`
-	Count uint64 `json:"count"`
+	Tags  string  `json:"tags"`
+	Count uint64  `json:"count"`
+	LastS float64 `json:"last_s"`
+	// Stale: not seen for StaleAfter while another stack of the class is,
+	// so from before a change (a service rebuilt); shown, not judged.
+	Stale bool `json:"stale,omitempty"`
 }
+
+// StaleAfter is how long a stack can go unseen, while another is seen,
+// before it no longer counts.
+const StaleAfter = 10.0 // seconds
+
+// since tells whether an entry was seen since a flow first was, given ages
+// in seconds: OAM in a label from before the flow is another service's (the
+// router reused the label). An unknown first sighting (0) takes everything.
+func since(o Seen, first float64) bool { return first == 0 || o.LastS <= first }
 
 // direction tells which way a flow's frame went, from its inner addresses.
 func (f Flow) direction(s Seen) string {
@@ -322,6 +336,7 @@ func Judge(f Flow, mons []Monitor) Verdict {
 		for i := range m.Status.Services {
 			svc := &m.Status.Services[i]
 			by := map[string]*Row{}
+			first := map[string]float64{} // when the flow was first seen, per direction
 			for _, s := range svc.Data {
 				if s.FlowID != f.FlowID {
 					continue
@@ -333,7 +348,8 @@ func Judge(f Flow, mons []Monitor) Verdict {
 						Data: Class{Expect: wantData}, OAM: Class{Expect: wantOAM}}
 					by[d] = r
 				}
-				r.Data.Seen = addStack(r.Data.Seen, s.Tags, s.Count)
+				r.Data.Seen = addStack(r.Data.Seen, s.Tags, s.Count, s.LastS)
+				first[d] = max(first[d], s.FirstS)
 			}
 			for _, d := range []string{AtoZ, ZtoA} {
 				r := by[d]
@@ -341,7 +357,12 @@ func Judge(f Flow, mons []Monitor) Verdict {
 					continue
 				}
 				for _, o := range svc.OAM {
-					r.OAM.Seen = addStack(r.OAM.Seen, o.Tags, o.Count)
+					if since(o, first[d]) {
+						r.OAM.Seen = addStack(r.OAM.Seen, o.Tags, o.Count, o.LastS)
+						if o.MA != "" {
+							mas[o.MA] = true
+						}
+					}
 				}
 				if !contains(dirs, d) {
 					r.Data.Expect, r.OAM.Expect = "", ""
@@ -349,11 +370,6 @@ func Judge(f Flow, mons []Monitor) Verdict {
 				judgeRow(r)
 				seenDir[d], monDir[d] = true, true
 				svcs[svc] = true
-				for _, o := range svc.OAM {
-					if o.MA != "" {
-						mas[o.MA] = true
-					}
-				}
 				rows = append(rows, *r)
 			}
 		}
@@ -373,7 +389,7 @@ func Judge(f Flow, mons []Monitor) Verdict {
 					Data: Class{Expect: wantData}, OAM: Class{Expect: wantOAM}}
 				for _, o := range svc.OAM {
 					if mas[o.MA] {
-						r.OAM.Seen = addStack(r.OAM.Seen, o.Tags, o.Count)
+						r.OAM.Seen = addStack(r.OAM.Seen, o.Tags, o.Count, o.LastS)
 					}
 				}
 				if len(r.OAM.Seen) == 0 {
@@ -435,6 +451,7 @@ func reverseOf(svc *Service, of map[*Service]bool) bool {
 func judgeRow(r *Row) {
 	r.Verdict = ""
 	for _, c := range []*Class{&r.Data, &r.OAM} {
+		markStale(c.Seen)
 		if c.Expect == "" {
 			continue
 		}
@@ -443,7 +460,7 @@ func judgeRow(r *Row) {
 			c.Verdict = Pending
 		}
 		for _, s := range c.Seen {
-			if s.Tags != c.Expect {
+			if s.Tags != c.Expect && !s.Stale {
 				c.Verdict = Fail
 			}
 		}
@@ -458,14 +475,26 @@ func judgeRow(r *Row) {
 	}
 }
 
-func addStack(list []StackCount, tags string, n uint64) []StackCount {
+// markStale marks the stacks not seen for StaleAfter, when another is.
+func markStale(list []StackCount) {
+	fresh := false
+	for _, s := range list {
+		fresh = fresh || s.LastS <= StaleAfter
+	}
+	for i := range list {
+		list[i].Stale = fresh && list[i].LastS > StaleAfter
+	}
+}
+
+func addStack(list []StackCount, tags string, n uint64, last float64) []StackCount {
 	for i := range list {
 		if list[i].Tags == tags {
 			list[i].Count += n
+			list[i].LastS = min(list[i].LastS, last)
 			return list
 		}
 	}
-	return append(list, StackCount{Tags: tags, Count: n})
+	return append(list, StackCount{Tags: tags, Count: n, LastS: last})
 }
 
 func contains(l []string, s string) bool {

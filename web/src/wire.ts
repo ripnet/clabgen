@@ -17,6 +17,7 @@ export type Seen = {
   ip_src?: string;
   ip_dst?: string;
   count: number;
+  first_s?: number;
   last_s: number;
 };
 export type Service = {
@@ -53,7 +54,7 @@ export function useMonitors(): { list: MonitorAt[]; loading: boolean } {
   const key = agents.map((a) => a.id).join(",");
   const p = usePoll(
     async () => {
-      const res = await Promise.allSettled(agents.map((a) => client(a.id).listProtocols({ withStatus: true }, { timeoutMs: 3000 })));
+      const res = await Promise.allSettled(agents.map((a) => client(a.id).listProtocols({ withStatus: true, brief: true }, { timeoutMs: 3000 })));
       const out: MonitorAt[] = [];
       res.forEach((r, i) => {
         if (r.status !== "fulfilled") return;
@@ -67,6 +68,12 @@ export function useMonitors(): { list: MonitorAt[]; loading: boolean } {
     2000,
   );
   return { list: p.data ?? [], loading: p.loading };
+}
+
+// clearMonitors clears every monitor: what they saw so far, for a fresh
+// verdict after a change.
+export async function clearMonitors(mons: MonitorAt[]) {
+  await Promise.all(mons.map((m) => client(m.agentId).runProtocolAction({ name: m.name, action: "clear" })));
 }
 
 // ---- stacks ----
@@ -98,7 +105,9 @@ export function normalStack(s: string | undefined): string | null {
 
 // ---- judging ----
 
-export type StackCount = { tags: string; count: number };
+// stale: not seen for STALE_AFTER s while another stack of its class is,
+// so from before a change; shown, not judged.
+export type StackCount = { tags: string; count: number; last_s: number; stale?: boolean };
 export type Class = { expect: string; seen: StackCount[]; verdict: string };
 export type Row = {
   direction: string;
@@ -110,15 +119,30 @@ export type Row = {
 };
 export type WireVerdict = { verdict: string; rows: Row[] };
 
-const add = (l: StackCount[], tags: string, n: number) => {
+export const STALE_AFTER = 10; // seconds
+
+const add = (l: StackCount[], tags: string, n: number, last: number) => {
   const x = l.find((s) => s.tags === tags);
-  if (x) x.count += n;
-  else l.push({ tags, count: n });
+  if (x) {
+    x.count += n;
+    x.last_s = Math.min(x.last_s, last);
+  } else l.push({ tags, count: n, last_s: last });
 };
 
+function markStale(l: StackCount[]) {
+  const fresh = l.some((s) => s.last_s <= STALE_AFTER);
+  for (const s of l) s.stale = fresh && s.last_s > STALE_AFTER;
+}
+
+// since: OAM seen since the flow first was (ages in seconds); from before,
+// it's another service's (the router reused the label). An unknown first
+// sighting (0) takes everything.
+const since = (o: Seen, first: number) => !first || o.last_s <= first;
+
 function judgeClass(c: Class) {
+  markStale(c.seen);
   if (!c.expect) return;
-  c.verdict = c.seen.length === 0 ? "pending" : c.seen.every((s) => s.tags === c.expect) ? "pass" : "fail";
+  c.verdict = c.seen.length === 0 ? "pending" : c.seen.every((s) => s.tags === c.expect || s.stale) ? "pass" : "fail";
 }
 
 function rowVerdict(r: Row) {
@@ -152,6 +176,7 @@ export function judge(flowId: string, from: { mac?: string; ip?: string }, expec
     const svcs = new Set<Service>(); // services the flow was seen in
     for (const svc of m.status.services) {
       const by = new Map<string, Row>();
+      const first = new Map<string, number>(); // when the flow was first seen, per direction
       for (const s of svc.data ?? []) {
         if (s.flow_id !== flowId) continue;
         const d = dirOf(s);
@@ -161,17 +186,21 @@ export function judge(flowId: string, from: { mac?: string; ip?: string }, expec
           r = { direction: d, monitor: m, service: svc, data: { expect: checked ? wantData : "", seen: [], verdict: "" }, oam: { expect: checked ? wantOAM : "", seen: [], verdict: "" }, verdict: "" };
           by.set(d, r);
         }
-        add(r.data.seen, s.tags, s.count);
+        add(r.data.seen, s.tags, s.count, s.last_s);
+        first.set(d, Math.max(first.get(d) ?? 0, s.first_s ?? 0));
       }
       for (const r of by.values()) {
-        for (const o of svc.oam ?? []) add(r.oam.seen, o.tags, o.count);
+        for (const o of svc.oam ?? [])
+          if (since(o, first.get(r.direction) ?? 0)) {
+            add(r.oam.seen, o.tags, o.count, o.last_s);
+            if (o.ma) mas.add(o.ma);
+          }
         judgeClass(r.data);
         judgeClass(r.oam);
         rowVerdict(r);
         seenDir.add(r.direction);
         monDir.add(r.direction);
         svcs.add(svc);
-        for (const o of svc.oam ?? []) if (o.ma) mas.add(o.ma);
         rows.push(r);
       }
     }
@@ -182,7 +211,7 @@ export function judge(flowId: string, from: { mac?: string; ip?: string }, expec
       for (const svc of m.status.services) {
         if (svcs.has(svc) || svc.label === undefined || ![...svcs].some((o) => o.src === svc.dst && o.dst === svc.src)) continue;
         const r: Row = { direction: d, monitor: m, service: svc, data: { expect: wantData, seen: [], verdict: "" }, oam: { expect: wantOAM, seen: [], verdict: "" }, verdict: "" };
-        for (const o of svc.oam ?? []) if (o.ma && mas.has(o.ma)) add(r.oam.seen, o.tags, o.count);
+        for (const o of svc.oam ?? []) if (o.ma && mas.has(o.ma)) add(r.oam.seen, o.tags, o.count, o.last_s);
         if (!r.oam.seen.length) continue;
         judgeClass(r.data);
         judgeClass(r.oam);
@@ -244,7 +273,8 @@ export function byDirection(v: WireVerdict): Record<"a-to-z" | "z-to-a", DirSumm
       [d.oam, r.oam],
     ] as const) {
       to.expect ||= from.expect;
-      for (const s of from.seen) add(to.seen, s.tags, s.count);
+      for (const s of from.seen) add(to.seen, s.tags, s.count, s.last_s);
+      markStale(to.seen);
       to.verdict = worst(to.verdict, from.verdict);
     }
   }

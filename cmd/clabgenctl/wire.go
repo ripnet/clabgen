@@ -24,7 +24,7 @@ type wireFlow struct {
 }
 
 func wireCmd() *cobra.Command {
-	var services bool
+	var services, clearAll bool
 	cmd := &cobra.Command{
 		Use:   "wire [FLOW...]",
 		Short: "VLAN tags of flows and their OAM on monitored links, checked against the flows' wire expectations",
@@ -32,10 +32,12 @@ func wireCmd() *cobra.Command {
 and checks each flow with a wire expectation, or seen by a monitor: per
 direction, the VLAN tags its frames carried inside the service, and those of the
 CFM/Y.1731 frames in the same service. --services lists everything each
-monitor saw instead, flows or not.`,
+monitor saw instead, flows or not. --clear clears every monitor, for a fresh
+verdict after a change.`,
 		Example: `  clabgenctl --lab cc wire
   clabgenctl --lab cc wire ping-2101 -o json
-  clabgenctl --lab cc wire --services`,
+  clabgenctl --lab cc wire --services
+  clabgenctl --lab cc wire --clear`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			agents, err := convergenceAgents()
 			if err != nil {
@@ -49,9 +51,10 @@ monitor saw instead, flows or not.`,
 				has   bool
 			}
 			var flows []flowRef
+			cleared := 0
 			for _, a := range agents {
 				c, cancel := ctx()
-				r, err := a.c.ListProtocols(c, connect.NewRequest(&v1.ListProtocolsRequest{WithStatus: true}))
+				r, err := a.c.ListProtocols(c, connect.NewRequest(&v1.ListProtocolsRequest{WithStatus: true, Brief: true}))
 				if err != nil {
 					cancel()
 					return fmt.Errorf("%s: %w", a.name, err)
@@ -70,6 +73,17 @@ monitor saw instead, flows or not.`,
 						continue
 					}
 					st := p.Status.AsMap()
+					if p.Type == "monitor" && clearAll {
+						c, cancel := ctx()
+						_, err := a.c.RunProtocolAction(c, connect.NewRequest(&v1.RunProtocolActionRequest{Name: p.Name, Action: "clear"}))
+						cancel()
+						if err != nil {
+							return fmt.Errorf("%s/%s: %w", a.name, p.Name, err)
+						}
+						fmt.Fprintf(cmd.OutOrStdout(), "cleared %s/%s\n", a.name, p.Name)
+						cleared++
+						continue
+					}
 					if p.Type == "monitor" {
 						var ms wire.Status
 						b, _ := json.Marshal(st)
@@ -99,6 +113,12 @@ monitor saw instead, flows or not.`,
 					}
 					flows = append(flows, flowRef{agent: a.name, p: p, f: f, has: has})
 				}
+			}
+			if clearAll {
+				if cleared == 0 {
+					return fmt.Errorf("no monitor to clear")
+				}
+				return nil
 			}
 			if services {
 				return printWireServices(cmd, mons)
@@ -161,6 +181,7 @@ monitor saw instead, flows or not.`,
 			return w.Flush()
 		}}
 	cmd.Flags().BoolVar(&services, "services", false, "list every service the monitors saw instead")
+	cmd.Flags().BoolVar(&clearAll, "clear", false, "clear every monitor (what they saw so far) instead")
 	return cmd
 }
 
@@ -179,7 +200,10 @@ func classText(c wire.Class) string {
 	var seen []string
 	for _, s := range c.Seen {
 		mark := ""
-		if c.Expect != "" {
+		switch {
+		case s.Stale:
+			mark = fmt.Sprintf(" (old: %.0f s ago, not judged)", s.LastS)
+		case c.Expect != "":
 			mark = " ✓"
 			if s.Tags != c.Expect {
 				mark = " ✗"

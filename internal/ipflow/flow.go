@@ -563,6 +563,10 @@ type Base struct {
 	Wire *wire.Expect `json:"wire,omitempty"`
 }
 
+// Trim leaves out what only a flow's own page shows, its timeline and its
+// recent packets: most of a status, and lists poll every flow's.
+func (b *Base) Trim() { b.Recent, b.Timeline = nil, nil }
+
 // BaseStatus returns the shared status; the flow type sets Kind and may
 // add fields.
 func (f *Flow) BaseStatus() Base {

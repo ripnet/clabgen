@@ -148,8 +148,10 @@ ce-a/evpl-ping  fail     a-to-z     tap/core  524284  3162,163 ×76 ✗ (want 16
 ```
 
 What's seen adds up until the monitor is cleared: with the SAP back, clear it
-(`clabgenctl --lab wire -s tap proto run core clear`, or its page's Clear)
-for a fresh verdict. Clear it before each configuration you test.
+(`clabgenctl --lab wire wire --clear`, or **Clear monitors** in the Wire
+section) for a fresh verdict. Without that, the wrong stack shows as old ten
+seconds after the right one is back, and stops counting. Clear it before each
+configuration you test.
 
 Other things to try:
 

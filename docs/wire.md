@@ -96,9 +96,22 @@ OAM the other way round with the same MAs (CCMs from the far end). A one-way
 flow checking `data` both ways stays pending: use `direction: a-to-z`.
 
 The monitor can be on any agent: flow IDs are unique in a lab, and the UI and
-`clabgenctl wire` look at every monitor they know of. What's seen accumulates
-until the monitor is cleared: clear it (its `clear` action) before each
-configuration you test.
+`clabgenctl wire` look at every monitor they know of.
+
+What's seen accumulates until the monitor is cleared, with two exceptions so
+that a change doesn't leave a flow failing on what came before it:
+
+- **A reused label.** Routers hand out labels again: after a service is
+  rebuilt, its old label may go to another one. OAM in the label from before
+  the flow was first seen there isn't counted as the flow's.
+- **An old stack.** A stack that hasn't been seen for 10 s, while another one
+  of the same kind (data or OAM) is, is from before a change: it's shown,
+  struck through and marked old, and not judged. On its own (the flow
+  stopped), it still is.
+
+For a clean verdict after a change, clear the monitors: **Clear monitors** on
+the Flows page or a flow's Wire section, or `clabgenctl --lab LAB wire --clear`
+(every monitor of the lab).
 
 ## In the UI
 
@@ -124,7 +137,7 @@ ce-a/evpl-ping  pass     a-to-z     tap/core  524284  163 ×61 ✓       163 ×1
 ```
 
 `wire FLOW...` for some flows, `-o json` for scripts, `--services` for
-everything each monitor saw, flows or not.
+everything each monitor saw, flows or not, `--clear` to clear every monitor.
 
 ## Not yet
 

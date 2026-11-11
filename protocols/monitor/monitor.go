@@ -135,8 +135,8 @@ type seenKey struct {
 }
 
 type seen struct {
-	count uint64
-	last  time.Time
+	count       uint64
+	first, last time.Time
 }
 
 func (s *session) reset() {
@@ -232,7 +232,7 @@ func (s *session) count(m map[seenKey]*seen, order *[]seenKey, k seenKey, ts tim
 		s.truncated = true
 		return
 	}
-	m[k] = &seen{count: 1, last: ts}
+	m[k] = &seen{count: 1, first: ts, last: ts}
 	*order = append(*order, k)
 }
 
@@ -291,7 +291,7 @@ func seenList(m map[seenKey]*seen, order []seenKey, age func(time.Time) float64)
 	var out []wire.Seen
 	for _, k := range order {
 		e := m[k]
-		w := wire.Seen{Kind: k.kind, Reply: k.reply, MA: k.ma, Tags: k.tags, Count: e.count, LastS: age(e.last)}
+		w := wire.Seen{Kind: k.kind, Reply: k.reply, MA: k.ma, Tags: k.tags, Count: e.count, FirstS: age(e.first), LastS: age(e.last)}
 		if k.flowID != 0 {
 			w.FlowID = flowIDString(k.flowID)
 		}

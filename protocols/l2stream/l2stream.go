@@ -367,6 +367,13 @@ func (f *stream) Status() any {
 	return s
 }
 
+// Brief is the status without its timeline and recent packets, for lists.
+func (f *stream) Brief() any {
+	s := f.Status().(ipflow.Base)
+	s.Trim()
+	return s
+}
+
 func (f *stream) Action(_ context.Context, name string, _ any) (any, error) {
 	switch name {
 	case "start":

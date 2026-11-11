@@ -670,11 +670,14 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .wire-class { display: flex; flex-direction: column; gap: 3px; }
 .wire-seen.ok .wire-tag { background: var(--ok-soft); color: var(--ok); }
 .wire-seen.bad .wire-tag { background: var(--bad-soft); color: var(--bad); }
+.wire-seen.stale .wire-tag { opacity: 0.55; text-decoration: line-through; }
 .wire-list { display: flex; flex-direction: column; gap: 3px; }
 .wire-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 8px; }
 .wire-filter .input { max-width: 320px; }
 .wire-table td { vertical-align: top; }
 .wire-head { display: flex; align-items: center; gap: 8px; }
+.wire-head-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 18px 0 8px; }
+.wire-head-row .wire-head { margin: 0; }
 .cell-wrap .small-note { margin-top: 2px; }
 .keep { white-space: nowrap; }
 .wire-cell { display: flex; flex-direction: column; gap: 3px; }

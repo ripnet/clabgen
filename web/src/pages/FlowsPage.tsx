@@ -1,5 +1,5 @@
 import { WireCell } from "../components/Wire";
-import { combined, judgeStatus, useMonitors } from "../wire";
+import { clearMonitors, combined, judgeStatus, useMonitors } from "../wire";
 import { useEffect, useMemo, useState } from "react";
 import type { JsonObject } from "@bufbuild/protobuf";
 import { client, errorText } from "../api";
@@ -110,6 +110,7 @@ export function FlowsPage() {
       for (const r of rows) byAgent.set(r.agentId, [...(byAgent.get(r.agentId) ?? []), r]);
       for (const [agentId, rs] of byAgent) await clearFlows(agentId, rs.map((r) => ({ name: r.p.name, flowId: (r.p.status as { flow_id?: string } | undefined)?.flow_id })));
     }, "Statistics cleared").then(() => setTick((t) => t + 1));
+  const clearWire = () => run(() => clearMonitors(mons), "Monitors cleared");
 
   return (
     <div className="page">
@@ -157,6 +158,11 @@ export function FlowsPage() {
             <button className="btn" disabled={busy || !rows.length} onClick={clearAll} title="Reset the listed flows' statistics and checks, here and at their receivers">
               ↺ Clear all stats
             </button>
+            {mons.length > 0 && (
+              <button className="btn" disabled={busy} onClick={clearWire} title="Clear what every monitor saw, for fresh wire verdicts after a change">
+                ↺ Clear monitors
+              </button>
+            )}
           </div>
         </div>
         {all.length === 0 ? (

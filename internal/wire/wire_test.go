@@ -107,3 +107,50 @@ func TestJudge(t *testing.T) {
 		t.Fatalf("no expectation: %+v", v)
 	}
 }
+
+// A label the router gave another service before: its OAM from then isn't
+// the flow's, and neither are its MAs.
+func TestJudgeReusedLabel(t *testing.T) {
+	m := Status{Services: []Service{
+		{Label: u32(524286), Src: "1c:00:00:00:00:01", Dst: "1c:00:00:00:00:02",
+			Data: []Seen{{FlowID: "new", Kind: "icmp", Tags: "2121", Src: "02:00:00:00:00:0a", Count: 60, FirstS: 60, LastS: 0.5}},
+			OAM: []Seen{
+				{Kind: "CCM", MA: "E2101", Tags: "2101", Count: 900, FirstS: 1000, LastS: 120},
+				{Kind: "CCM", MA: "E2121", Tags: "2121", Count: 60, FirstS: 61, LastS: 0.4},
+			}},
+		{Label: u32(524200), Src: "1c:00:00:00:00:02", Dst: "1c:00:00:00:00:01",
+			OAM: []Seen{{Kind: "CCM", MA: "E2101", Tags: "2101", Count: 900, LastS: 0.2}, {Kind: "CCM", MA: "E2121", Tags: "2121", Count: 60, LastS: 0.3}}},
+	}}
+	f := Flow{FlowID: "new", MAC: "02:00:00:00:00:0a", Expect: Expect{Data: "2121", OAM: "2121"}}
+	v := Judge(f, []Monitor{{Name: "m", Status: m}})
+	// No replies, so z-to-a's data is pending; its OAM is found by MA.
+	if v.Verdict != Pending || len(v.Rows) != 2 || v.Rows[0].Verdict != Pass {
+		t.Fatalf("%+v", v)
+	}
+	if back := v.Rows[1]; back.OAM.Verdict != Pass || len(back.OAM.Seen) != 1 || back.OAM.Seen[0].Tags != "2121" {
+		t.Fatalf("back: only E2121's OAM is the flow's: %+v", back)
+	}
+	// Without first sightings (an older agent), everything counts.
+	m.Services[0].Data[0].FirstS = 0
+	if v := Judge(f, []Monitor{{Name: "m", Status: m}}); v.Verdict != Fail {
+		t.Fatalf("no first_s: %+v", v)
+	}
+}
+
+// A stack not seen for a while, while another is, is from before a change:
+// shown, not judged. Alone, it still is (the flow stopped).
+func TestJudgeStale(t *testing.T) {
+	svc := func(seen ...Seen) Status {
+		return Status{Services: []Service{{Label: u32(9), Src: "1c:00:00:00:00:01", Dst: "1c:00:00:00:00:02", Data: seen}}}
+	}
+	f := Flow{FlowID: "f", MAC: "02:00:00:00:00:0a", Expect: Expect{Data: "163", Direction: AtoZ}}
+	old := Seen{FlowID: "f", Kind: "icmp", Tags: "3162,163", Src: f.MAC, Count: 50, FirstS: 100, LastS: 40}
+	now := Seen{FlowID: "f", Kind: "icmp", Tags: "163", Src: f.MAC, Count: 30, FirstS: 30, LastS: 0.5}
+	v := Judge(f, []Monitor{{Name: "m", Status: svc(old, now)}})
+	if v.Verdict != Pass || len(v.Rows[0].Data.Seen) != 2 || !v.Rows[0].Data.Seen[0].Stale || v.Rows[0].Data.Seen[1].Stale {
+		t.Fatalf("stale: %+v", v)
+	}
+	if v := Judge(f, []Monitor{{Name: "m", Status: svc(old)}}); v.Verdict != Fail || v.Rows[0].Data.Seen[0].Stale {
+		t.Fatalf("alone: %+v", v)
+	}
+}
