@@ -60,9 +60,15 @@ export function Layout({ s, tags }: { s: Service; tags?: string }) {
 }
 
 // seenClass colours a stack against what's expected; an old one (not seen
-// lately, while another is) isn't judged.
-const seenClass = (c: Class, s: StackCount) => (s.stale ? "stale" : c.expect ? (s.tags === c.expect ? "ok" : "bad") : "");
+// lately, while another is) isn't judged, and nothing in an idle class (none
+// of it seen lately) is.
+const seenClass = (c: Class, s: StackCount) => (s.stale ? "stale" : c.idle_s ? "idle" : c.expect ? (s.tags === c.expect ? "ok" : "bad") : "");
 const staleTitle = (s: StackCount) => `×${s.count}, last seen ${Math.round(s.last_s)} s ago, before the stacks seen now: not judged`;
+const idleText = (secs: number) => `not seen for ${Math.round(secs)} s`;
+const idleTitle = (c: Class, s: StackCount) =>
+  `×${s.count}, ${idleText(c.idle_s!)}: ${c.expect ? "pending, not judged on what was seen before" : "not current"}`;
+const seenTitle = (c: Class, s: StackCount) =>
+  s.stale ? staleTitle(s) : c.idle_s ? idleTitle(c, s) : c.expect && s.tags !== c.expect ? `want ${c.expect}` : `×${s.count}`;
 
 function ClassCell({ c }: { c: Class }) {
   if (!c.seen.length)
@@ -76,11 +82,12 @@ function ClassCell({ c }: { c: Class }) {
   return (
     <span className="wire-class">
       {c.seen.map((s) => (
-        <span key={s.tags} className={`wire-seen ${seenClass(c, s)}`} title={s.stale ? staleTitle(s) : undefined}>
+        <span key={s.tags} className={`wire-seen ${seenClass(c, s)}`} title={s.stale || c.idle_s ? seenTitle(c, s) : undefined}>
           <Tags tags={s.tags} /> <span className="muted small-note">×{s.count.toLocaleString()}</span>
           {s.stale && <span className="muted small-note"> · old</span>}
         </span>
       ))}
+      {c.idle_s && <span className="wire-idle-note small-note">{idleText(c.idle_s)}</span>}
       {c.verdict === "fail" && (
         <span className="muted small-note">
           want <Tags tags={c.expect} />
@@ -140,7 +147,7 @@ export function WireSection({ flowId, from, expect }: { flowId: string; from: { 
             </thead>
             <tbody>
               {v.rows.map((r, i) => (
-                <tr key={i}>
+                <tr key={i} className={r.idle_s ? "wire-idle" : undefined} title={r.idle_s ? `Nothing of this row seen for ${Math.round(r.idle_s)} s: pending until it's seen again` : undefined}>
                   <td>
                     {r.direction}
                     <div className="muted small-note">{dirText[r.direction]}</div>
@@ -157,6 +164,7 @@ export function WireSection({ flowId, from, expect }: { flowId: string; from: { 
                             {r.service.src} → {r.service.dst}
                           </div>
                         )}
+                        {r.idle_s && <div className="wire-idle-note small-note">{idleText(r.idle_s)}</div>}
                       </>
                     ) : (
                       <span className="muted">not seen</span>
@@ -189,7 +197,7 @@ function Stacks({ c }: { c: Class }) {
   return (
     <>
       {c.seen.map((s) => (
-        <span key={s.tags} className={`wire-seen ${seenClass(c, s)}`} title={s.stale ? staleTitle(s) : c.expect && s.tags !== c.expect ? `want ${c.expect}` : `×${s.count}`}>
+        <span key={s.tags} className={`wire-seen ${seenClass(c, s)}`} title={seenTitle(c, s)}>
           <Tags tags={s.tags} />
         </span>
       ))}
@@ -200,7 +208,7 @@ function Stacks({ c }: { c: Class }) {
 // sameBothWays: the two directions show alike (the same stacks, old or not,
 // and the same verdict), so a list can show them once.
 function sameBothWays(a: Class, b: Class) {
-  const key = (c: Class) => c.seen.map((s) => `${s.tags}${s.stale ? "~" : ""}`).sort().join(" ");
+  const key = (c: Class) => c.seen.map((s) => `${s.tags}${s.stale ? "~" : ""}`).sort().join(" ") + (c.idle_s ? " idle" : "");
   return a.seen.length > 0 && a.verdict === b.verdict && a.expect === b.expect && key(a) === key(b);
 }
 

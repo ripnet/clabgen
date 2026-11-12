@@ -108,7 +108,9 @@ export function normalStack(s: string | undefined): string | null {
 // stale: not seen for STALE_AFTER s while another stack of its class is,
 // so from before a change; shown, not judged.
 export type StackCount = { tags: string; count: number; last_s: number; stale?: boolean };
-export type Class = { expect: string; seen: StackCount[]; verdict: string };
+// idle_s: no stack of the class seen for that many seconds (over IDLE_AFTER):
+// judged pending, not on what it saw before.
+export type Class = { expect: string; seen: StackCount[]; verdict: string; idle_s?: number };
 export type Row = {
   direction: string;
   monitor?: MonitorAt;
@@ -116,10 +118,14 @@ export type Row = {
   data: Class;
   oam: Class;
   verdict: string;
+  idle_s?: number; // nothing of the row seen for that long (the mirror or the flow stopped)
 };
 export type WireVerdict = { verdict: string; rows: Row[] };
 
 export const STALE_AFTER = 10; // seconds
+// IDLE_AFTER: a class unseen this long is judged pending (verdicts are on
+// recent traffic), like wire.IdleAfter.
+export const IDLE_AFTER = 10; // seconds
 
 const add = (l: StackCount[], tags: string, n: number, last: number) => {
   const x = l.find((s) => s.tags === tags);
@@ -139,10 +145,18 @@ function markStale(l: StackCount[]) {
 // sighting (0) takes everything.
 const since = (o: Seen, first: number) => !first || o.last_s <= first;
 
+// idleFor: how long ago the newest stack was seen, when over IDLE_AFTER.
+function idleFor(l: StackCount[]): number | undefined {
+  if (!l.length) return undefined;
+  const newest = Math.min(...l.map((s) => s.last_s));
+  return newest > IDLE_AFTER ? newest : undefined;
+}
+
 function judgeClass(c: Class) {
   markStale(c.seen);
+  c.idle_s = idleFor(c.seen);
   if (!c.expect) return;
-  c.verdict = c.seen.length === 0 ? "pending" : c.seen.every((s) => s.tags === c.expect || s.stale) ? "pass" : "fail";
+  c.verdict = c.seen.length === 0 || c.idle_s ? "pending" : c.seen.every((s) => s.tags === c.expect || s.stale) ? "pass" : "fail";
 }
 
 function rowVerdict(r: Row) {
@@ -154,6 +168,8 @@ function rowVerdict(r: Row) {
     else if (!v) v = "pass";
   }
   r.verdict = v;
+  const seen = [r.data, r.oam].filter((c) => c.seen.length);
+  r.idle_s = seen.length && seen.every((c) => c.idle_s) ? Math.min(...seen.map((c) => c.idle_s!)) : undefined;
 }
 
 // judge checks a flow (its ID, the MAC or IP it sends from) against the
@@ -275,6 +291,7 @@ export function byDirection(v: WireVerdict): Record<"a-to-z" | "z-to-a", DirSumm
       to.expect ||= from.expect;
       for (const s of from.seen) add(to.seen, s.tags, s.count, s.last_s);
       markStale(to.seen);
+      to.idle_s = idleFor(to.seen);
       to.verdict = worst(to.verdict, from.verdict);
     }
   }

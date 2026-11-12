@@ -279,6 +279,9 @@ type Row struct {
 	Data      Class   `json:"data"`
 	OAM       Class   `json:"oam"`
 	Verdict   string  `json:"verdict"`
+	// IdleS: nothing of the row (data or OAM) seen for this many seconds,
+	// over IdleAfter (the mirror stopped, the flow and its OAM too); 0 while seen.
+	IdleS float64 `json:"idle_s,omitempty"`
 }
 
 // Class is data or OAM in a row: the stacks seen, with counts.
@@ -286,6 +289,9 @@ type Class struct {
 	Expect  string       `json:"expect,omitempty"`
 	Seen    []StackCount `json:"seen,omitempty"`
 	Verdict string       `json:"verdict,omitempty"` // empty: not checked
+	// IdleS: no stack of the class seen for this many seconds, over
+	// IdleAfter; it's then judged pending, not on what it saw before.
+	IdleS float64 `json:"idle_s,omitempty"`
 }
 
 type StackCount struct {
@@ -300,6 +306,11 @@ type StackCount struct {
 // StaleAfter is how long a stack can go unseen, while another is seen,
 // before it no longer counts.
 const StaleAfter = 10.0 // seconds
+
+// IdleAfter is how long a class (data or OAM of a row) can go unseen before
+// it's judged pending: verdicts are on recent traffic, so stopping the
+// mirror, or the flow, doesn't keep passing on what was seen before.
+const IdleAfter = 10.0 // seconds
 
 // since tells whether an entry was seen since a flow first was, given ages
 // in seconds: OAM in a label from before the flow is another service's (the
@@ -449,18 +460,27 @@ func reverseOf(svc *Service, of map[*Service]bool) bool {
 }
 
 func judgeRow(r *Row) {
-	r.Verdict = ""
+	r.Verdict, r.IdleS = "", 0
+	idle := true // every class with something seen is idle
 	for _, c := range []*Class{&r.Data, &r.OAM} {
 		markStale(c.Seen)
+		c.IdleS = idleFor(c.Seen)
+		if len(c.Seen) > 0 {
+			if c.IdleS == 0 {
+				idle = false
+			} else if r.IdleS == 0 || c.IdleS < r.IdleS {
+				r.IdleS = c.IdleS
+			}
+		}
 		if c.Expect == "" {
 			continue
 		}
 		c.Verdict = Pass
-		if len(c.Seen) == 0 {
+		if len(c.Seen) == 0 || c.IdleS > 0 {
 			c.Verdict = Pending
 		}
 		for _, s := range c.Seen {
-			if s.Tags != c.Expect && !s.Stale {
+			if s.Tags != c.Expect && !s.Stale && c.IdleS == 0 {
 				c.Verdict = Fail
 			}
 		}
@@ -473,6 +493,25 @@ func judgeRow(r *Row) {
 			r.Verdict = Pass
 		}
 	}
+	if !idle {
+		r.IdleS = 0
+	}
+}
+
+// idleFor is how long ago the newest stack was seen, when that's over
+// IdleAfter; else 0.
+func idleFor(list []StackCount) float64 {
+	if len(list) == 0 {
+		return 0
+	}
+	newest := list[0].LastS
+	for _, s := range list[1:] {
+		newest = min(newest, s.LastS)
+	}
+	if newest > IdleAfter {
+		return newest
+	}
+	return 0
 }
 
 // markStale marks the stacks not seen for StaleAfter, when another is.

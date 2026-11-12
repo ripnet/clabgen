@@ -678,6 +678,9 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .wire-seen.ok .wire-tag { background: var(--ok-soft); color: var(--ok); }
 .wire-seen.bad .wire-tag { background: var(--bad-soft); color: var(--bad); }
 .wire-seen.stale .wire-tag { opacity: 0.55; text-decoration: line-through; }
+.wire-seen.idle .wire-tag { opacity: 0.55; }
+.wire-idle-note { color: var(--text-3); font-style: italic; margin-left: 4px; }
+.wire-table tr.wire-idle td { color: var(--text-3); }
 .wire-list { display: flex; flex-direction: column; gap: 3px; }
 .wire-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 8px; }
 .wire-filter .input { max-width: 320px; }

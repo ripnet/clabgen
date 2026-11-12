@@ -164,6 +164,48 @@ test("OAM a reused label carried before the flow isn't the flow's; an old stack 
   await expect(row).not.toContainText("2050");
 });
 
+// aged: the monitor as seen `secs` later with nothing new (the mirror
+// stopped); with oamToo false, only the flow's frames stopped.
+const aged = (secs: number, oamToo = true): Protocol => {
+  const st = monitor.status as { services: { data?: { last_s: number }[]; oam?: { last_s: number }[] }[] };
+  const older = <T extends { last_s: number }>(l?: T[]) => l?.map((x) => ({ ...x, last_s: x.last_s + secs }));
+  return { ...monitor, status: { ...st, services: st.services.map((v) => ({ ...v, data: older(v.data), oam: oamToo ? older(v.oam) : v.oam })) } } as unknown as Protocol;
+};
+
+test("verdicts are on recent traffic: tags not seen for a while are shown greyed, pending, not judged", async ({ page }) => {
+  // OAM expected with one tag: with the mirror on, the two-tag OAM fails.
+  await mockAgent(page, ping({ data: "2101,101", oam: "2101" }), () => undefined, { more: [aged(40)] });
+  await page.goto("/#/a/a1/p/ping-2101");
+  await expect(page.locator(".wire-head")).toContainText("pending");
+  const rows = page.locator(".wire-table tbody tr");
+  await expect(rows).toHaveCount(2);
+  await expect(page.locator(".wire-table tr.wire-idle")).toHaveCount(2);
+  const there = rows.filter({ hasText: "a-to-z" });
+  await expect(there).toContainText("not seen for 40 s");
+  await expect(there.locator(".wire-seen.idle")).toHaveCount(2); // last data and OAM, shown
+  await expect(there.locator(".wire-seen.bad")).toHaveCount(0); // and not judged
+  await expect(there.locator(".verdict")).toContainText("pending");
+
+  // Only the flow stopped: its data is pending, its service's OAM still judged.
+  await mockAgent(page, ping({ data: "2101,101", oam: "2101" }), () => undefined, { more: [aged(25, false)] });
+  await page.reload();
+  const row = page.locator(".wire-table tbody tr").filter({ hasText: "a-to-z" });
+  await expect(row).not.toHaveClass(/wire-idle/);
+  await expect(row.locator(".wire-seen.idle")).toHaveCount(1);
+  await expect(row).toContainText("not seen for 25 s");
+  await expect(row.locator(".wire-seen.ok")).toHaveCount(1); // OAM: one tag, as expected
+  await expect(page.locator(".wire-head")).toContainText("pending");
+
+  // The flow lists: greyed, not red, and not counted as a failure.
+  await mockAgent(page, ping({ data: "2101,101", oam: "2101,101" }), () => undefined, { more: [aged(40)] });
+  await page.goto("/#/flows");
+  const cell = page.locator(".wire-cell");
+  await expect(cell.locator(".wire-seen.idle")).toHaveCount(2); // data and OAM, alike both ways
+  await expect(cell.locator(".wire-seen.bad")).toHaveCount(0);
+  await expect(cell.locator(".wire-seen.idle").first()).toHaveAttribute("title", /not seen for 40 s: pending/);
+  await expect(page.locator(".stat").filter({ hasText: "Fail" })).toContainText("0");
+});
+
 test("Clear monitors clears every monitor", async ({ page }) => {
   await mockAgent(page, ping({ data: "2101,101" }), () => undefined, { more: [monitor] });
   const cleared: string[] = [];

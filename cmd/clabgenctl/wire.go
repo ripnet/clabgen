@@ -195,7 +195,8 @@ func seenRows(v wire.Verdict) []wire.Row {
 	return out
 }
 
-// classText: the stacks seen, and against the expectation.
+// classText: the stacks seen, and against the expectation. An idle class
+// (nothing seen for a while) shows what it saw, not judged.
 func classText(c wire.Class) string {
 	var seen []string
 	for _, s := range c.Seen {
@@ -203,6 +204,7 @@ func classText(c wire.Class) string {
 		switch {
 		case s.Stale:
 			mark = fmt.Sprintf(" (old: %.0f s ago, not judged)", s.LastS)
+		case c.IdleS > 0:
 		case c.Expect != "":
 			mark = " ✓"
 			if s.Tags != c.Expect {
@@ -213,6 +215,12 @@ func classText(c wire.Class) string {
 	}
 	out := strings.Join(seen, " ")
 	switch {
+	case c.IdleS > 0:
+		out += fmt.Sprintf(" (not seen for %.0f s", c.IdleS)
+		if c.Expect != "" {
+			out += ", pending; want " + c.Expect
+		}
+		out += ")"
 	case c.Verdict == wire.Fail:
 		out += " (want " + c.Expect + ")"
 	case c.Verdict == wire.Pending:

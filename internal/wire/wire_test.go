@@ -138,7 +138,7 @@ func TestJudgeReusedLabel(t *testing.T) {
 }
 
 // A stack not seen for a while, while another is, is from before a change:
-// shown, not judged. Alone, it still is (the flow stopped).
+// shown, not judged. Alone, the class is idle: pending, not judged either.
 func TestJudgeStale(t *testing.T) {
 	svc := func(seen ...Seen) Status {
 		return Status{Services: []Service{{Label: u32(9), Src: "1c:00:00:00:00:01", Dst: "1c:00:00:00:00:02", Data: seen}}}
@@ -150,7 +150,46 @@ func TestJudgeStale(t *testing.T) {
 	if v.Verdict != Pass || len(v.Rows[0].Data.Seen) != 2 || !v.Rows[0].Data.Seen[0].Stale || v.Rows[0].Data.Seen[1].Stale {
 		t.Fatalf("stale: %+v", v)
 	}
-	if v := Judge(f, []Monitor{{Name: "m", Status: svc(old)}}); v.Verdict != Fail || v.Rows[0].Data.Seen[0].Stale {
+	if v := Judge(f, []Monitor{{Name: "m", Status: svc(old)}}); v.Verdict != Pending || v.Rows[0].Data.Seen[0].Stale || v.Rows[0].Data.IdleS != 40 {
 		t.Fatalf("alone: %+v", v)
+	}
+}
+
+// Verdicts are on recent traffic: a class (data or OAM) not seen for
+// IdleAfter is pending, whatever it saw before; a row is idle when all of it is.
+func TestJudgeIdle(t *testing.T) {
+	f := Flow{FlowID: "f", MAC: "02:00:00:00:00:0a", Expect: Expect{Data: "163", OAM: "3162", Direction: AtoZ}}
+	mon := func(dataAge, oamAge float64, tags string) []Monitor {
+		return []Monitor{{Name: "m", Status: Status{Services: []Service{{Label: u32(9), Src: "1c:00:00:00:00:01", Dst: "1c:00:00:00:00:02",
+			Data: []Seen{{FlowID: "f", Kind: "l2", Tags: tags, Src: f.MAC, Count: 100, FirstS: 200, LastS: dataAge}},
+			OAM:  []Seen{{Kind: "CCM", MA: "E1", Tags: "3162", Count: 100, LastS: oamAge}}}}}}}
+	}
+	// Seen now: judged.
+	if v := Judge(f, mon(0.5, 0.3, "163")); v.Verdict != Pass || v.Rows[0].IdleS != 0 {
+		t.Fatalf("fresh: %+v", v)
+	}
+	if v := Judge(f, mon(0.5, 0.3, "3162,163")); v.Verdict != Fail {
+		t.Fatalf("fresh wrong tags: %+v", v)
+	}
+	// The mirror stopped: nothing for 30 s. Pending, the row idle, the tags still shown.
+	v := Judge(f, mon(30, 31, "163"))
+	r := v.Rows[0]
+	if v.Verdict != Pending || r.Verdict != Pending || r.IdleS != 30 || r.Data.IdleS != 30 || r.OAM.IdleS != 31 || len(r.Data.Seen) != 1 {
+		t.Fatalf("mirror off: %+v", v)
+	}
+	// Wrong tags from before the mirror stopped don't fail either.
+	if v := Judge(f, mon(30, 31, "3162,163")); v.Verdict != Pending {
+		t.Fatalf("mirror off, wrong tags: %+v", v)
+	}
+	// The flow stopped, its service's OAM still seen: data pending, OAM
+	// judged, the row not idle.
+	v = Judge(f, mon(25, 0.3, "163"))
+	r = v.Rows[0]
+	if v.Verdict != Pending || r.Data.Verdict != Pending || r.OAM.Verdict != Pass || r.IdleS != 0 || r.Data.IdleS != 25 {
+		t.Fatalf("flow stopped: %+v", v)
+	}
+	// Just under IdleAfter is still recent.
+	if v := Judge(f, mon(9.5, 9.5, "163")); v.Verdict != Pass {
+		t.Fatalf("9.5 s: %+v", v)
 	}
 }

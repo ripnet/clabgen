@@ -98,16 +98,22 @@ flow checking `data` both ways stays pending: use `direction: a-to-z`.
 The monitor can be on any agent: flow IDs are unique in a lab, and the UI and
 `clabgenctl wire` look at every monitor they know of.
 
-What's seen accumulates until the monitor is cleared, with two exceptions so
-that a change doesn't leave a flow failing on what came before it:
+What's seen accumulates until the monitor is cleared, but verdicts are on
+recent traffic, so a change doesn't leave a flow failing, or passing, on what
+came before it:
 
 - **A reused label.** Routers hand out labels again: after a service is
   rebuilt, its old label may go to another one. OAM in the label from before
   the flow was first seen there isn't counted as the flow's.
 - **An old stack.** A stack that hasn't been seen for 10 s, while another one
   of the same kind (data or OAM) is, is from before a change: it's shown,
-  struck through and marked old, and not judged. On its own (the flow
-  stopped), it still is.
+  struck through and marked old, and not judged.
+- **Nothing seen lately.** When neither the data nor the OAM of a direction
+  has been seen for 10 s (the mirror was turned off, or the flow and its OAM
+  stopped), the direction shows its last tags greyed, "not seen for N s", and
+  is pending until something is seen again. The same goes for one of them on
+  its own: a stopped flow's data is pending while its service's OAM, still
+  arriving, is judged. The monitor keeps its counts.
 
 For a clean verdict after a change, clear the monitors: **Clear monitors** on
 the Flows page or a flow's Wire section, or `clabgenctl --lab LAB wire --clear`
