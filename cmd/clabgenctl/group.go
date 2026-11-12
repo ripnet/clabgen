@@ -344,7 +344,7 @@ func groupCmd() *cobra.Command {
 		Use: "run NAME ACTION [key=value...]", Short: "Run a protocol action on group members", Args: cobra.MinimumNArgs(2),
 		Example: "  clabgenctl group run ce flap --members 1-20 seconds=10\n  clabgenctl group run ce reset --random 5\n  clabgenctl group run ce withdraw --protocol bgp --args @routes.yml",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			a, err := buildStruct(argsJSON, args[2:])
+			a, err := buildStruct(argsJSON, args[2:], actionSchema("", args[1]))
 			if err != nil {
 				return err
 			}

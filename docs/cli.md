@@ -115,12 +115,19 @@ with `--config` / `--args` (JSON, YAML, or `@file`):
 
 - A value is read as JSON when it is valid JSON (`remote_meps=[2]` is a
   list, `rate=50` a number), and as a string otherwise.
+- Numbers can be hex, octal or binary (`0x88b5`, `0o17`, `0b101`) wherever
+  the setting is a number or a list of numbers: `ethertype=0x88b5`,
+  `ethertypes=[0x88b5,0x88b6]` (or `ethertypes=0x88b5,0x88b6`). Settings
+  that are text, such as keys, keep what's written.
 - Dots reach into nested settings.
 
 ```sh
 clabgenctl proto add ping --type icmp --device d1 destination=10.9.0.2 rate=50 auto_start=true \
   checks.max_loss_pct=1 checks.max_outage_ms=200
+clabgenctl proto add stream --type l2 --device d1 ethertype=0x88b6 rate=100
 ```
+
+In a `--config` document, YAML reads `0x88b6` as a number too.
 
 ## Examples
 

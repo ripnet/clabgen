@@ -203,20 +203,31 @@ func printJSON(b []byte) error {
 func table() *tabwriter.Writer { return tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0) }
 
 // parseSets turns ["a.b=1", "c=[1,2]", "d=x"] into a nested map. Values that
-// parse as JSON keep their type; anything else is a string.
-func parseSets(sets []string) (map[string]any, error) {
+// parse as JSON keep their type; numbers in another base (0x88e5, a list of
+// them) are numbers where the schema says the field is; anything else is a
+// string.
+func parseSets(sets []string, schema schemaFn) (map[string]any, error) {
 	root := map[string]any{}
 	for _, s := range sets {
 		k, v, ok := strings.Cut(s, "=")
 		if !ok || k == "" {
 			return nil, fmt.Errorf("expected key=value, got %q", s)
 		}
+		parts := strings.Split(k, ".")
 		var val any
 		if err := json.Unmarshal([]byte(v), &val); err != nil {
 			val = v
+			if _, radix := radixList(v); radix && schema != nil {
+				n, ok, err := numberValue(fieldSchema(schema(), parts), v)
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", k, err)
+				}
+				if ok {
+					val = n
+				}
+			}
 		}
 		m := root
-		parts := strings.Split(k, ".")
 		for _, p := range parts[:len(parts)-1] {
 			next, ok := m[p].(map[string]any)
 			if !ok {
@@ -242,7 +253,7 @@ func merge(dst, src map[string]any) {
 	}
 }
 
-func buildStruct(jsonArg string, sets []string) (*structpb.Struct, error) {
+func buildStruct(jsonArg string, sets []string, schema schemaFn) (*structpb.Struct, error) {
 	m := map[string]any{}
 	if jsonArg != "" {
 		if strings.HasPrefix(jsonArg, "@") {
@@ -260,7 +271,7 @@ func buildStruct(jsonArg string, sets []string) (*structpb.Struct, error) {
 			return nil, fmt.Errorf("config must be an object: %w", err)
 		}
 	}
-	extra, err := parseSets(sets)
+	extra, err := parseSets(sets, schema)
 	if err != nil {
 		return nil, err
 	}
@@ -1100,7 +1111,7 @@ func protoCmd() *cobra.Command {
 		Example: "  clabgenctl proto add mep1 --type cfm-mep --device d1 level=3 mep_id=1 ma_format=icc ma_name=CLABGEN00001 remote_meps=[2]\n" +
 			"  clabgenctl proto add replay --type packet --device d1 --pcap capture.pcapng rate=100 auto_start=true",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := buildStruct(cfgJSON, args[1:])
+			cfg, err := buildStruct(cfgJSON, args[1:], typeSchema(typ))
 			if err == nil {
 				cfg, err = withPcap(cfg, pcapFile)
 			}
@@ -1145,7 +1156,7 @@ func protoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			upd, err := buildStruct(setJSON, args[1:])
+			upd, err := buildStruct(setJSON, args[1:], typeSchema(cur.Msg.Protocol.Type))
 			if err == nil {
 				upd, err = withPcap(upd, setPcap)
 			}
@@ -1204,7 +1215,7 @@ func protoCmd() *cobra.Command {
 		Use: "run NAME ACTION [key=value...]", Short: "Run an action (see `types TYPE` for actions and arguments)", Args: cobra.MinimumNArgs(2),
 		Example: "  clabgenctl proto run mep1 loopback target_mep_id=2 count=5\n  clabgenctl proto run mep1 fault ccm_enabled=false",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			a, err := buildStruct(argsJSON, args[2:])
+			a, err := buildStruct(argsJSON, args[2:], actionSchema(args[0], args[1]))
 			if err != nil {
 				return err
 			}
@@ -1335,7 +1346,7 @@ func previewCmd() *cobra.Command {
 			"  clabgenctl preview --device d1 --config @packet.yml --index 5\n" +
 			"  clabgenctl preview --device d1 --pcap capture.pcapng --index 2",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := buildStruct(cfgJSON, args)
+			cfg, err := buildStruct(cfgJSON, args, typeSchema(typ))
 			if err == nil {
 				cfg, err = withPcap(cfg, pcapFile)
 			}
