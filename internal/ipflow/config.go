@@ -78,6 +78,7 @@ type Run struct {
 	Rate      float64 `json:"rate" jsonschema:"minimum=0.01,maximum=100000,description=Packets per second"`
 	Timeout   string  `json:"timeout" jsonschema:"description=How long to wait for a reply before counting a packet lost"`
 	AutoStart bool    `json:"auto_start,omitempty" jsonschema:"description=Start sending as soon as the flow is created (e.g. from a scenario)"`
+	Phase     string  `json:"phase,omitempty" jsonschema:"enum=spread,enum=now" jsonschema_description:"When the first packet goes out. spread (default): in the biggest gap between the packets of the agent's other running flows, at most one interval or a second away, so flows started together don't send in bursts. now: at once"`
 }
 
 type Addressing struct {
@@ -117,7 +118,7 @@ type Spec struct {
 
 // Defaults for the shared parts.
 var (
-	DefaultRun      = Run{Mode: "continuous", Rate: 1, Timeout: "1s"}
+	DefaultRun      = Run{Mode: "continuous", Rate: 1, Timeout: "1s", Phase: "spread"}
 	DefaultIPHeader = IPHeader{TTL: 64, IPChecksum: "correct"}
 	DefaultPayload  = Payload{PayloadSize: 56, PayloadPattern: "increment", Signature: true}
 )
@@ -252,6 +253,9 @@ func (r Run) Validate() error {
 		}
 	default:
 		return fmt.Errorf("invalid mode %q", r.Mode)
+	}
+	if r.Phase != "" && r.Phase != "spread" && r.Phase != "now" {
+		return fmt.Errorf("invalid phase %q (spread or now)", r.Phase)
 	}
 	if r.Rate < 0.01 || r.Rate > 100000 {
 		return errors.New("rate must be 0.01-100000 pps")

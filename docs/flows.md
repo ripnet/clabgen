@@ -1,8 +1,8 @@
 # Traffic flows
 
 Flows are protocol instances of a traffic type. Every flow has `mode`
-(`continuous`, `count` or `duration`), `rate`, `timeout` and
-`auto_start`, and the `start`, `stop`, `clear` and `preview` actions.
+(`continuous`, `count` or `duration`), `rate`, `timeout`, `auto_start`
+and `phase`, and the `start`, `stop`, `clear` and `preview` actions.
 
 ## ICMP
 
@@ -176,6 +176,30 @@ up:
 - **Previewing**: `clabgenctl preview` and the UI's packet editor show the
   exact bytes, decoded by layer, for any packet index, before or after
   the flow exists.
+
+## When packets go out
+
+A flow sends one packet every interval (1 / `rate`) from its first one.
+`phase` sets when the first one goes out:
+
+- `spread` (the default): in the biggest gap between the packets of the
+  agent's other running flows, every port counted. 84 flows at 1 pps that
+  start together (a scenario's `auto_start`, the Flows page's Start all)
+  send one packet about every 12 ms, not 84 at once every second. A flow
+  waits at most one interval, and never more than a second: a 0.1 pps flow
+  among 1 pps flows takes the next gap in their second.
+- `now`: at once, for a test that needs the first packet without delay or
+  wants flows to send together.
+
+Spreading matters on simulated routers: their receive path may hold only a
+few frames at a time, so packets that arrive together are dropped there,
+before the port counts them, even though the average rate is low. The
+first packets of each burst get through and the later ones don't, so loss
+looks tied to whichever flows start last.
+
+When the host stalls, a flow makes up at most 10 ms of missed packets and
+skips the rest, so it doesn't send a burst either. In `count` mode it still
+sends exactly `count` packets.
 
 ## Pass/fail checks
 

@@ -60,7 +60,7 @@ type Config struct {
 
 func defaultConfig() *Config {
 	return &Config{DstMAC: "ff:ff:ff:ff:ff:ff", SrcMACCount: 1, EtherType: DefaultEtherType, FrameSize: 60,
-		Pattern: "increment", Reply: "none", Run: ipflow.Run{Mode: "continuous", Rate: 10, Timeout: "1s"}}
+		Pattern: "increment", Reply: "none", Run: ipflow.Run{Mode: "continuous", Rate: 10, Timeout: "1s", Phase: "spread"}}
 }
 
 // reserved ethertypes: other protocols (and the IP stacks) own them.
