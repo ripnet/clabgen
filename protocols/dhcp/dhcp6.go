@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -90,6 +91,7 @@ func (type6) Actions() []protocol.Action {
 		{Name: "rebind", Description: "Rebind now (to any server)"},
 		{Name: "release", Description: "Release the bindings and stay without them until restart"},
 		{Name: "restart", Description: "Release any bindings and start again with a Solicit"},
+		{Name: "solicit", Description: "Send a router solicitation now (routers answer with an advertisement)"},
 		{Name: "clear", Description: "Reset the message counters"},
 	}
 }
@@ -118,7 +120,39 @@ type ra struct {
 	router         netip.Addr
 	lifetime       time.Duration
 	managed, other bool
-	onLink         []netip.Prefix
+	onLink         []onLinkPrefix
+}
+
+// onLinkPrefix is a prefix information option with the on-link flag.
+type onLinkPrefix struct {
+	prefix netip.Prefix
+	valid  time.Duration // 0: withdrawn; -1: forever
+}
+
+// router is an entry in the default router list (RFC 4861 6.3.4): a
+// router that advertised a non-zero router lifetime.
+type router struct {
+	addr        netip.Addr
+	expires     time.Time
+	unreachable bool // its last neighbor check got no answer
+}
+
+const (
+	// rsInterval and rsMax are RTR_SOLICITATION_INTERVAL and
+	// MAX_RTR_SOLICITATIONS (RFC 4861); after those, solicitations back
+	// off up to rsMaxInterval (RFC 7559) until an advertisement comes.
+	rsInterval    = 4 * time.Second
+	rsMax         = 3
+	rsMaxInterval = time.Hour
+	// probeEvery is how often the gateway's reachability is checked
+	// (±20%, so a group's clients spread out).
+	probeEvery = 10 * time.Second
+)
+
+// probeResult is a neighbor check of a router.
+type probeResult struct {
+	router netip.Addr
+	ok     bool
 }
 
 type client6 struct {
@@ -144,11 +178,12 @@ type client6 struct {
 	collectTo time.Time // end of the first Solicit round
 	best      *Msg6
 	bestPref  int
-	rsLeft    int
+	rsOn      bool // soliciting router advertisements
+	rsSent    int
 	rsAt      time.Time
-	routerAt  time.Time // when the router's lifetime ends
+	probing   bool
+	probeAt   time.Time
 	gwRelease func()
-	gwRouter  netip.Addr
 	naRelease map[netip.Addr]func()
 	naPrefix  map[netip.Addr]netip.Prefix
 	pdRelease []func()
@@ -159,7 +194,10 @@ type client6 struct {
 	addrs    []binding
 	prefixes []binding
 	pdAddrs  []netip.Addr
-	ra       *ra
+	ra       *ra                        // the last advertisement heard
+	routers  []*router                  // the default router list, first heard first
+	gwRouter netip.Addr                 // the one in use as the gateway
+	onLink   map[netip.Prefix]time.Time // the prefix list (zero time: forever)
 	dns      []netip.Addr
 	domains  []string
 	naStatus string
@@ -177,7 +215,7 @@ func (type6) Start(env protocol.Env, c any) (protocol.Session, error) {
 	mac := env.Device().MAC()
 	cl := &client6{env: env, cfg: cfg, duid: DUIDLL(mac), ll: pkt.LinkLocal(mac),
 		rx: make(chan any, 16), cmds: make(chan cmd), stop: make(chan struct{}), ended: make(chan struct{}),
-		naRelease: map[netip.Addr]func(){}, naPrefix: map[netip.Addr]netip.Prefix{},
+		naRelease: map[netip.Addr]func(){}, naPrefix: map[netip.Addr]netip.Prefix{}, onLink: map[netip.Prefix]time.Time{},
 		state: stInit, counters: map[string]uint64{}}
 	if cfg.DUID != "" {
 		cl.duid, _ = parseValue(cfg.DUID)
@@ -240,9 +278,13 @@ func (c *client6) parseRA(f *pkt.Frame) (ra, bool) {
 		if n == 0 || n > len(o) {
 			break
 		}
-		// Prefix information with the on-link flag and a valid lifetime.
-		if o[0] == 3 && n == 32 && o[3]&0x80 != 0 && binary.BigEndian.Uint32(o[4:]) != 0 && o[2] <= 128 {
-			r.onLink = append(r.onLink, netip.PrefixFrom(netip.AddrFrom16([16]byte(o[16:32])), int(o[2])).Masked())
+		// Prefix information with the on-link flag.
+		if o[0] == 3 && n == 32 && o[3]&0x80 != 0 && o[2] <= 128 {
+			p := onLinkPrefix{prefix: netip.PrefixFrom(netip.AddrFrom16([16]byte(o[16:32])), int(o[2])).Masked(), valid: -1}
+			if v := binary.BigEndian.Uint32(o[4:]); v != 0xffffffff {
+				p.valid = time.Duration(v) * time.Second
+			}
+			r.onLink = append(r.onLink, p)
 		}
 		o = o[n:]
 	}
@@ -267,7 +309,7 @@ func (c *client6) run() {
 	defer timer.Stop()
 	now := time.Now()
 	if c.cfg.RA {
-		c.rsLeft, c.rsAt = 3, now
+		c.startRS(now)
 	}
 	c.solicit(now)
 	for {
@@ -286,6 +328,8 @@ func (c *client6) run() {
 			switch v := x.(type) {
 			case ra:
 				c.onRA(v, now)
+			case probeResult:
+				c.onProbe(v, now)
 			case *Msg6:
 				c.onMsg(v, now)
 			}
@@ -304,10 +348,20 @@ func (c *client6) wake() time.Time {
 			w = t
 		}
 	}
-	if c.rsLeft > 0 {
+	if c.rsOn {
 		at(c.rsAt)
 	}
-	at(c.routerAt)
+	if !c.probing && c.gwRouter.IsValid() {
+		at(c.probeAt)
+	}
+	c.mu.Lock()
+	for _, r := range c.routers {
+		at(r.expires)
+	}
+	for _, t := range c.onLink {
+		at(t)
+	}
+	c.mu.Unlock()
 	at(c.retx)
 	at(c.collectTo)
 	c.mu.Lock()
@@ -327,17 +381,14 @@ func (c *client6) wake() time.Time {
 }
 
 func (c *client6) onTimer(now time.Time) {
-	if c.rsLeft > 0 && !now.Before(c.rsAt) {
+	if c.rsOn && !now.Before(c.rsAt) {
 		c.sendRS()
-		c.rsLeft--
-		c.rsAt = now.Add(4 * time.Second)
+		c.rsSent++
+		c.rsAt = now.Add(rsNext(c.rsSent))
 	}
-	if !c.routerAt.IsZero() && !now.Before(c.routerAt) {
-		c.env.Emit("router-expired", "router "+c.gwRouter.String()+" expired", nil)
-		c.dropGateway()
-		c.mu.Lock()
-		c.ra = nil
-		c.mu.Unlock()
+	c.expireRouters(now)
+	if !c.probing && c.gwRouter.IsValid() && !now.Before(c.probeAt) {
+		c.probe()
 	}
 	c.expire(now)
 	st := c.getState()
@@ -432,36 +483,219 @@ func (c *client6) sendRS() {
 	}
 }
 
+// rsNext is the wait after the n-th router solicitation: the interval for
+// the first three, then doubling up to an hour, each ±10% (RFC 7559).
+func rsNext(n int) time.Duration {
+	d := rsInterval
+	for i := rsMax; i <= n && d < rsMaxInterval; i++ {
+		d *= 2
+	}
+	d = min(d, rsMaxInterval)
+	return d + time.Duration((rand.Float64()*0.2-0.1)*float64(d))
+}
+
+// nextProbe is when to check the gateway next.
+func nextProbe(now time.Time) time.Time {
+	return now.Add(probeEvery + time.Duration((rand.Float64()*0.4-0.2)*float64(probeEvery)))
+}
+
+// startRS solicits router advertisements until one comes.
+func (c *client6) startRS(now time.Time) {
+	if !c.rsOn {
+		c.rsOn, c.rsSent, c.rsAt = true, 0, now
+	}
+}
+
+// onRA updates the default router list and the prefix list (RFC 4861
+// 6.3.4) and picks the gateway from the list.
 func (c *client6) onRA(r ra, now time.Time) {
 	c.countKey("rx_ra")
-	if !c.cfg.RA || c.gwRouter.IsValid() && r.router != c.gwRouter {
-		return // one router is enough
+	if !c.cfg.RA {
+		return
 	}
-	c.rsLeft = 0
+	c.rsOn = false
 	c.mu.Lock()
 	c.ra = &r
-	c.mu.Unlock()
-	if r.lifetime == 0 {
-		if c.gwRouter.IsValid() {
-			c.env.Emit("router-gone", "router "+r.router.String()+" stopped being a default router", nil)
+	for _, p := range r.onLink {
+		switch {
+		case p.valid == 0:
+			delete(c.onLink, p.prefix)
+		case p.valid < 0:
+			c.onLink[p.prefix] = time.Time{}
+		default:
+			c.onLink[p.prefix] = now.Add(p.valid)
 		}
-		c.dropGateway()
-	} else {
-		if !c.gwRouter.IsValid() {
-			c.gwRelease = c.env.IP().AddAddress(netip.Prefix{}, r.router)
-			c.gwRouter = r.router
-			c.env.Emit("router", "default router "+r.router.String(), nil)
-		}
-		c.routerAt = now.Add(r.lifetime)
 	}
+	i := c.routerIndex(r.router)
+	gone := false
+	switch {
+	case r.lifetime > 0 && i < 0:
+		c.routers = append(c.routers, &router{addr: r.router, expires: now.Add(r.lifetime)})
+	case r.lifetime > 0:
+		// Its advertisement says it is there: worth trying again.
+		c.routers[i].expires, c.routers[i].unreachable = now.Add(r.lifetime), false
+	case i >= 0:
+		c.routers = append(c.routers[:i:i], c.routers[i+1:]...)
+		gone = true
+	}
+	c.mu.Unlock()
+	if gone {
+		c.env.Emit("router-gone", "router "+r.router.String()+" stopped being a default router", nil)
+	}
+	c.pickRouter(now)
 	c.apply()
+}
+
+// routerIndex is addr's place in the default router list, or -1. Caller
+// holds mu.
+func (c *client6) routerIndex(addr netip.Addr) int {
+	for i, r := range c.routers {
+		if r.addr == addr {
+			return i
+		}
+	}
+	return -1
+}
+
+// expireRouters drops routers whose lifetime ended and on-link prefixes
+// whose valid lifetime ended.
+func (c *client6) expireRouters(now time.Time) {
+	var gone []netip.Addr
+	prefixGone := false
+	c.mu.Lock()
+	live := c.routers[:0]
+	for _, r := range c.routers {
+		if now.Before(r.expires) {
+			live = append(live, r)
+		} else {
+			gone = append(gone, r.addr)
+		}
+	}
+	clear(c.routers[len(live):])
+	c.routers = live
+	for p, t := range c.onLink {
+		if !t.IsZero() && !now.Before(t) {
+			delete(c.onLink, p)
+			prefixGone = true
+		}
+	}
+	c.mu.Unlock()
+	for _, a := range gone {
+		c.env.Emit("router-expired", "router "+a.String()+" expired", nil)
+	}
+	if len(gone) > 0 {
+		c.pickRouter(now)
+	}
+	if prefixGone {
+		c.apply()
+	}
+}
+
+// pickRouter chooses the gateway from the default router list (RFC 4861
+// 6.3.6): the one in use while it answers, else the first that isn't known
+// to be unreachable, else the next one round-robin. With no router left,
+// it solicits advertisements again.
+func (c *client6) pickRouter(now time.Time) {
+	c.mu.Lock()
+	cur := c.gwRouter
+	pick := netip.Addr{}
+	i := c.routerIndex(cur)
+	if i >= 0 && !c.routers[i].unreachable {
+		pick = cur
+	} else {
+		for _, r := range c.routers {
+			if !r.unreachable {
+				pick = r.addr
+				break
+			}
+		}
+		if !pick.IsValid() && len(c.routers) > 0 {
+			pick = c.routers[(i+1)%len(c.routers)].addr
+		}
+	}
+	c.mu.Unlock()
+	if pick == cur {
+		return
+	}
+	c.dropGateway()
+	if !pick.IsValid() {
+		if c.cfg.RA {
+			c.startRS(now)
+		}
+		return
+	}
+	c.gwRelease = c.env.IP().AddAddress(netip.Prefix{}, pick)
+	c.mu.Lock()
+	c.gwRouter = pick
+	c.mu.Unlock()
+	c.probeAt = nextProbe(now)
+	if cur.IsValid() {
+		c.env.Emit("router", "default router "+pick.String()+" (was "+cur.String()+")", nil)
+	} else {
+		c.env.Emit("router", "default router "+pick.String(), nil)
+	}
+}
+
+// probe checks in the background that the gateway answers neighbor
+// solicitations (the cache answers if it heard from it lately).
+func (c *client6) probe() {
+	c.mu.Lock()
+	gw := c.gwRouter
+	c.mu.Unlock()
+	if !gw.IsValid() {
+		return
+	}
+	c.probing = true
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, _, err := c.env.IP().ResolveNextHop(ctx, gw)
+		cancel()
+		select {
+		case c.rx <- probeResult{gw, err == nil}:
+		case <-c.stop:
+		}
+	}()
+}
+
+func (c *client6) onProbe(p probeResult, now time.Time) {
+	c.probing = false
+	c.probeAt = nextProbe(now)
+	c.mu.Lock()
+	i := c.routerIndex(p.router)
+	was := i >= 0 && c.routers[i].unreachable
+	if i >= 0 {
+		c.routers[i].unreachable = !p.ok
+	}
+	c.mu.Unlock()
+	if i < 0 || p.ok {
+		return
+	}
+	if !was {
+		c.env.Emit("router-unreachable", "router "+p.router.String()+" doesn't answer neighbor solicitations", nil)
+	}
+	c.pickRouter(now) // another router, or the next one round-robin
+	// With none answering, ask: a router that moved to another address
+	// (an interface readdressed) answers at once, not at its next
+	// periodic advertisement.
+	c.mu.Lock()
+	none := true
+	for _, r := range c.routers {
+		none = none && r.unreachable
+	}
+	c.mu.Unlock()
+	if none {
+		c.startRS(now)
+	}
 }
 
 func (c *client6) dropGateway() {
 	if c.gwRelease != nil {
 		c.gwRelease()
 	}
-	c.gwRelease, c.gwRouter, c.routerAt = nil, netip.Addr{}, time.Time{}
+	c.gwRelease = nil
+	c.mu.Lock()
+	c.gwRouter = netip.Addr{}
+	c.mu.Unlock()
 }
 
 // solicit starts a new exchange.
@@ -734,17 +968,21 @@ func (c *client6) apply() {
 	addrs := append([]binding(nil), c.addrs...)
 	prefixes := append([]binding(nil), c.prefixes...)
 	var onLink []netip.Prefix
-	if c.ra != nil {
-		onLink = c.ra.onLink
+	for p := range c.onLink {
+		onLink = append(onLink, p)
 	}
 	c.mu.Unlock()
 	want := map[netip.Addr]netip.Prefix{}
 	for _, b := range addrs {
 		a, p := b.prefix.Addr(), b.prefix
+		best := -1
 		for _, o := range onLink {
-			if o.Contains(a) {
-				p = netip.PrefixFrom(a, o.Bits())
+			if o.Contains(a) && o.Bits() > best {
+				best = o.Bits()
 			}
+		}
+		if best >= 0 {
+			p = netip.PrefixFrom(a, best)
 		}
 		want[a] = p
 	}
@@ -868,6 +1106,11 @@ func (c *client6) onCmd(name string, now time.Time) error {
 		}
 		c.dropAll()
 		c.solicit(now)
+	case "solicit":
+		if !c.cfg.RA {
+			return errors.New("ra is off: router advertisements aren't followed")
+		}
+		c.sendRS()
 	case "clear":
 		c.mu.Lock()
 		c.counters = map[string]uint64{}
@@ -900,12 +1143,21 @@ type Binding6 struct {
 	ValidIn     float64 `json:"valid_in_s"`
 }
 
-// RAStatus is the router advertisement followed.
+// RAStatus is the last router advertisement heard, and the on-link
+// prefixes all of them gave.
 type RAStatus struct {
 	Router  string   `json:"router"`
 	Managed bool     `json:"managed"`
 	Other   bool     `json:"other"`
 	OnLink  []string `json:"on_link,omitempty"`
+}
+
+// RouterStatus is a default router list entry.
+type RouterStatus struct {
+	Router      string  `json:"router"`
+	LifetimeIn  float64 `json:"lifetime_in_s"`
+	Gateway     bool    `json:"gateway,omitempty"`
+	Unreachable bool    `json:"unreachable,omitempty"`
 }
 
 // Status6Info is a DHCPv6 client's status.
@@ -919,6 +1171,7 @@ type Status6Info struct {
 	PDStatus    string            `json:"ia_pd_status,omitempty"`
 	Gateway     string            `json:"gateway,omitempty"`
 	RA          *RAStatus         `json:"ra,omitempty"`
+	Routers     []RouterStatus    `json:"routers,omitempty"`
 	DNS         []string          `json:"dns,omitempty"`
 	Domains     []string          `json:"domains,omitempty"`
 	RenewIn     float64           `json:"renew_in_s,omitempty"`
@@ -959,12 +1212,16 @@ func (c *client6) Status() any {
 	}
 	if r := c.ra; r != nil {
 		st.RA = &RAStatus{Router: r.router.String(), Managed: r.managed, Other: r.other}
-		for _, p := range r.onLink {
+		for p := range c.onLink {
 			st.RA.OnLink = append(st.RA.OnLink, p.String())
 		}
-		if r.lifetime > 0 {
-			st.Gateway = r.router.String()
-		}
+		slices.Sort(st.RA.OnLink)
+	}
+	for _, r := range c.routers {
+		st.Routers = append(st.Routers, RouterStatus{r.addr.String(), max(0, secs(r.expires.Sub(now))), r.addr == c.gwRouter, r.unreachable})
+	}
+	if c.gwRouter.IsValid() {
+		st.Gateway = c.gwRouter.String()
 	}
 	if len(c.addrs)+len(c.prefixes) > 0 {
 		st.BindTime = secs(c.bindTime)

@@ -57,14 +57,28 @@ link-local address, takes the best server's Advertise (or a Reply, with
 `rapid_commit`), then renews at T1 and rebinds at T2.
 
 DHCPv6 gives no default route. With `ra` on (the default), the client
-solicits router advertisements and follows one:
+solicits router advertisements and follows them as a host does (RFC 4861):
 
-- the router becomes the device's IPv6 gateway, for as long as its router
-  lifetime lasts;
+- every router that advertises a router lifetime goes in its default
+  router list until that lifetime ends, and one of them is the device's
+  IPv6 gateway;
+- the gateway stays the same while it answers neighbor solicitations
+  (checked about every 10 s). When it retires (a zero lifetime), its
+  lifetime ends, or it stops answering, the next router that isn't known
+  to be unreachable takes over, and flows follow it within seconds;
+- with no router left, or none answering, the client solicits
+  advertisements again, every 4 s for the first three and then backing
+  off up to an hour (RFC 7559), instead of waiting for the next periodic
+  one. A router whose interface was readdressed (a new link-local
+  address) answers at once and takes over;
 - the leased address takes the length of the on-link prefix the
-  advertisement holds (a /64, say), and stays a /128 without one.
+  advertisements hold (a /64, say), for as long as the prefix's valid
+  lifetime, and stays a /128 without one.
 
-The status shows the advertisement's managed and other flags.
+The status lists the routers (`routers`: time left, which is the gateway,
+which didn't answer) and shows the last advertisement's managed and other
+flags. The events `router`, `router-gone`, `router-expired` and
+`router-unreachable` say when the gateway changes and why.
 
 ### Testing the delegated prefix
 
@@ -90,7 +104,8 @@ client that got an address but not its prefix (or the other way round)
 is a warning too, naming the server's status.
 
 The actions are `renew`, `rebind`, `release` (and stay without a lease),
-`restart` (release, then start over) and `clear`. A client releases its
+`restart` (release, then start over), `solicit` (send a router
+solicitation now) and `clear`. A client releases its
 lease when it stops, unless `release_on_stop: false`.
 
 ### Many clients

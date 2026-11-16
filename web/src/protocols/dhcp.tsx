@@ -4,7 +4,7 @@ import { registerView, type Summary } from "./registry";
 
 type Binding = { prefix: string };
 type V4 = { state: string; address?: string; gateway?: string; last_nak?: string };
-type V6 = { state: string; addresses?: Binding[]; prefixes?: Binding[]; ia_na_status?: string; ia_pd_status?: string };
+type V6 = { state: string; addresses?: Binding[]; prefixes?: Binding[]; ia_na_status?: string; ia_pd_status?: string; gateway?: string };
 
 const leased = (state: string) => state === "bound" || state === "renewing" || state === "rebinding";
 
@@ -28,7 +28,8 @@ function summary6(st: JsonObject): Summary {
   if (!leased(s.state) || !got.length) return idle(s.state);
   const missing = [s.ia_na_status, s.ia_pd_status].filter(Boolean);
   const tail = s.state === "bound" ? "" : ` · ${s.state}`;
-  return { health: missing.length ? "warn" : "ok", text: [...got, ...missing].join(" · ") + tail };
+  const gw = s.gateway ? [`gw ${s.gateway}`] : [];
+  return { health: missing.length ? "warn" : "ok", text: [...got, ...gw, ...missing].join(" · ") + tail };
 }
 
 registerView("dhcp", { summary: summary4 });

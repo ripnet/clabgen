@@ -13,7 +13,7 @@ const tsRE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
 const rawKey = /(^|_)(id|seq|vid|ttl|hop|level|index|test_id|trans_id|mep_id)$/;
 
 // Struct fields arrive sorted by name; lead tables with identifying columns.
-const leadCols = ["hop", "seq", "mep_id", "id", "name", "state"];
+const leadCols = ["hop", "seq", "mep_id", "id", "name", "router", "state"];
 
 export function fmtScalar(v: V, key = ""): string {
   if (v === null || v === undefined) return "—";

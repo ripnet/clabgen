@@ -198,6 +198,11 @@
      "argsSchema": "{}"
     },
     {
+     "name": "solicit",
+     "description": "Send a router solicitation now (routers answer with an advertisement)",
+     "argsSchema": "{}"
+    },
+    {
      "name": "clear",
      "description": "Reset the message counters",
      "argsSchema": "{}"

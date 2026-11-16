@@ -16,7 +16,17 @@ test("DHCP clients: lease summaries, and leased addresses on the device", async 
     device: "cpe",
     state: "running",
     config: { ia_pd: true },
-    status: { state: "bound", addresses: [{ prefix: "2001:db8::1000", preferred_in_s: 10, valid_in_s: 20 }], ia_pd_status: "NoPrefixAvail none left", counters: {} },
+    status: {
+      state: "bound",
+      addresses: [{ prefix: "2001:db8::1000", preferred_in_s: 10, valid_in_s: 20 }],
+      ia_pd_status: "NoPrefixAvail none left",
+      gateway: "fe80::2",
+      routers: [
+        { router: "fe80::1", lifetime_in_s: 1500, unreachable: true },
+        { router: "fe80::2", lifetime_in_s: 1790, gateway: true },
+      ],
+      counters: {},
+    },
   };
   const waiting: Protocol = { name: "cpe2-v4", type: "dhcp", device: "cpe2", state: "running", config: {}, status: { state: "selecting", counters: {} } };
   await mockAgent(page, v4, () => undefined, { more: [v6, waiting] });
@@ -36,8 +46,16 @@ test("DHCP clients: lease summaries, and leased addresses on the device", async 
   await page.goto("./#/a/a1/protocols");
   await expect(page.locator("tr", { hasText: "cpe-v4" })).toContainText("10.0.0.100/24 · gw 10.0.0.1");
   // An address but no prefix: a warning naming the server's status.
-  await expect(page.locator("tr", { hasText: "cpe-v6" })).toContainText("2001:db8::1000 · NoPrefixAvail none left");
+  await expect(page.locator("tr", { hasText: "cpe-v6" })).toContainText("2001:db8::1000 · gw fe80::2 · NoPrefixAvail none left");
   await expect(page.locator("tr", { hasText: "cpe2-v4" })).toContainText("selecting");
+
+  // The default router list: the router first, which one is the gateway
+  // and which didn't answer.
+  await page.goto("./#/a/a1/p/cpe-v6");
+  const routers = page.locator("table", { hasText: "lifetime in s" });
+  await expect(routers.locator("th").first()).toHaveText("router");
+  await expect(routers.locator("tr", { hasText: "fe80::2" })).toContainText("true");
+  await expect(routers.locator("tr", { hasText: "fe80::1" })).toContainText("true");
 
   await page.goto("./#/a/a1/devices");
   const row = page.locator("tr", { hasText: "cpe" }).first();
