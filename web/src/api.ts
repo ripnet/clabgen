@@ -2,6 +2,7 @@ import { createClient, ConnectError, type Client } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentService } from "./gen/clabgen/v1/agent_pb";
+import type { Topology } from "./components/topology/layout";
 
 export type AgentRef = {
   id: string;
@@ -49,9 +50,14 @@ export type UIInfo = {
   update_available: boolean;
   // Edgeshark's packetflix: a URL, or a port on the UI's own host.
   edgeshark?: { url?: string; port?: number };
+  // Labs can be drawn (labTopology).
+  topology?: boolean;
 };
 
 export const uiInfoApi = () => fetch("api/info").then((r) => json<UIInfo>(r));
+
+// labTopology: a lab's nodes and links (containerlab's topology-data.json).
+export const labTopology = (lab: string) => fetch(`api/labs/${encodeURIComponent(lab)}/topology`).then((r) => json<Topology>(r));
 
 export const agentsApi = {
   list: () => fetch("api/agents").then((r) => json<AgentList>(r)),

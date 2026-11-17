@@ -136,4 +136,6 @@ type Info struct {
 	Update    bool   `json:"update_available"`
 	// Edgeshark: where a packetflix capture service is (see Edgeshark).
 	Edgeshark *EdgesharkInfo `json:"edgeshark,omitempty"`
+	// Topology: labs can be drawn (GET /api/labs/{lab}/topology).
+	Topology bool `json:"topology,omitempty"`
 }

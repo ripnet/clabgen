@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { agentsApi, type AgentRef } from "./api";
 import { agentLabel, useAgents } from "./agents";
-import { agentHref, useRoute } from "./router";
+import { agentHref, href, useRoute } from "./router";
 import { Dot, ErrorBox, Modal, useBusy, useTheme, type Theme } from "./ui";
 import { Overview } from "./pages/Overview";
 import { FlowsPage } from "./pages/FlowsPage";
@@ -9,12 +9,13 @@ import { displayVersion, skew } from "./version";
 import { AgentPage } from "./pages/AgentPage";
 import { ProtocolDetail } from "./pages/ProtocolDetail";
 import { GroupDetail } from "./pages/GroupsTab";
+import { LabTopology } from "./pages/LabTopology";
 
 export function App() {
   const route = useRoute();
   const [theme, setTheme] = useTheme();
   const [navOpen, setNavOpen] = useState(false);
-  const current = route.page === "overview" || route.page === "flows" ? undefined : route.agent;
+  const current = route.page === "overview" || route.page === "flows" || route.page === "lab" ? undefined : route.agent;
 
   return (
     <div className={`shell ${navOpen ? "nav-open" : ""}`}>
@@ -34,11 +35,12 @@ export function App() {
         <ThemeSwitch theme={theme} setTheme={setTheme} />
       </header>
       <aside className="sidebar" onClick={(e) => (e.target as HTMLElement).closest("a") && setNavOpen(false)}>
-        <Sidebar current={current} page={route.page} />
+        <Sidebar current={current} page={route.page} lab={route.page === "lab" ? route.lab : undefined} />
       </aside>
       <main className="main">
         {route.page === "overview" && <Overview />}
         {route.page === "flows" && <FlowsPage />}
+        {route.page === "lab" && <LabTopology key={route.lab} lab={route.lab} />}
         {route.page === "agent" && <AgentPage key={route.agent} agentId={route.agent} tab={route.tab} />}
         {route.page === "protocol" && <ProtocolDetail key={route.agent + "/" + route.protocol} agentId={route.agent} name={route.protocol} />}
         {route.page === "group" && <GroupDetail key={route.agent + "/" + route.group} agentId={route.agent} name={route.group} />}
@@ -83,7 +85,7 @@ function ThemeSwitch({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) =
   );
 }
 
-function Sidebar({ current, page }: { current?: string; page: string }) {
+function Sidebar({ current, page, lab }: { current?: string; page: string; lab?: string }) {
   const { agents, info, ui, allowManual, error, refresh } = useAgents();
   const [adding, setAdding] = useState(false);
   const groups = new Map<string, AgentRef[]>();
@@ -91,6 +93,8 @@ function Sidebar({ current, page }: { current?: string; page: string }) {
     const g = a.source === "self" ? "this agent" : a.lab || "agents";
     groups.set(g, [...(groups.get(g) ?? []), a]);
   }
+  // Containerlab labs (found through Docker or a -lab path) can be drawn.
+  const drawable = (list: AgentRef[]) => !!ui?.topology && list.some((a) => a.source === "docker" || a.source.startsWith("lab:"));
   return (
     <nav aria-label="Agents">
       <a className={`side-link ${page === "overview" ? "active" : ""}`} href="#/">
@@ -102,7 +106,24 @@ function Sidebar({ current, page }: { current?: string; page: string }) {
       {error && <ErrorBox error={`Agent list: ${error}`} />}
       {[...groups.entries()].map(([g, list]) => (
         <div key={g} className="side-group">
-          <div className="side-group-title">{g}</div>
+          <div className="side-group-title">
+            <span>{g}</span>
+            {drawable(list) && (
+              <a
+                className={`side-topo ${page === "lab" && lab === g ? "active" : ""}`}
+                href={href({ page: "lab", lab: g })}
+                title={`Lab ${g}: nodes and links`}
+                aria-label={`Show lab ${g}'s nodes and links`}
+              >
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                  <rect x="1" y="1.5" width="5" height="4" rx="1" />
+                  <rect x="10" y="1.5" width="5" height="4" rx="1" />
+                  <rect x="5.5" y="10.5" width="5" height="4" rx="1" />
+                  <path d="M6 3.5h4M4 5.5l3 5M12 5.5l-3 5" />
+                </svg>
+              </a>
+            )}
+          </div>
           {list.map((a) => {
             const i = info[a.id];
             const k = i?.reachable ? skew(i.version, ui?.version) : undefined;

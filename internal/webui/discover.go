@@ -213,6 +213,7 @@ func labAgents(path string, imageRE *regexp.Regexp) ([]Agent, error) {
 	if err := json.Unmarshal(b, &td); err != nil {
 		return nil, err
 	}
+	labFiles.Store(td.Name, dataFile)
 	var agents []Agent
 	for key, n := range td.Nodes {
 		if !imageRE.MatchString(n.Image) || n.MgmtIPv4 == "" {

@@ -23,6 +23,7 @@
   --code-string: #1a7f4b;
   --code-comment: #8a93a2;
   --code-special: #9a4dc4;
+  --node-router: #0f766e;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
   --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.18);
   --radius: 8px;
@@ -55,6 +56,7 @@
     --code-string: #7ad09a;
     --code-comment: #717c8e;
     --code-special: #d2a8ff;
+    --node-router: #2dd4bf;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
     color-scheme: dark;
@@ -84,6 +86,7 @@
   --code-string: #7ad09a;
   --code-comment: #717c8e;
   --code-special: #d2a8ff;
+  --node-router: #2dd4bf;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
@@ -159,7 +162,11 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .side-link.active { background: var(--accent-soft); color: var(--accent-text); }
 .side-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-group { margin-top: 14px; }
-.side-group-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); padding: 0 10px 4px; font-weight: 600; }
+.side-group-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); padding: 0 10px 4px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.side-topo { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 20px; border-radius: 5px; color: var(--text-3); }
+.side-topo svg { fill: none; stroke: currentColor; stroke-width: 1.4; }
+.side-topo:hover { color: var(--accent-text); background: var(--accent-soft); }
+.side-topo.active { color: var(--accent-text); background: var(--accent-soft); }
 .side-add { margin: 16px 10px 0; }
 .side-x { width: 20px; height: 20px; font-size: 14px; opacity: 0; }
 .side-link:hover .side-x { opacity: 1; }
@@ -747,3 +754,46 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .cm-yaml-hover-note { color: var(--text-3); font-size: 11.5px; margin-top: 4px; }
 .yaml-tools { display: flex; gap: 12px; align-items: center; margin: 6px 0; font-size: 12px; }
 .yaml-tools .muted { margin-left: auto; }
+
+/* A lab drawn (pages/LabTopology.tsx). */
+.topo-svg { display: block; width: 100%; height: 72vh; min-height: 360px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); cursor: grab; touch-action: none; user-select: none; }
+.topo-svg:active { cursor: grabbing; }
+.topo-node rect { fill: var(--surface); stroke-width: 2; }
+.topo-node.router rect { stroke: var(--node-router); }
+.topo-node.linux rect { stroke: var(--text-3); }
+.topo-node.external rect { stroke: var(--text-3); stroke-dasharray: 5 4; }
+.topo-node.agent rect { stroke: var(--accent); fill: var(--accent-soft); }
+.topo-node.agent { cursor: pointer; }
+.topo-node:hover rect { stroke-width: 3; }
+.topo-node.dim { opacity: 0.35; }
+.topo-name { font: 600 14px var(--sans); fill: var(--text); text-anchor: middle; pointer-events: none; }
+.topo-kind { font: 11px var(--sans); fill: var(--text-2); text-anchor: middle; pointer-events: none; }
+.topo-pair line { stroke: var(--text-3); stroke-width: 1.8; }
+.topo-pair.hot line { stroke: var(--accent); stroke-width: 2.4; }
+.topo-pair.dim { opacity: 0.25; }
+.topo-pair.bundle line { stroke-width: 6; stroke-linecap: round; }
+.topo-pair.bundle { cursor: pointer; }
+.topo-pair.bundle.hot line { stroke-width: 7; }
+.topo-badge { fill: var(--surface); stroke: var(--border-strong); }
+.topo-pair.bundle:hover .topo-badge, .topo-pair.bundle.hot .topo-badge { stroke: var(--accent); }
+.topo-badge-text { font: 600 11px var(--sans); fill: var(--text); text-anchor: middle; pointer-events: none; }
+.topo-if { font: 10px var(--mono); fill: var(--text-2); paint-order: stroke; stroke: var(--surface-2); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+.topo-pair.hot .topo-if { fill: var(--accent-text); }
+.topo-sel { margin-top: 10px; padding: 8px 12px; }
+.topo-table { margin-top: 14px; }
+.topo-table summary { cursor: pointer; font-weight: 600; margin-bottom: 6px; }
+.topo-pair .st-up line, .topo-pair.st-up line, .topo-legend .st-up line { stroke: var(--ok); }
+.topo-pair .st-down line, .topo-pair.st-down line, .topo-legend .st-down line { stroke: var(--bad); }
+.topo-pair .st-admin-down line, .topo-pair.st-admin-down line, .topo-legend .st-admin-down line { stroke: var(--bad); stroke-dasharray: 6 4; }
+.topo-pair .st-unknown line, .topo-pair.st-unknown line, .topo-legend .st-unknown line { stroke: var(--idle); stroke-dasharray: 2 3; }
+.topo-legend .st-none line { stroke: var(--text-3); }
+.topo-pair.bundle.st-admin-down line { stroke-dasharray: 10 6; }
+.topo-pair.hot .st-up line, .topo-pair.hot.st-up line { stroke: var(--ok); }
+.topo-end { fill: var(--bad); stroke: var(--surface-2); stroke-width: 1.5; }
+.topo-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin-top: 8px; }
+.topo-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.topo-legend line { stroke-width: 2.5; }
+.topo-state { font-size: 11.5px; }
+.topo-state.st-up { color: var(--ok); }
+.topo-state.st-down, .topo-state.st-admin-down { color: var(--bad); font-weight: 600; }
+.topo-state.st-unknown { color: var(--text-3); }

@@ -49,6 +49,38 @@ Every protocol on every agent in one table, worst first, with counts of
 healthy, warning, faulty and waiting protocols. The left nav lists the
 agents by lab.
 
+### A lab's nodes and links
+
+The icon next to a lab's name in the left nav draws the lab: its nodes and
+the links between them, with each end's interface name. It reads
+containerlab's `topology-data.json` for the lab (the file the UI was given
+with `-lab`, or through Docker from one of the lab's clabgen nodes, which
+see it under `/clab`).
+
+- clabgen nodes are blue and open their agent when clicked; routers are
+  teal; anything a link names that isn't a node (`host`, a bridge) is
+  dashed.
+- Links with a clabgen end show its port's state, from the agent every
+  3 s: green up, red down (a dot marks the end that's down), dashed red
+  shut (admin down), dotted grey when the agent doesn't answer. Links
+  between routers stay grey: nothing in the lab reports them.
+- Several links between two nodes are drawn side by side; more than four
+  become one thick line with a count (`×21 · 2 down`): click it for the
+  list, each with its state.
+- Interface names that don't fit on a short link show when you hover a
+  node (its links light up). The table under the drawing lists every link
+  and its state.
+- Drag nodes to arrange them; this browser keeps the arrangement for the
+  lab. **Rearrange** forgets it. Nodes with containerlab's `graph-posX`
+  and `graph-posY` labels are drawn where those put them.
+- The wheel zooms, dragging the background pans, **Fit** shows the whole
+  lab (a large one opens at a readable size, centred).
+- The links come from a clabgen node's `/clab` mount (`binds: [.:/clab]`,
+  as [saved config](configuration.md#saved-config) uses). Without one the
+  lab's nodes are listed, and the page says why there are no links.
+  Interfaces are the names containerlab gives them (`e1-1-c1-1` for an
+  SR-SIM's `1/1/c1/1`).
+
 ### An agent
 
 Each agent has tabs:

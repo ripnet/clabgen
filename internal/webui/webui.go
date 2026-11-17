@@ -198,6 +198,8 @@ type Options struct {
 	Updates *UpdateChecker
 	// Edgeshark, when set, offers Wireshark through Edgeshark's packetflix.
 	Edgeshark *Edgeshark
+	// Topology, when set, serves labs' nodes and links.
+	Topology TopologyFunc
 }
 
 // Handler serves /api/info, /api/agents, /agents/{id}/... and the UI
@@ -205,7 +207,7 @@ type Options struct {
 func Handler(reg *Registry, opt Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/info", func(w http.ResponseWriter, r *http.Request) {
-		in := Info{Version: opt.Version, Edgeshark: opt.Edgeshark.Info(r.Context())}
+		in := Info{Version: opt.Version, Edgeshark: opt.Edgeshark.Info(r.Context()), Topology: opt.Topology != nil}
 		if v, u := opt.Updates.Latest(); Newer(v, opt.Version) {
 			in.Latest, in.LatestURL, in.Update = v, u, true
 		}
@@ -240,6 +242,29 @@ func Handler(reg *Registry, opt Options) http.Handler {
 		}
 		reg.Remove(a.ID)
 		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("GET /api/labs/{lab}/topology", func(w http.ResponseWriter, r *http.Request) {
+		if opt.Topology == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "lab topologies are not available"})
+			return
+		}
+		lab := r.PathValue("lab")
+		t, err := opt.Topology(r.Context(), lab)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		// Nodes that are agents here link to them.
+		ids := map[string]string{}
+		for _, a := range reg.List() {
+			if a.Lab == lab {
+				ids[a.Name] = a.ID
+			}
+		}
+		for i := range t.Nodes {
+			t.Nodes[i].Agent = ids[t.Nodes[i].Name]
+		}
+		writeJSON(w, http.StatusOK, t)
 	})
 	mux.HandleFunc("/agents/{id}/", func(w http.ResponseWriter, r *http.Request) {
 		a := reg.Get(r.PathValue("id"))

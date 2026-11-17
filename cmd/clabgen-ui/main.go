@@ -78,6 +78,13 @@ func main() {
 	}
 
 	opt := webui.Options{AllowManual: true, Version: version.Version}
+	if useDocker || len(labs) > 0 {
+		s := ""
+		if useDocker {
+			s = sock
+		}
+		opt.Topology = webui.Topologies(s, imageRE)
+	}
 	switch *edgeshark {
 	case "off":
 	case "auto":
