@@ -1,0 +1,15 @@
+# A Nokia SR-SIM measuring delay and loss to a clabgen TWAMP Light / STAMP
+# reflector: two OAM-PM sessions (TWAMP Light over IPv4, STAMP over IPv6)
+# and the interface's link delay measurement.
+#   gen:eth1 -- sr1:1/1/c1/1   10.0.0.2 / 2001:db8::2 -- 10.0.0.1 / 2001:db8::1
+name: twamp
+topology:
+  nodes:
+    sr1: {kind: nokia_srsim, image: "nokia_srsim:26.10.R1", startup-config: sr1.partial.txt}
+    gen:
+      kind: linux
+      image: ${CLABGEN_IMAGE:=ghcr.io/ripnet/clabgen:latest}
+      binds: [.:/clab]
+      env: {CLABGEN_SCENARIO: gen.yml}
+  links:
+    - endpoints: [gen:eth1, sr1:1/1/c1/1]

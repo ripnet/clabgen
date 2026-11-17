@@ -19,6 +19,7 @@ import "./protocols/monitor";
 import "./protocols/ospf";
 import "./protocols/rsvp";
 import "./protocols/dhcp";
+import "./protocols/twamp";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

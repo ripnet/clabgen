@@ -66,6 +66,7 @@ protocols:                   # protocol instances and traffic flows, each on a d
 | `dhcp-server`, `dhcpv6-server` | DHCP servers, on the link or behind relays ([DHCP](dhcp.md#servers)) |
 | `icmp`, `udp`, `l2`, `packet` | [traffic flows](flows.md) |
 | `udp-echo`, `l2-echo` | responders that send flows back |
+| `twamp-reflector` | TWAMP Light / STAMP reflector for a router's delay and loss measurements ([TWAMP](twamp.md)) |
 
 ## Saved config
 

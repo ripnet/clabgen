@@ -122,6 +122,10 @@ Good to know:
   encrypted, keyed by MKA with a pre-shared CAK or by static keys; every flow on the
   device runs over it, to test circuits that must carry MACsec end to end
   ([docs](docs/macsec.md)).
+- **TWAMP Light / STAMP reflector**: the far end of a router's delay and loss
+  measurements (performance monitoring sessions, interface link delay), with
+  faults to set off its alarms: added delay, lost replies, a wrong clock
+  ([docs](docs/twamp.md)).
 - **Monitoring a mirrored link**: a monitor port on a router's port mirror takes
   MPLS frames apart (labels, control word, the frame inside) and shows, per service
   and direction, the VLAN tags of clabgen flows and of CFM/Y.1731 frames; flows check
@@ -177,7 +181,7 @@ Also at **https://clabgen.dev/**.
 - Protocols: [CFM and Y.1731](docs/cfm.md), [IS-IS](docs/isis.md),
   [BGP](docs/bgp.md), [OSPF](docs/ospf.md), [LDP](docs/ldp.md),
   [RSVP-TE](docs/rsvp.md), [LLDP](docs/lldp.md), [MACsec](docs/macsec.md),
-  [DHCP](docs/dhcp.md)
+  [DHCP](docs/dhcp.md), [TWAMP / STAMP](docs/twamp.md)
 - [Monitoring a mirrored link](docs/wire.md): VLAN tags inside MPLS services
 - [Examples](docs/examples/index.md): worked labs, each built around a real test
 - [CLI](docs/cli.md): `clabgenctl`

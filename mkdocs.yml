@@ -28,6 +28,7 @@ nav:
       - MACsec: macsec.md
       - Monitoring a mirrored link: wire.md
       - DHCP: dhcp.md
+      - TWAMP / STAMP reflector: twamp.md
   - Examples:
       - examples/index.md
       - DHCP subscribers: examples/dhcp.md
@@ -38,6 +39,7 @@ nav:
       - L3VPN traffic with learned labels: examples/l3vpn.md
       - MACsec through Epipes: examples/macsec.md
       - VLAN tags inside Epipes: examples/wire.md
+      - TWAMP Light and STAMP: examples/twamp.md
   - CLI: cli.md
   - Python and pytest: python.md
   - API: api.md

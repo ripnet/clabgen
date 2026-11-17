@@ -1,0 +1,6 @@
+# The far end of sr1's measurements: a TWAMP Light / STAMP reflector on
+# 10.0.0.2 and 2001:db8::2, port 862.
+devices:
+  - {name: gen, port: eth1, addresses: [10.0.0.2/24, "2001:db8::2/64"], gateway4: 10.0.0.1}
+protocols:
+  - {name: reflector, type: twamp-reflector, device: gen}

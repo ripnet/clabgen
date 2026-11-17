@@ -22,6 +22,7 @@ import (
 	_ "github.com/ripnet/clabgen/protocols/monitor"
 	_ "github.com/ripnet/clabgen/protocols/ospf"
 	_ "github.com/ripnet/clabgen/protocols/packet"
+	_ "github.com/ripnet/clabgen/protocols/twamp"
 	_ "github.com/ripnet/clabgen/protocols/udp"
 	_ "github.com/ripnet/clabgen/protocols/udpecho"
 )

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400" width="1000" height="400" role="img" aria-label="SR-SIM sr1 measuring delay and loss to the clabgen agent gen, which reflects">
+<style>
+  .box { fill: #22272e; stroke-width: 2.5; }
+  .agent { stroke: #4c8dff; }
+  .router { stroke: #2dd4bf; }
+  .title { font: 600 26px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #e6edf3; }
+  .kind { font: 17px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #9198a1; }
+  .line { font: 19px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #e6edf3; }
+  .port { font: 15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #9198a1; }
+  .flowlbl { font: 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif; fill: #f59e0b; }
+  .wire { stroke: #768390; stroke-width: 3; }
+  .flow { stroke: #f59e0b; stroke-width: 2.5; fill: none; stroke-dasharray: 8 5; }
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/></marker></defs>
+<line x1="270" y1="320" x2="730" y2="320" class="wire"/>
+<text x="276" y="310" class="port" text-anchor="start">1/1/c1/1</text>
+<text x="724" y="310" class="port" text-anchor="end">eth1</text>
+<text x="276" y="346" class="port" text-anchor="start">10.0.0.1, 2001:db8::1</text>
+<text x="724" y="346" class="port" text-anchor="end">10.0.0.2, 2001:db8::2</text>
+<rect x="30" y="130" width="240" height="230" rx="10" class="box router"/>
+<text x="150.0" y="170" class="title" text-anchor="middle">sr1</text>
+<text x="150.0" y="194" class="kind" text-anchor="middle">Nokia SR-SIM</text>
+<text x="150.0" y="230" class="line" text-anchor="middle">session-sender:</text>
+<text x="150.0" y="256" class="line" text-anchor="middle">OAM-PM, link delay</text>
+<rect x="730" y="130" width="240" height="230" rx="10" class="box agent"/>
+<text x="850.0" y="170" class="title" text-anchor="middle">gen</text>
+<text x="850.0" y="194" class="kind" text-anchor="middle">clabgen agent</text>
+<text x="850.0" y="230" class="line" text-anchor="middle">twamp-reflector</text>
+<text x="850.0" y="256" class="line" text-anchor="middle">port 862</text>
+<path d="M278,160 H720" class="flow" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<text x="500.0" y="150" class="flowlbl" text-anchor="middle">twamp-v4: TWAMP Light, IPv4</text>
+<path d="M278,206 H720" class="flow" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<text x="500.0" y="196" class="flowlbl" text-anchor="middle">stamp-v6: STAMP, IPv6</text>
+<path d="M278,252 H720" class="flow" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<text x="500.0" y="242" class="flowlbl" text-anchor="middle">link delay: STAMP, TTL 1</text>
+<text x="500.0" y="90" class="kind" text-anchor="middle">test packets to port 862, replies with the reflector's timestamps</text>
+</svg>
