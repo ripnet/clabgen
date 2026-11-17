@@ -8,8 +8,8 @@ import (
 	"sort"
 
 	"github.com/ripnet/clabgen/internal/protocol"
-	"sigs.k8s.io/yaml"
 	yaml3 "gopkg.in/yaml.v3"
+	"sigs.k8s.io/yaml"
 )
 
 type PortSpec struct {
