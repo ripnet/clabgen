@@ -309,7 +309,7 @@ func (s *Server) GetConvergence(ctx context.Context, r *connect.Request[v1.GetCo
 }
 
 func (s *Server) ListProtocolTypes(ctx context.Context, _ *connect.Request[v1.ListProtocolTypesRequest]) (*connect.Response[v1.ListProtocolTypesResponse], error) {
-	out := &v1.ListProtocolTypesResponse{}
+	out := &v1.ListProtocolTypesResponse{ScenarioSchema: core.ScenarioSchema()}
 	for _, t := range protocol.Types() {
 		pt := &v1.ProtocolType{Name: t.Name(), Description: t.Description(), ConfigSchema: protocol.Schema(t.NewConfig()),
 			Category: protocol.CategoryOf(t)}

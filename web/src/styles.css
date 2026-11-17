@@ -19,6 +19,10 @@
   --bad: #d64545;
   --bad-soft: #fde8e8;
   --idle: #9aa3b1;
+  --code-key: #1d57cc;
+  --code-string: #1a7f4b;
+  --code-comment: #8a93a2;
+  --code-special: #9a4dc4;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
   --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.18);
   --radius: 8px;
@@ -47,6 +51,10 @@
     --bad: #f06363;
     --bad-soft: #3a1a1c;
     --idle: #677284;
+    --code-key: #8fb3ff;
+    --code-string: #7ad09a;
+    --code-comment: #717c8e;
+    --code-special: #d2a8ff;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
     color-scheme: dark;
@@ -72,6 +80,10 @@
   --bad: #f06363;
   --bad-soft: #3a1a1c;
   --idle: #677284;
+  --code-key: #8fb3ff;
+  --code-string: #7ad09a;
+  --code-comment: #717c8e;
+  --code-special: #d2a8ff;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
@@ -697,3 +709,41 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .wire-dir { color: var(--text-3); font-size: 12px; margin-left: 2px; }
 .wire-none { font-size: 11.5px; color: var(--text-3); font-style: italic; }
 .wire-none.warn { color: var(--warn); font-style: normal; font-weight: 600; }
+
+/* The YAML editor (components/yaml): CodeMirror, themed by the tokens. */
+.yaml-editor { border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
+.yaml-editor:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.yaml-editor-loading { margin: 0; padding: 8px 10px; font: 12.5px/1.5 var(--mono); white-space: pre; overflow: auto; color: var(--text-2); }
+.yaml-editor .cm-editor { flex: 1; min-height: inherit; max-height: inherit; background: transparent; color: var(--text); font-size: 12.5px; }
+.yaml-editor .cm-editor.cm-focused { outline: none; }
+.yaml-editor .cm-scroller { font-family: var(--mono); line-height: 1.5; overflow: auto; flex: 1 1 auto; align-items: stretch; }
+.yaml-editor .cm-content { caret-color: var(--text); padding: 6px 0; }
+.yaml-editor .cm-cursor { border-left-color: var(--text); }
+.yaml-editor .cm-gutters { background: var(--surface-2); color: var(--text-3); border-right: 1px solid var(--border); }
+.yaml-editor .cm-activeLineGutter { background: var(--accent-soft); color: var(--text-2); }
+.yaml-editor .cm-activeLine { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.yaml-editor .cm-selectionBackground, .yaml-editor .cm-focused .cm-selectionBackground { background: color-mix(in srgb, var(--accent) 28%, transparent) !important; }
+.yaml-editor .cm-selectionMatch { background: color-mix(in srgb, var(--warn) 22%, transparent); }
+.yaml-editor .cm-matchingBracket { background: color-mix(in srgb, var(--accent) 22%, transparent); outline: none; }
+.yaml-editor .cm-foldGutter .cm-gutterElement { padding: 0 4px; cursor: pointer; color: var(--text-3); }
+.yaml-editor .cm-foldGutter .cm-gutterElement:hover { color: var(--accent); }
+.yaml-editor .cm-foldPlaceholder { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; color: var(--text-2); padding: 0 6px; margin: 0 4px; font-family: var(--sans); font-size: 11.5px; cursor: pointer; }
+.yaml-editor .cm-foldPlaceholder:hover { border-color: var(--accent); color: var(--accent-text); }
+.yaml-editor .cm-placeholder { color: var(--text-3); }
+.cm-yaml-key { color: var(--code-key); }
+.cm-yaml-string { color: var(--code-string); }
+.cm-yaml-comment { color: var(--code-comment); font-style: italic; }
+.cm-yaml-punct { color: var(--text-3); }
+.cm-yaml-bracket { color: var(--text-2); }
+.cm-yaml-special { color: var(--code-special); }
+.yaml-editor .cm-lintRange-error { background-image: none; text-decoration: wavy underline var(--bad); text-underline-offset: 3px; }
+.yaml-editor .cm-gutter-lint { width: 1.1em; }
+.yaml-editor .cm-lint-marker-error { content: none; width: 0.6em; height: 0.6em; margin: 0.45em 0.2em; border-radius: 50%; background: var(--bad); }
+.yaml-editor .cm-panels input, .yaml-editor .cm-panels button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 4px; }
+.yaml-editor .cm-searchMatch { background: color-mix(in srgb, var(--warn) 35%, transparent); }
+.yaml-editor .cm-searchMatch-selected { background: color-mix(in srgb, var(--warn) 60%, transparent); }
+.cm-yaml-hover { max-width: 420px; padding: 6px 10px; line-height: 1.45; }
+.cm-yaml-hover-head { font-family: var(--mono); font-size: 12px; color: var(--text-2); margin-bottom: 2px; }
+.cm-yaml-hover-note { color: var(--text-3); font-size: 11.5px; margin-top: 4px; }
+.yaml-tools { display: flex; gap: 12px; align-items: center; margin: 6px 0; font-size: 12px; }
+.yaml-tools .muted { margin-left: auto; }

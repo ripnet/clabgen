@@ -2020,10 +2020,14 @@ func (*ListProtocolTypesRequest) Descriptor() ([]byte, []int) {
 }
 
 type ListProtocolTypesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Types         []*ProtocolType        `protobuf:"bytes,1,rep,name=types,proto3" json:"types,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Types []*ProtocolType        `protobuf:"bytes,1,rep,name=types,proto3" json:"types,omitempty"`
+	// JSON schema of a scenario file (GetScenario/ApplyScenario), for
+	// editors: a protocol's config ("x-config-of": "type") takes the schema
+	// of the type its type field names.
+	ScenarioSchema string `protobuf:"bytes,2,opt,name=scenario_schema,json=scenarioSchema,proto3" json:"scenario_schema,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListProtocolTypesResponse) Reset() {
@@ -2061,6 +2065,13 @@ func (x *ListProtocolTypesResponse) GetTypes() []*ProtocolType {
 		return x.Types
 	}
 	return nil
+}
+
+func (x *ListProtocolTypesResponse) GetScenarioSchema() string {
+	if x != nil {
+		return x.ScenarioSchema
+	}
+	return ""
 }
 
 type Protocol struct {
@@ -4674,9 +4685,10 @@ const file_clabgen_v1_agent_proto_rawDesc = "" +
 	"\rconfig_schema\x18\x03 \x01(\tR\fconfigSchema\x120\n" +
 	"\aactions\x18\x04 \x03(\v2\x16.clabgen.v1.ActionTypeR\aactions\x12\x1a\n" +
 	"\bcategory\x18\x05 \x01(\tR\bcategory\"\x1a\n" +
-	"\x18ListProtocolTypesRequest\"K\n" +
+	"\x18ListProtocolTypesRequest\"t\n" +
 	"\x19ListProtocolTypesResponse\x12.\n" +
-	"\x05types\x18\x01 \x03(\v2\x18.clabgen.v1.ProtocolTypeR\x05types\"\x8a\x02\n" +
+	"\x05types\x18\x01 \x03(\v2\x18.clabgen.v1.ProtocolTypeR\x05types\x12'\n" +
+	"\x0fscenario_schema\x18\x02 \x01(\tR\x0escenarioSchema\"\x8a\x02\n" +
 	"\bProtocol\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x16\n" +

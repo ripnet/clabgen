@@ -37,14 +37,14 @@ type PortIO interface {
 }
 
 type DeviceSpec struct {
-	Name  string        `json:"name"`
-	Port  string        `json:"port"`
-	MAC   string        `json:"mac,omitempty"` // empty: derived, stable per host+name
-	VLANs []pkt.VLANTag `json:"vlans,omitempty"`
+	Name  string        `json:"name" jsonschema:"required" jsonschema_description:"The device's name: protocols name it as their device"`
+	Port  string        `json:"port" jsonschema:"required" jsonschema_description:"The data port it sends and receives on (e.g. eth1)"`
+	MAC   string        `json:"mac,omitempty" jsonschema_description:"Default: derived from the host and the name (stable across restarts)"` // empty: derived, stable per host+name
+	VLANs []pkt.VLANTag `json:"vlans,omitempty" jsonschema_description:"VLAN tags, outermost first"`
 	// IP addresses in CIDR form (IPv4 and IPv6) and optional gateways.
-	Addresses []string `json:"addresses,omitempty"`
-	Gateway4  string   `json:"gateway4,omitempty"`
-	Gateway6  string   `json:"gateway6,omitempty"`
+	Addresses []string `json:"addresses,omitempty" jsonschema_description:"IPv4 and IPv6 addresses with their prefix length (e.g. 10.0.0.2/24 or 2001:db8::2/64)"`
+	Gateway4  string   `json:"gateway4,omitempty" jsonschema_description:"IPv4 default gateway"`
+	Gateway6  string   `json:"gateway6,omitempty" jsonschema_description:"IPv6 default gateway"`
 
 	MACDerived bool   `json:"-"` // set by Devices when MAC was not configured
 	Group      string `json:"-"` // set by Devices for group members
@@ -69,12 +69,12 @@ func sameL2(a, b DeviceSpec) bool {
 }
 
 type ProtocolSpec struct {
-	Name   string          `json:"name"`
-	Type   string          `json:"type"`
-	Device string          `json:"device"`
-	Config json.RawMessage `json:"config,omitempty"`
+	Name   string          `json:"name" jsonschema:"required" jsonschema_description:"The instance's name: unique on the agent"`
+	Type   string          `json:"type" jsonschema:"required" jsonschema_description:"Protocol or traffic type"`
+	Device string          `json:"device" jsonschema:"required" jsonschema_description:"The device it runs on"`
+	Config json.RawMessage `json:"config,omitempty" jsonschema_description:"Settings of its type; unset ones take their defaults"`
 	// Disabled instances keep their config but don't run.
-	Disabled bool `json:"disabled,omitempty"`
+	Disabled bool `json:"disabled,omitempty" jsonschema_description:"Keep the config but don't run it"`
 }
 
 const (

@@ -62,8 +62,9 @@ Each agent has tabs:
 - **Traffic**: the agent's flows, and the flows received here.
 - **Capture**: the frames the ports receive and send.
 - **Events**: the agent's events, live.
-- **Scenario**: the whole config as YAML, where it is saved across lab
-  restarts, and a reset to the topology's scenario.
+- **Scenario**: the whole config in the [YAML editor](#the-yaml-editor),
+  where it is saved across lab restarts, and a reset to the topology's
+  scenario. Edits not applied yet stay when you switch tabs.
 
 ### A protocol's page
 
@@ -81,7 +82,8 @@ fault injection, graceful restart, …) and recent events.
 - the changes reviewed before they are applied, with a note on whether
   they apply in place or restart the instance (see
   [editing a running protocol](configuration.md#editing-a-running-protocol));
-- an agent's rejection shown on the fields it names.
+- an agent's rejection shown on the fields it names;
+- **edit as YAML**: the same config in the [YAML editor](#the-yaml-editor).
 
 Forms come from each protocol's schema, so new protocol types appear
 without UI changes.
@@ -96,12 +98,37 @@ as forms:
   renders them, and any other member you ask for.
 - When editing, it lists the template's changes field by field, and how
   many members applying changes, adds or removes (the rest keep running).
-- The whole group can also be edited as YAML.
+- The whole group can also be edited as YAML, in the
+  [YAML editor](#the-yaml-editor), templates included.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/group-editor-dark.png">
   <img alt="The group editor: the member device's fields with ± buttons to step them, and a preview of members 1, 2 and 6" src="images/group-editor.png">
 </picture>
+
+### The YAML editor
+
+The Scenario tab, a config's **edit as YAML** and a group's YAML view use
+one editor. It knows the agent's schemas: the scenario's parts, and each
+protocol type's settings, picked by the protocol's `type`.
+
+- **Suggestions**: the fields a place takes as you type a name (required
+  and common ones first), and the values a field takes after `key: `: its
+  choices, `true`/`false`, its default, the devices in the scenario for a
+  protocol's `device`. Ctrl-Space asks anywhere.
+- **Help**: hover a field's name for its description, type, default and
+  range.
+- **Problems** as you type, underlined with the reason on hover: YAML
+  errors, unknown fields (with the name you probably meant), missing
+  required ones, values of the wrong type, not among the choices or out
+  of range. In a device group, templates (`{i}`, `{start: …, step: …}`)
+  pass where a value goes. The agent still has the last word when you
+  apply.
+- **Folding**: the ▾ in the gutter folds a block. On the Scenario tab,
+  **fold every entry** folds each device, group and protocol to one line
+  that says what it is (`twamp-reflector on gen · 4 lines`).
+- Keys: Ctrl-S applies (merge) on the Scenario tab, Ctrl-F finds, Ctrl-Z
+  undoes, Tab indents. Escape then Tab moves on to the next control.
 
 ### Flows
 

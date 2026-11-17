@@ -25,21 +25,21 @@ import (
 const MaxGroupSize = 4096
 
 type GroupSpec struct {
-	Name  string `json:"name"`
-	Count int    `json:"count"`
+	Name  string `json:"name" jsonschema:"required" jsonschema_description:"The group's name"`
+	Count int    `json:"count" jsonschema:"required,minimum=1,maximum=4096" jsonschema_description:"How many member devices"`
 	// Device is a DeviceSpec template; its name defaults to {group}-{i}.
-	Device    json.RawMessage `json:"device"`
-	Protocols []GroupProtocol `json:"protocols,omitempty"`
+	Device    json.RawMessage `json:"device" jsonschema:"required" jsonschema_description:"Each member's device: {i} (1..count) and {i0} (from 0) in text and {start/step/repeat/cycle} for numbers and addresses. The name defaults to {group}-{i}"`
+	Protocols []GroupProtocol `json:"protocols,omitempty" jsonschema_description:"Protocols each member runs, named <device>-<name>"`
 }
 
 type GroupProtocol struct {
 	// Name is unique in the group (default: the type); member instances
 	// are named <device>-<name>.
-	Name   string          `json:"name,omitempty"`
-	Type   string          `json:"type"`
-	Config json.RawMessage `json:"config,omitempty"`
+	Name   string          `json:"name,omitempty" jsonschema_description:"Unique in the group. Default: the type"`
+	Type   string          `json:"type" jsonschema:"required" jsonschema_description:"Protocol or traffic type"`
+	Config json.RawMessage `json:"config,omitempty" jsonschema_description:"Settings of its type: templates as in the device"`
 	// Disabled members keep their config but don't run.
-	Disabled bool `json:"disabled,omitempty"`
+	Disabled bool `json:"disabled,omitempty" jsonschema_description:"Keep the config but don't run it"`
 }
 
 type group struct {

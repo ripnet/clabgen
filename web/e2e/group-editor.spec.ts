@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { mockAgent } from "./mock";
+import { mockAgent, yamlText } from "./mock";
 
 const svc = "clabgen.v1.AgentService";
 const ok = (r: Route, body: unknown) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
@@ -75,8 +75,8 @@ test("build a group of 100 MEPs as a form", async ({ page }) => {
   // The YAML view shows the same spec, without the protocol's defaults.
   await m.getByRole("button", { name: "edit as YAML" }).first().click();
   const yaml = m.getByLabel("Group as YAML");
-  await expect(yaml).toHaveValue(/mep_id:\n\s+start: 101/);
-  await expect(yaml).not.toHaveValue(/ais:/);
+  await expect.poll(() => yamlText(yaml)).toMatch(/mep_id:\n\s+start: 101/);
+  expect(await yamlText(yaml)).not.toMatch(/ais:/);
   await m.getByRole("button", { name: "form view" }).first().click();
 
   // A rejection stays in the editor.

@@ -7,6 +7,7 @@ import type { DeviceGroup } from "../gen/clabgen/v1/agent_pb";
 import { SchemaForm, defaults, normalize, parseSchema, type Obj } from "../components/SchemaForm";
 import { StepInput, fmtStep, isStep } from "../components/Stepped";
 import { Modal, useToast } from "../ui";
+import { YamlEditor, type YamlSchema } from "../components/yaml/YamlEditor";
 
 // GroupEditor creates or edits a device group as a form: the device
 // template, each group protocol's config (any number, address or MAC can
@@ -49,6 +50,13 @@ export function GroupEditor({
   const c = client(agentId);
   const ports = usePoll(() => c.listPorts({}), [agentId]);
   const types = usePoll(() => c.listProtocolTypes({}), [agentId]);
+  // The YAML view's help: the scenario schema's group entry.
+  const yamlCtx = useMemo((): YamlSchema | undefined => {
+    const d = types.data;
+    const root = parseSchema(d?.scenarioSchema).properties?.device_groups?.items;
+    if (!d || !root) return undefined;
+    return { root, template: true, types: Object.fromEntries(d.types.map((t) => [t.name, parseSchema(t.configSchema)])) };
+  }, [types.data]);
   const portNames = (ports.data?.ports ?? []).map((p) => p.name);
   const [spec, setSpec] = useState<Spec>(() => (group?.spec as Spec | undefined) ?? initial ?? blank(""));
   // A new group starts on the first port, once the ports are known.
@@ -198,15 +206,17 @@ export function GroupEditor({
 
         {yaml !== undefined ? (
           <>
-            <textarea
-              className="input mono code scenario"
-              aria-label="Group as YAML"
-              spellCheck={false}
+            <YamlEditor
+              ariaLabel="Group as YAML"
               value={yaml}
-              onChange={(e) => {
-                setYaml(e.target.value);
+              ctx={yamlCtx}
+              minLines={24}
+              maxHeight="65vh"
+              onChange={(t) => {
+                if (t === yaml) return;
+                setYaml(t);
                 try {
-                  const v = parseYAML(e.target.value) ?? {};
+                  const v = parseYAML(t) ?? {};
                   if (typeof v !== "object" || Array.isArray(v)) throw new Error("must be a mapping of fields");
                   setYamlErr(undefined);
                   setSpec(v as Spec);

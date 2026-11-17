@@ -273,7 +273,13 @@ message ProtocolType {
 }
 
 message ListProtocolTypesRequest {}
-message ListProtocolTypesResponse { repeated ProtocolType types = 1; }
+message ListProtocolTypesResponse {
+  repeated ProtocolType types = 1;
+  // JSON schema of a scenario file (GetScenario/ApplyScenario), for
+  // editors: a protocol's config ("x-config-of": "type") takes the schema
+  // of the type its type field names.
+  string scenario_schema = 2;
+}
 
 message Protocol {
   string name = 1;

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { parse as parseYAML, stringify as toYAML } from "yaml";
 import { StepInput, fmtStep, isStep } from "./Stepped";
+import { YamlEditor } from "./yaml/YamlEditor";
 
 // A JSON schema as published by the agent (invopop/jsonschema output plus
 // "default" values and "x-order"), with hints from the Go config's
@@ -28,6 +29,12 @@ export type Schema = {
   maximum?: number;
   items?: Schema;
   "x-order"?: string[];
+  // A map's values (scenario ports).
+  additionalProperties?: boolean | Schema;
+  // In the scenario schema: a protocol's config takes the schema of the
+  // type its sibling field names; a device group's values are templates.
+  "x-config-of"?: string;
+  "x-template"?: boolean;
 };
 
 export type Obj = Record<string, unknown>;
@@ -1017,6 +1024,7 @@ export function SchemaForm({
   const [text, setText] = useState("");
   const [err, setErr] = useState<string>();
   const [query, setQuery] = useState("");
+  const yamlCtx = useMemo(() => ({ root: schema, template: stepping }), [schema, stepping]);
   const empty =
     !schema.properties || Object.keys(schema.properties).length === 0;
   const sectioned =
@@ -1070,16 +1078,17 @@ export function SchemaForm({
       </div>
       {raw ? (
         <>
-          <textarea
-            className="input mono code"
-            aria-label="Configuration as YAML"
-            rows={Math.min(24, Math.max(6, text.split("\n").length + 1))}
+          <YamlEditor
+            ariaLabel="Configuration as YAML"
             value={text}
-            spellCheck={false}
-            onChange={(e) => {
-              setText(e.target.value);
+            ctx={yamlCtx}
+            minLines={Math.min(24, Math.max(6, text.split("\n").length + 1))}
+            maxHeight="60vh"
+            onChange={(t) => {
+              if (t === text) return;
+              setText(t);
               try {
-                const v = parseYAML(e.target.value) ?? {};
+                const v = parseYAML(t) ?? {};
                 if (typeof v !== "object" || Array.isArray(v))
                   throw new Error("must be a mapping of fields");
                 setErr(undefined);

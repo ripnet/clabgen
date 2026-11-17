@@ -65,10 +65,10 @@ func (m *MAC) UnmarshalText(b []byte) error {
 
 // VLANTag is one 802.1Q/802.1ad tag.
 type VLANTag struct {
-	TPID uint16 `json:"tpid,omitempty"`
-	VID  uint16 `json:"vid"`
-	PCP  uint8  `json:"pcp,omitempty"`
-	DEI  bool   `json:"dei,omitempty"`
+	TPID uint16 `json:"tpid,omitempty" jsonschema_description:"Tag protocol ID: 0x8100 (802.1Q, the default), 0x88a8 (802.1ad) or 0x9100"`
+	VID  uint16 `json:"vid" jsonschema:"required,maximum=4095" jsonschema_description:"VLAN ID"`
+	PCP  uint8  `json:"pcp,omitempty" jsonschema:"maximum=7" jsonschema_description:"Priority code point"`
+	DEI  bool   `json:"dei,omitempty" jsonschema_description:"Drop eligible indicator"`
 }
 
 func (t VLANTag) tpid() uint16 {

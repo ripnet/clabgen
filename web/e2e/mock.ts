@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Page, Route } from "@playwright/test";
+import type { Locator, Page, Route } from "@playwright/test";
 
 // The agent's protocol types, written by the Go test TestUITypesFixture
 // (CLABGEN_WRITE_FIXTURES=1 go test ./internal/server).
@@ -117,4 +117,14 @@ export async function mockAgent(page: Page, p: Protocol, update: (config: Record
     p.config = req.config;
     return ok(r, { protocol: p });
   });
+}
+
+// The YAML editor (CodeMirror): its text, and replacing it. loc is the
+// editor's labelled content (getByLabel("… as YAML")).
+export const yamlText = (loc: Locator) => loc.evaluate((el) => [...el.querySelectorAll(".cm-line")].map((l) => l.textContent).join("\n"));
+export async function fillYaml(loc: Locator, text: string) {
+  await loc.click();
+  await loc.press("ControlOrMeta+a");
+  // One edit, as a paste: the selection replaced.
+  await loc.page().keyboard.insertText(text);
 }

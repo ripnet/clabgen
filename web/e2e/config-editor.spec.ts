@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mockAgent, type Protocol } from "./mock";
+import { fillYaml, mockAgent, yamlText, type Protocol } from "./mock";
 
 const bgp = (): Protocol => ({
   name: "bgp1",
@@ -100,16 +100,16 @@ test("YAML view", async ({ page }) => {
   const modal = await edit(page, p);
   await modal.getByRole("button", { name: "edit as YAML" }).click();
   const text = modal.getByLabel("Configuration as YAML");
-  await expect(text).toHaveValue(/local_as: 65000\n/);
-  await expect(text).toHaveValue(/- address: 10\.0\.0\.1\n/);
+  await expect.poll(() => yamlText(text)).toMatch(/local_as: 65000\n/);
+  await expect.poll(() => yamlText(text)).toMatch(/- address: 10\.0\.0\.1\n/);
 
-  await text.fill("local_as: 65000\nrouter_id: 192.0.2.1\nhold_time: 45\npeers:\n  - address: 10.0.0.1\n    remote_as: 65001\nroutes:\n  - prefix: 100.64.0.0/24\n    peers: [10.0.0.1]\n");
+  await fillYaml(text, "local_as: 65000\nrouter_id: 192.0.2.1\nhold_time: 45\npeers:\n  - address: 10.0.0.1\n    remote_as: 65001\nroutes:\n  - prefix: 100.64.0.0/24\n    peers: [10.0.0.1]\n");
   await modal.getByRole("button", { name: "form view" }).click();
   await expect(modal.locator(".field", { hasText: "hold time" }).locator("input")).toHaveValue("45");
 
   // A broken document keeps the last good value.
   await modal.getByRole("button", { name: "edit as YAML" }).click();
-  await text.fill("peers: [");
+  await fillYaml(text, "peers: [");
   await expect(modal.locator(".error-text")).toBeVisible();
   await modal.getByRole("button", { name: "form view" }).click();
 
@@ -132,7 +132,7 @@ test("BGP: what applying does", async ({ page }) => {
   const modal = await edit(page, bgp());
   const yaml = async (doc: string) => {
     await modal.getByRole("button", { name: "edit as YAML" }).click();
-    await modal.getByLabel("Configuration as YAML").fill(doc);
+    await fillYaml(modal.getByLabel("Configuration as YAML"), doc);
     await modal.getByRole("button", { name: "form view" }).click();
   };
   const head = "local_as: 65000\nrouter_id: 192.0.2.1\nhold_time: 30\n";
@@ -163,7 +163,7 @@ test("IS-IS, OSPF, CFM and LLDP: what applying does", async ({ page }) => {
       const key = line.split(":")[0];
       const rest = Object.entries(c.config).filter(([k]) => k !== key).map(([k, v]) => `${k}: ${v}`);
       await modal.getByRole("button", { name: "edit as YAML" }).click();
-      await modal.getByLabel("Configuration as YAML").fill([...rest, line].join("\n") + "\n");
+      await fillYaml(modal.getByLabel("Configuration as YAML"), [...rest, line].join("\n") + "\n");
       await modal.getByRole("button", { name: "form view" }).click();
     };
     await yaml(c.inPlace);
