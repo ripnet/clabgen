@@ -43,7 +43,7 @@ const (
 func init() { protocol.Register(streamType{}) }
 
 type Config struct {
-	DstMAC      string `json:"dst_mac" jsonschema:"description=Destination MAC: the far device's (its Devices tab) for unicast; default broadcast" jsonschema_extras:"x-group=Frames"`
+	DstMAC      string `json:"dst_mac" jsonschema:"description=Destination MAC: the far device's (its Devices tab) for unicast; default broadcast" jsonschema_extras:"x-group=Frames,x-common=true"`
 	SrcMAC      string `json:"src_mac,omitempty" jsonschema:"description=First source MAC. Default: the device's" jsonschema_extras:"x-group=Frames"`
 	SrcMACCount int    `json:"src_mac_count" jsonschema:"minimum=1,maximum=65536" jsonschema_description:"Cycle through this many source MACs from src_mac (one per frame), e.g. to fill MAC tables" jsonschema_extras:"x-group=Frames"`
 	EtherType   uint16 `json:"ethertype" jsonschema:"minimum=1536,maximum=65535" jsonschema_description:"Ethertype (default 0x88b5; not IP, ARP, CFM, LLDP, LACP, PTP or VLAN tags)" jsonschema_extras:"x-group=Frames"`

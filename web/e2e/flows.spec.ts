@@ -87,3 +87,18 @@ test("without checks on any flow, the flow lists have no Checks column", async (
   await page.reload();
   await expect(page.locator("thead th", { hasText: "Checks" })).toHaveCount(1);
 });
+
+test("a new flow's form shows where it goes without showing all options", async ({ page }) => {
+  const plain = flow("ping-1", {});
+  delete (plain.status as Record<string, unknown>).verdict;
+  await mockAgent(page, plain, () => undefined);
+  await page.goto("./#/a/a1/traffic");
+  await expect(page.locator("tbody tr").filter({ hasText: "ping-1" })).toHaveCount(1);
+  await page.getByRole("button", { name: "New flow" }).click();
+  const modal = page.locator(".modal");
+  for (const [type, field] of [["icmp", "destination"], ["udp", "destination"], ["l2", "dst mac"]]) {
+    await modal.locator("select").first().selectOption(type);
+    await expect(modal.getByRole("button", { name: /show all options/ })).toBeVisible();
+    await expect(modal.locator(".field-label", { hasText: new RegExp(`^${field}\\??$`) })).toBeVisible();
+  }
+});

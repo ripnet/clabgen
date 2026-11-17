@@ -18,7 +18,7 @@ import (
 // list run, addressing, IP, transport and payload fields in that order.
 
 type Target struct {
-	Destination  string        `json:"destination,omitempty" jsonschema:"description=IPv4 or IPv6 address to send to. Or use destinations"`
+	Destination  string        `json:"destination,omitempty" jsonschema:"description=IPv4 or IPv6 address to send to. Or use destinations" jsonschema_extras:"x-common=true"`
 	Destinations []PrefixBlock `json:"destinations,omitempty" jsonschema_description:"Send to many prefixes instead of one address: the first host of each, in turn. They must be off-link (reached through the device's gateway) and of one address family" jsonschema_extras:"x-summary={prefix}[ ×{count}]"`
 }
 
