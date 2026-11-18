@@ -151,7 +151,7 @@ eth1 In  aa:c1:ab:50:33:c9 > 46:af:ba:72:5e:a7, MPLS 100001, IPv4 10.0.1.2 > 192
 ## Failing the protected link
 
 On the **Flows** page, **Convergence test** with no failure step waits for one made
-elsewhere. Here it's the SR1 side of the link to `sr2`:
+elsewhere. Here it's `sr1`'s side of the link to `sr2`:
 
 ```
 /configure port 1/1/c2/1 admin-state disable
@@ -183,7 +183,7 @@ Other failures to try, each a `proto run rsvp` action:
 |---|---|---|
 | `tail` | `relabel` | New labels: no traffic lost |
 | `tail` | `tear lsp=to-tail seconds=15` | `into-lsp` loses exactly those 15 s; the label comes back when they're over |
-| `tail` | `tear lsp=sr-to-tail::to-sr2` | `sr1` takes down its LSP, loses about a second, falls back to IS-IS and signals it again |
+| `tail` | `tear lsp=sr-to-tail::to-sr2` (SR OS names its LSP *lsp*::*path*) | `sr1` takes down its LSP, loses about a second, falls back to IS-IS and signals it again |
 | `tail` | `flap seconds=30 mode=silent` | `sr2`'s hellos go unanswered, and it ends the LSPs through it after about 8 s. They come back within about 30 s of the flap's end |
 | `head` | `resignal lsp=to-tail` | Make before break: a new LSP ID, no traffic lost |
 

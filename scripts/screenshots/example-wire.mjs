@@ -64,6 +64,15 @@ await page.setViewportSize({ width: 1440, height: 1900 });
 await go("#/a/clab-wire-tap/p/core", 3000);
 await page.locator(".card").filter({ has: page.getByRole("heading", { name: "Status" }) }).screenshot({ path: `${out}/wire-monitor${suffix}.png` });
 
+// The lab drawn (docs/ui.md, A lab's nodes and links): its nodes and
+// links, the clabgen ends' state; without the links table under it.
+await page.setViewportSize({ width: 1440, height: 900 });
+await go("#/lab/wire", 4500);
+// Without the links table, or where the data came from (a path on this host).
+await page.addStyleTag({ content: ".topo-table, .topo-from { display: none !important; }" });
+await sleep(300);
+await page.locator(".topo").screenshot({ path: `${out}/wire-lab${suffix}.png` });
+
 await page.setViewportSize({ width: 1440, height: 1100 });
 
 // The animation: evpl-ping's page while sr1's SAP keeps both tags, then

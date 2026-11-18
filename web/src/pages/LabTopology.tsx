@@ -230,7 +230,7 @@ export function LabTopology({ lab }: { lab: string }) {
         <>
           <p className="muted">
             {d.nodes.length} nodes · {d.links.length} links. Drag nodes to arrange them, the wheel zooms, drag the background to pan; a clabgen node opens its agent; hover a node for its links&apos; interfaces.
-            {d.from && <span className="small-note"> From {d.from}.</span>}
+            {d.from && <span className="small-note topo-from"> From {d.from}.</span>}
           </p>
           {d.note && <div className="warn-box">{d.note}</div>}
           <svg

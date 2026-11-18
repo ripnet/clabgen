@@ -134,13 +134,12 @@ filter.
 ```
 $ clabgenctl --lab wire wire
 FLOW            VERDICT  DIRECTION  MONITOR   LABEL   DATA            OAM
-ce-a/enni-ping  pass     a-to-z     tap/core  524283  untagged ×61 ✓  untagged ×12 ✓
-                         z-to-a     tap/core  524284  untagged ×61 ✓  untagged ×12 ✓
-ce-a/epl-ping   pass     a-to-z     tap/core  524285  3162,163 ×62 ✓  3162,163 ×13 ✓
-                         z-to-a     tap/core  524286  3162,163 ×62 ✓  3162,163 ×12 ✓
 ce-a/evpl-ping  pass     a-to-z     tap/core  524284  163 ×61 ✓       163 ×12 ✓
                          z-to-a     tap/core  524285  163 ×61 ✓       163 ×13 ✓
+…
 ```
+
+The whole output is in the [example](examples/wire.md#the-customer-and-the-monitor).
 
 `wire FLOW...` for some flows, `-o json` for scripts, `--services` for
 everything each monitor saw, flows or not, `--clear` to clear every monitor.

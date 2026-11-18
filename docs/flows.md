@@ -6,19 +6,19 @@ and `phase`, and the `start`, `stop`, `clear` and `preview` actions.
 
 ## ICMP
 
-<!-- tab: YAML -->
-```yaml
-- name: ping
-    type: icmp
-    device: pe
-    config: {destination: 192.0.2.2, rate: 100, timeout: 500ms, auto_start: true,
-             checks: {max_loss_pct: 1, max_outage_ms: 50}}
-```
 <!-- tab: UI -->
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/form-ping-dark.png">
   <img alt="The ICMP flow form: destination 192.0.2.2, continuous at 100 per second, a 500 ms timeout, started automatically" src="images/form-ping.png">
 </picture>
+<!-- tab: YAML -->
+```yaml
+  - name: ping
+    type: icmp
+    device: pe
+    config: {destination: 192.0.2.2, rate: 100, timeout: 500ms, auto_start: true,
+             checks: {max_loss_pct: 1, max_outage_ms: 50}}
+```
 <!-- /tabs -->
 
 Every IP and ICMP field can be set: the type and code, identifier,
@@ -28,6 +28,9 @@ and payload pattern. Checksums can be set deliberately wrong. The
 
 An outage is a run of consecutive lost packets times the send interval,
 so a 100 pps flow measures a failover to within 10 ms.
+
+In the UI's form, `destination` (and `dst_mac` for an L2 stream) shows
+without **show all options**.
 
 ## UDP
 
@@ -117,9 +120,14 @@ in unless set (set them wrong on purpose to test how a device copes).
 VXLAN over an MPLS label stack, with the inner UDP source port counting
 up:
 
+<!-- tab: UI -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/form-packet-dark.png">
+  <img alt="The packet editor: nine layer cards from MPLS to the payload, and the preview with the decoded frame and its hex, coloured by layer" src="images/form-packet.png">
+</picture>
 <!-- tab: YAML -->
 ```yaml
-- name: crafted
+  - name: crafted
     type: packet
     device: v100
     config:
@@ -138,11 +146,6 @@ up:
       rate: 10
       auto_start: true
 ```
-<!-- tab: UI -->
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/form-packet-dark.png">
-  <img alt="The packet editor: nine layer cards from MPLS to the payload, and the preview with the decoded frame and its hex, coloured by layer" src="images/form-packet.png">
-</picture>
 <!-- /tabs -->
 
 - **Layers**: `ethernet`, `vlan` (a tag inside the device's own), `mpls`,
@@ -291,6 +294,10 @@ label, as a label is what tells them apart.
 An `icmp` or `udp` flow can send to many prefixes instead of one address:
 `destinations` replaces `destination`, and each packet goes to the first host
 of the next prefix. An example: [Traffic to BGP routes](examples/bgp-routes.md).
+
+Flows can also say which VLAN tags they should carry inside an MPLS
+service (`wire`), checked by a monitor on a router's port mirror: see
+[Monitoring a mirrored link](wire.md).
 
 ```yaml
     config:

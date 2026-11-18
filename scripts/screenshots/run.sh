@@ -33,7 +33,7 @@ for scheme in light dark; do
   done
   node tour.mjs "http://127.0.0.1:$port/" "$work/$scheme" "$scheme"
   python3 animate.py "$work/$scheme" "$images/tour$suffix.webp"
-  for still in bgp protocol group-editor capture flow form-device form-mep form-bgp form-ping form-packet form-group; do
+  for still in bgp protocol group-editor capture flow scenario form-device form-mep form-bgp form-ping form-packet form-group; do
     cp "$work/$scheme/$still.png" "$images/$still$suffix.png"
   done
 done

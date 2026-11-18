@@ -29,6 +29,23 @@ database descriptions is `mtu` (default 1500). A neighbor with a larger
 one is refused (as RFC 2328 says), so match it on the peer (SR OS:
 `ip-mtu 1500`) or set `mtu_ignore`.
 
+## In the UI
+
+The instance's page, here the [`examples/srsim`](../examples/srsim) lab's
+router against an SR-SIM: router ID, roles, authentication, the interfaces
+and neighbors, its areas, segment routing, and further down the emulated
+network, the link-state database and counters.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/examples/srsim-ospf-dark.png">
+  <img alt="The OSPF instance's page: full with 3 neighbors on 2/2 interfaces, DR, 1087 LSAs; an ABR and ASBR with MD5; a point-to-point interface and a broadcast one where it is DR with a key chain; three full neighbors, one with BFD up; area 0 and area 2 (the emulated topology, with a range); the segment routing SIDs" src="images/examples/srsim-ospf.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/examples/srsim-ospf-form-dark.png">
+  <img alt="The OSPF config form, which says the edit applies in place: sections for areas, interfaces, authentication, prefixes, the topology, segment routing, flex algos, graceful restart, virtual links and BFD, and the general settings: router ID, area, loopbacks, traffic engineering, the first interface's network type and cost, timers, MTU and TE delay" src="images/examples/srsim-ospf-form.png">
+</picture>
+
 ## Actions
 
 `flap` (reset or silent, per interface), `cost`, `max-metric` (RFC 6987),
@@ -46,7 +63,8 @@ decoded).
   area the router is an area border router. It runs SPF over each area
   only to summarise it into the others.
 - `areas` sets an area's `type` (`stub`, `nssa`), `no_summary`,
-  `default_cost`, `ranges` (aggregation, `no_advertise`) and NSSA
+  `nssa_default` (a border router originates a type-7 default into the
+  NSSA), `default_cost`, `ranges` (aggregation, `no_advertise`) and NSSA
   translation (`nssa_translate`). Externals become type-7 LSAs in an NSSA,
   and a border router translates others' into AS-externals.
 - `topology.area` puts an emulated network in its own area behind us.

@@ -29,7 +29,7 @@ has a loopback, and the sender has flows to both.
 
 > **Why this is a hard failure:** containerlab's default link to an SR-SIM
 > is a stitch that doesn't carry link state
-> ([more](../configuration.md)). When `router`'s `eth1` goes down, the SR
+> ([more](../configuration.md#links-to-sr-sim)). When `router`'s `eth1` goes down, the SR
 > sees nothing, and keeps sending into the link until BFD or the hold timer
 > notices. This is the failure that loses traffic: think of a fault in a
 > transport network between the two ends.
@@ -104,6 +104,10 @@ protocols:
 devices:
   - {name: sender, port: eth1, addresses: [10.0.1.2/24], gateway4: 10.0.1.1}
 protocols:
+  - name: ping-bfd
+    type: icmp
+    device: sender
+    config: {destination: 192.0.2.10, rate: 200, auto_start: true}
   - name: ping-plain
     type: icmp
     device: sender
@@ -143,7 +147,7 @@ clabgenctl convergence --settle 20s \
 ```
 ```python
 lab = Lab.from_docker("convergence")
-with lab.convergence() as failure:
+with lab.convergence(settle=20) as failure:
     lab["router"].port_down("eth1")
 failure.assert_restored(max_ms=5000)
 print(failure["ping-bfd"].loss_ms, failure["ping-plain"].loss_ms)

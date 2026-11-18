@@ -69,16 +69,18 @@ Good to know:
   the `.:/clab` bind is for) and comes back when the lab restarts.
 - Rather start from a file? [Load a scenario](docs/configuration.md) at
   startup.
-- Two complete labs are in [`examples/`](examples): two agents back to
-  back (`b2b`), and one against a Nokia SR-SIM router (`srsim`, which
-  needs an SR-SIM image and license).
+- Complete labs are in [`examples/`](examples): two agents back to back
+  (`b2b`), one against a Nokia SR-SIM router (`srsim`, which needs an
+  SR-SIM image and license), and the [worked examples](docs/examples/index.md).
 
 ## Highlights
 
 - **Everything from the browser**: a lab-wide view of every agent, live
   protocol status, and a config editor generated from each protocol's
   schema, with the changes reviewed before they are applied, and applied
-  live: most edits take effect without dropping adjacencies or sessions.
+  live: most edits take effect without dropping adjacencies or sessions;
+  each lab drawn with its links' state; a YAML editor for whole scenarios
+  with suggestions, help and problems as you type.
 - **Break things on purpose**: flap adjacencies, withdraw routes, stop
   CCMs, inject CFM faults, silence BFD, restart gracefully, disable a
   protocol (or 20 random members of a group) and watch the device under
@@ -93,8 +95,10 @@ Good to know:
 - **Measure and judge**: traffic flows with loss, outages and RTT, and
   pass/fail limits on them shown across the whole lab ("every flow stayed
   under 50 ms of outage"); convergence tests that report how much traffic a
-  failure cost each flow, down to which BGP routes lost traffic; one-way stats on every device; Y.1731 delay and
-  loss sessions in bins.
+  failure cost each flow, down to which BGP routes lost traffic; one-way
+  stats on every device; Y.1731 delay and loss sessions in bins; a
+  TWAMP Light / STAMP reflector for a router's delay and loss
+  measurements.
 - **Scriptable**: the same things through [`clabgenctl`](docs/cli.md), an
   [API](docs/api.md), YAML scenarios, and a [Python package](docs/python.md)
   with pytest fixtures for turning a lab into a test suite.
@@ -188,8 +192,8 @@ Also at **https://clabgen.dev/**.
 - [API](docs/api.md)
 - [Python and pytest](docs/python.md): the `clabgen` package
 - [Upgrading](docs/upgrading.md): the UI, agents, `clabgenctl` and Python
-- [Development](docs/development.md): building, tests, images and releases
 - [Writing a protocol](docs/writing-a-protocol.md)
+- [Development](docs/development.md): building, tests, images and releases
 
 ## License
 

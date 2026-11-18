@@ -1064,17 +1064,19 @@ export function SchemaForm({
             onChange={(e) => setQuery(e.target.value)}
           />
         )}
-        <button
-          type="button"
-          className="link"
-          onClick={() => {
-            if (!raw) setText(Object.keys(value).length ? toYAML(value) : "");
-            setErr(undefined);
-            setRaw(!raw);
-          }}
-        >
-          {raw ? "form view" : "edit as YAML"}
-        </button>
+        {!empty && (
+          <button
+            type="button"
+            className="link"
+            onClick={() => {
+              if (!raw) setText(Object.keys(value).length ? toYAML(value) : "");
+              setErr(undefined);
+              setRaw(!raw);
+            }}
+          >
+            {raw ? "form view" : "edit as YAML"}
+          </button>
+        )}
       </div>
       {raw ? (
         <>

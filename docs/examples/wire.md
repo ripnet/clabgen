@@ -22,6 +22,9 @@ The lab is in [`examples/wire`](../../examples/wire).
   <img alt="ce-a connects to sr1 three times (eth1 to c1/1 for epl with a null SAP, eth2 to c3/1 for evpl with SAP :3162, eth3 to c4/1 for enni with SAP :3162.163); sr1 connects to sr2 over c2/1 with IS-IS, LDP and a pseudowire per Epipe; sr2 connects to ce-b the same way. Every customer device sends 3162 and 163. sr1 mirrors c2/1, both ways, out of c5/1 to the tap agent's eth1, where the monitor runs" src="../images/examples/wire-topology.svg">
 </picture>
 
+Once deployed, the UI draws the lab too, with each clabgen link's state:
+[A lab's nodes and links](../ui.md#a-labs-nodes-and-links).
+
 To deploy it, add `license: <file>` to the two SR nodes in
 [`wire.clab.yml`](../../examples/wire/wire.clab.yml), then:
 
@@ -48,6 +51,7 @@ sr1 mirrors its core port, both directions, to the port wired to `tap`:
 ```
 /configure port 1/1/c5/1 ethernet mode access
 /configure port 1/1/c5/1 ethernet mtu 9212
+/configure mirror mirror-dest "core" admin-state enable
 /configure mirror mirror-dest "core" service-id 900
 /configure mirror mirror-dest "core" sap 1/1/c5/1
 /configure mirror mirror-source "core" port 1/1/c2/1 ingress true

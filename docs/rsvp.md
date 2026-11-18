@@ -68,6 +68,8 @@ other address gets a routing problem error: there is no label switching here.
 
 ## Actions
 
+- `signal lsp=…`: signal an LSP from here that is shut down or was torn
+  down without `seconds`.
 - `tear lsp=… seconds=10`: PathTear for an LSP from here, ResvTear for one ending
   here, staying away that long. Without `seconds`, an LSP from here stays down
   until `signal lsp=…`, and one ending here is answered at its next refresh.
@@ -78,7 +80,8 @@ other address gets a routing problem error: there is no label switching here.
 - `relabel lsp=…`: new labels for LSPs ending here. The old ones keep working for
   a moment, while the neighbor switches.
 - `flap seconds=30 mode=silent`: send nothing and listen to nothing, so the
-  neighbors' timers expire if it's long enough; or `mode=tear`.
+  neighbors' timers expire if it's long enough; or `mode=tear` (the
+  default), which tears the LSPs down first.
 
 Each LSP and neighbor change is an event, so it shows on a
 [convergence test](flows.md#convergence-tests)'s timeline.

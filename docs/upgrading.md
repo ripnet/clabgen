@@ -7,8 +7,9 @@ links to a newer release when there is one, and marks agents running an
 older release than the UI with **update** (see [Versions](ui.md#versions)).
 
 Upgrade the UI and the agents together. A newer UI works with older
-agents, but what they don't have yet (a newer API call, say) isn't
-available on them until they are upgraded.
+agents, but what they don't have yet isn't available on them until they
+are upgraded: the YAML editor's suggestions and checks on the Scenario
+tab, for one, need an agent new enough to publish the scenario schema.
 
 ## The UI
 
@@ -45,7 +46,7 @@ clab redeploy -t mylab.clab.yml
   agents load their [saved config](configuration.md#saved-config) again.
   Don't add `--cleanup`, which deletes the lab folder and the saved config
   with it.
-- A topology that pins a version (`image: ghcr.io/ripnet/clabgen:0.8.0`)
+- A topology that pins a version (`image: ghcr.io/ripnet/clabgen:0.19.0`)
   upgrades by changing the tag and redeploying; containerlab pulls a tag
   it doesn't have.
 

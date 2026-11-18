@@ -6,17 +6,20 @@ from a YAML file when the agent starts. Either way it is
 [kept across lab restarts](#saved-config).
 
 Every protocol's full set of options, with descriptions and defaults, is
-in its schema: the UI's forms show them, and `clabgenctl types <type>`
-prints them. This page covers scenario files, saving, ports and devices;
+in its schema: the UI's forms and the [YAML editor](ui.md#the-yaml-editor)
+(hover a field) show them, and `clabgenctl types <type>` prints them. This page covers scenario files, saving, ports and devices;
 each protocol has its own page with typical configs:
 
 - [Traffic flows](flows.md): ICMP, UDP, raw L2 streams, the packet
   builder and pass/fail checks
 - [Device groups](device-groups.md): many devices from one template
 - [CFM and Y.1731](cfm.md), [IS-IS](isis.md), [BGP](bgp.md),
-  [OSPFv2 and OSPFv3](ospf.md), [LLDP](lldp.md), [DHCP](dhcp.md)
+  [OSPFv2 and OSPFv3](ospf.md), [LDP](ldp.md), [RSVP-TE](rsvp.md),
+  [LLDP](lldp.md), [MACsec](macsec.md), [DHCP](dhcp.md),
+  [TWAMP / STAMP](twamp.md), [monitoring a mirrored link](wire.md)
 
-[`examples/`](../examples) has two complete labs.
+[`examples/`](../examples) has complete labs: `b2b`, `srsim`, and the
+[worked examples](examples/index.md).
 
 ## Scenario files
 
@@ -39,7 +42,9 @@ Put the file next to the topology and name it in `CLABGEN_SCENARIO`:
   and `CLABGEN_SCENARIO: /etc/clabgen/scenario.yml`.
 
 The Scenario tab in the UI (or `clabgenctl scenario get` / `apply` /
-`reset`) exports, applies and resets the whole thing.
+`reset`) exports, applies and resets the whole thing. The Scenario tab
+edits it in the [YAML editor](ui.md#the-yaml-editor), which checks it
+against the agent's schemas as you type.
 
 ### What's in one
 
@@ -61,7 +66,10 @@ protocols:                   # protocol instances and traffic flows, each on a d
 |---|---|
 | `cfm-mep` | 802.1ag / Y.1731 down MEP ([CFM](cfm.md)) |
 | `isis`, `ospf`, `ospfv3`, `bgp` | routing protocols ([IS-IS](isis.md), [OSPF](ospf.md), [BGP](bgp.md)) |
+| `ldp`, `rsvp` | MPLS label signalling ([LDP](ldp.md), [RSVP-TE](rsvp.md)) |
 | `lldp` | LLDP agent ([LLDP](lldp.md)) |
+| `macsec` | 802.1AE with MKA or static keys, on a device or its port ([MACsec](macsec.md)) |
+| `monitor` | monitor port for a router's port mirror ([Monitoring a mirrored link](wire.md)) |
 | `dhcp`, `dhcpv6` | DHCP clients that lease a device's addresses ([DHCP](dhcp.md)) |
 | `dhcp-server`, `dhcpv6-server` | DHCP servers, on the link or behind relays ([DHCP](dhcp.md#servers)) |
 | `icmp`, `udp`, `l2`, `packet` | [traffic flows](flows.md) |
@@ -172,16 +180,16 @@ link.
 A device is an emulated endpoint on a port: protocols and flows run on
 devices, and a port can have as many as you like.
 
-<!-- tab: YAML -->
-```yaml
-devices:
-  - {name: v100, port: eth1, vlans: [{vid: 100}], addresses: [10.0.100.1/24]}
-```
 <!-- tab: UI -->
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/form-device-dark.png">
   <img alt="The device form: name, port, MAC, the VLAN stack with tag 100, and the address 10.0.100.1/24" src="images/form-device.png">
 </picture>
+<!-- tab: YAML -->
+```yaml
+devices:
+  - {name: v100, port: eth1, vlans: [{vid: 100}], addresses: [10.0.100.1/24]}
+```
 <!-- /tabs -->
 
 - `port`: the data port it sits on.
@@ -221,4 +229,5 @@ which it will be. Anything else restarts the instance with the new config.
 | LLDP | everything else (the next LLDPDU goes out at once) | `dest`, `mode` |
 | DHCP clients | | every edit (the lease is released first) |
 | DHCP servers | pools and options (leases inside a pool are kept) | the DUID (DHCPv6) |
-| Traffic flows and others | | every edit |
+| TWAMP reflector | everything (sessions and counters stay) | |
+| Traffic flows, LDP, RSVP-TE, MACsec, monitor | | every edit |

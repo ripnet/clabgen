@@ -168,8 +168,8 @@ protocols:
 Once bound, the leased addresses are the device's: it answers ARP, ND
 and ping on them, and flows run from them. The DHCPv6 client's page
 shows its address and delegated prefix with the time left on each, the
-gateway it took from the router's advertisement, and the advertisement's
-flags.
+routers it heard (time left, and which is its gateway), and the last
+advertisement's flags.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../images/examples/dhcp-client-dark.png">
@@ -244,7 +244,7 @@ show router dhcp6 statistics
 show router route-table ipv6 protocol dhcpv6-pd
 ```
 
-From the server, a ping to the host `client1` puts in its delegated
+From the server, ping the host that `client1` puts in its delegated
 prefix: it gets there only through the router's route to that prefix.
 `client1-v6`'s page (or `clabgenctl -s client proto show client1-v6`)
 shows the prefix; the host is `::1` in its second /64. For

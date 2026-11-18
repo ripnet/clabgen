@@ -62,7 +62,7 @@ def on_page_markdown(markdown, page, config, files):
         markdown = re.sub(r"<!-- github-only -->.*?<!-- /github-only -->\n?", "", markdown, flags=re.S)
         markdown = light_dark(markdown)
         markdown = re.sub(r"\]\(docs/", "](", markdown)
-        markdown = re.sub(r"\]\((?!https?:|#|[a-z-]+\.md|images/)([^)]+)\)", lambda m: f"]({REPO}{m.group(1)})", markdown)
+        markdown = re.sub(r"\]\((?!https?:|#|(?:[a-z-]+/)*[a-z-]+\.md|images/)([^)]+)\)", lambda m: f"]({REPO}{m.group(1)})", markdown)
         return markdown
     markdown = tabs(light_dark(markdown))
     # ../examples, ../python, ../.github, …: on GitHub. Relative to the

@@ -49,7 +49,20 @@ interfaces and the eBGP session, accepting what it's sent:
 
 [`routes.yml`](../../examples/bgp-routes/routes.yml) advertises two blocks
 of 50 routes. With no `next_hop`, clabgen is their next hop, so its device
-also answers for them.
+also answers for them:
+
+```yaml
+protocols:
+  - name: bgp
+    type: bgp
+    device: edge
+    config:
+      local_as: 65002
+      peers: [{address: 10.0.2.1, remote_as: 65001}]
+      routes:
+        - {prefix: 198.51.0.0/24, count: 50}
+        - {prefix: 198.18.0.0/24, count: 50}
+```
 
 [`sender.yml`](../../examples/bgp-routes/sender.yml) has the flow. In the
 UI, **From BGP routes…** in the flow's config lists what any agent
@@ -112,8 +125,8 @@ Things to read from it:
 
 - **The list names the five routes withdrawn**, and no others.
 - **The flow isn't restored** while they stay withdrawn, though the other 95
-  still reply. This test gives up after **Give up after**, so that's how long
-  they stayed down.
+  still reply. The test reports when **Give up after** runs out, so that's
+  how long they stayed down.
 - **Loss duration is the worst prefix's**, and the resolution the time
   between its packets: a route down for 15 s shows about 15 s, not the small
   share of the flow's packets it took.

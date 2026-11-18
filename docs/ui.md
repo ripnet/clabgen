@@ -1,7 +1,7 @@
 # Web UI
 
 One `clabgen-ui` container per lab host shows every running containerlab
-lab on the machine, much like Edgeshark. It finds the containerlab nodes
+lab on the machine. It finds the containerlab nodes
 running a clabgen image through the Docker socket, and proxies the
 browser's calls to them.
 
@@ -57,6 +57,11 @@ containerlab's `topology-data.json` for the lab (the file the UI was given
 with `-lab`, or through Docker from one of the lab's clabgen nodes, which
 see it under `/clab`).
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/examples/wire-lab-dark.png">
+  <img alt="The wire example lab drawn: two SR-SIM routers joined by their core link, the clabgen CE ce-a with three links side by side to sr1 and ce-b with three to sr2, and the monitor tap on sr1's mirror port; the clabgen ends' links green (up), each end labelled with its interface" src="images/examples/wire-lab.png">
+</picture>
+
 - clabgen nodes are blue and open their agent when clicked; routers are
   teal; anything a link names that isn't a node (`host`, a bridge) is
   dashed.
@@ -71,8 +76,9 @@ see it under `/clab`).
   node (its links light up). The table under the drawing lists every link
   and its state.
 - Drag nodes to arrange them; this browser keeps the arrangement for the
-  lab. **Rearrange** forgets it. Nodes with containerlab's `graph-posX`
-  and `graph-posY` labels are drawn where those put them.
+  lab. **Rearrange** forgets it. When every node has containerlab's
+  `graph-posX` and `graph-posY` labels, the nodes are drawn where those
+  put them.
 - The wheel zooms, dragging the background pans, **Fit** shows the whole
   lab (a large one opens at a readable size, centred).
 - The links come from a clabgen node's `/clab` mount (`binds: [.:/clab]`,
@@ -96,7 +102,8 @@ Each agent has tabs:
 - **Events**: the agent's events, live.
 - **Scenario**: the whole config in the [YAML editor](#the-yaml-editor),
   where it is saved across lab restarts, and a reset to the topology's
-  scenario. Edits not applied yet stay when you switch tabs.
+  scenario. Edits not applied yet stay when you switch tabs, and reloading
+  the page asks first.
 
 ### A protocol's page
 
@@ -143,6 +150,11 @@ as forms:
 The Scenario tab, a config's **edit as YAML** and a group's YAML view use
 one editor. It knows the agent's schemas: the scenario's parts, and each
 protocol type's settings, picked by the protocol's `type`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/scenario-dark.png">
+  <img alt="The Scenario tab: the agent's scenario in the YAML editor, keys coloured, fold markers in the gutter, and a suggestion list open in the BGP config with the fields not set yet, each with its type" src="images/scenario.png">
+</picture>
 
 - **Suggestions**: the fields a place takes as you type a name (required
   and common ones first), and the values a field takes after `key: `: its

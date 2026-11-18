@@ -43,10 +43,17 @@ In the Groups tab (**New group**, or **Make group…** on a device in the
 Devices tab), the device and each protocol are forms. `±` next to a
 number, address or MAC turns it into a stepped value, and a preview shows
 members as the agent renders them before anything is created.
-`clabgenctl group add|set --dry-run` prints the same preview.
+`clabgenctl group add|set --dry-run` prints the same preview. The whole
+group can also be edited as YAML in the [YAML editor](ui.md#the-yaml-editor),
+which accepts stepped values and placeholders where a value goes.
 
 Six remote MEPs, one per member, with MEP IDs from 11:
 
+<!-- tab: UI -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/form-group-dark.png">
+  <img alt="The group editor for rmep: six members on eth1, and the preview of members 1, 2 and 6 with MEP IDs 11, 12 and 16" src="images/form-group.png">
+</picture>
 <!-- tab: YAML -->
 ```yaml
 device_groups:
@@ -58,12 +65,8 @@ device_groups:
         config: {level: 3, mep_id: {start: 11}, remote_meps: [1], md_format: string, md_name: lab,
                  ma_name: vpls-100, ccm_interval: 100ms}
 ```
-<!-- tab: UI -->
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/form-group-dark.png">
-  <img alt="The group editor for rmep: six members on eth1, and the preview of members 1, 2 and 6 with MEP IDs 11, 12 and 16" src="images/form-group.png">
-</picture>
 <!-- /tabs -->
+
 ## Running a group
 
 Members are ordinary devices and protocol instances: their pages, actions

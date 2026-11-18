@@ -43,8 +43,10 @@ clabgen's loopback, and a VPRN whose BGP routes resolve over LDP:
 /configure router "Base" bgp rapid-update vpn-ipv4 true
 /configure router "Base" bgp rapid-update vpn-ipv6 true
 /configure router "Base" bgp neighbor "192.0.2.1" group "pes"
+/configure service vprn "100" bgp-ipvpn mpls admin-state enable
 /configure service vprn "100" bgp-ipvpn mpls route-distinguisher "65000:100"
 /configure service vprn "100" bgp-ipvpn mpls vrf-target community "target:65000:100"
+/configure service vprn "100" bgp-ipvpn mpls auto-bind-tunnel resolution filter
 /configure service vprn "100" bgp-ipvpn mpls auto-bind-tunnel resolution-filter ldp true
 ```
 
@@ -154,8 +156,8 @@ The labels come from the routes on the BGP page. Click a peer to see them:
 to the VPRN. Its `to-pe` flow goes to clabgen's prefixes in the VPN. `sr2` pushes the
 LDP label and clabgen's 3001, and `sr1` pops the LDP label.
 
-The `pe` agent takes the packet because of that label. Without it, its VPN prefixes
-aren't answered at all, and replies go back through the VPN the same way as `to-ce`.
+The `pe` agent takes the packet only because of that label: its VPN prefixes aren't
+answered as plain IP. Its replies go back through the VPN as `to-ce`'s packets do.
 
 ## Withdrawing a route
 
@@ -163,7 +165,7 @@ On the **Flows** page, **Convergence test** with no failure step waits for one m
 elsewhere. Here the customer site withdraws a route:
 
 ```sh
-clabgenctl --lab l3vpn -s ce proto run bgp withdraw 'routes=[{"prefix":"203.0.116.0/24"}]'
+clabgenctl --lab l3vpn -s ce proto run bgp withdraw routes='[{"prefix":"203.0.116.0/24"}]'
 ```
 
 <picture>

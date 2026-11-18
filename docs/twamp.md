@@ -103,25 +103,29 @@ Actions:
   is idle (greyed).
 
 Events: `session-new`, `session-idle`, `muted`, `unmuted`, `burst-loss`.
-Health, for group views: `no sessions`, `N sessions` or `muted`.
+Health, for group views: `no sessions`, `1 session` / `N sessions` (those
+not idle) or `muted`.
 
 ## Router configuration
 
 SR OS (26.10), the sessions of the [example](examples/twamp.md):
 
 ```
+/configure oam-pm session "twamp-v4" session-type proactive
 /configure oam-pm session "twamp-v4" ip router-instance "Base" source 10.0.0.1 destination 10.0.0.2
 /configure oam-pm session "twamp-v4" ip destination-udp-port 862
 /configure oam-pm session "twamp-v4" ip twamp-light test-id 1 admin-state enable
 
-/configure oam-pm session "stamp-v6" ip source 2001:db8::1 destination 2001:db8::2 destination-udp-port 862
-/configure oam-pm session "stamp-v6" ip twamp-light session-sender-type stamp pad-tlv-size 20
+/configure oam-pm session "stamp-v6" session-type proactive
+/configure oam-pm session "stamp-v6" ip router-instance "Base" source 2001:db8::1 destination 2001:db8::2 destination-udp-port 862
+/configure oam-pm session "stamp-v6" ip twamp-light test-id 2 interval 1000 session-sender-type stamp pad-tlv-size 20 admin-state enable
 ```
 
 and an interface's link delay (STAMP packets with TTL 1, DSCP 48):
 
 ```
 /configure test-oam link-measurement measurement-template "link-delay" twamp-light session-sender-type stamp
+/configure test-oam link-measurement measurement-template "link-delay" admin-state enable
 /configure router interface "to-gen" if-attribute delay dynamic link-measurement link-measurement-template "link-delay"
 /configure router interface "to-gen" if-attribute delay dynamic twamp-light ipv4 source 10.0.0.1 destination 10.0.0.2 admin-state enable
 ```

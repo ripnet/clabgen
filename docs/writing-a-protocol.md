@@ -25,6 +25,11 @@ func (c *Config) Validate() error { ... } // optional; runs after decoding
   description with a comma goes in its own tag:
   `jsonschema_description:"Seconds between hellos, at least 1"` (a test
   catches descriptions cut short).
+- `jsonschema_extras` tags guide the forms and the YAML editor:
+  `x-group=Name` (a section heading), `x-advanced=true` (kept back until
+  "show all options"), `x-common=true` (always shown, and suggested
+  first), `x-show-if=type=a|b`, `x-title`, `x-summary` (a list item's
+  one-line label).
 - Action arguments work the same way: `Action.NewArgs` returns a defaulted
   pointer, and it may implement `Validate()`.
 
@@ -82,6 +87,10 @@ type Session interface {
   `Delegated() []netip.Prefix` (`protocol.Delegator`) lists prefixes
   delegated to the session, shown beside its device's addresses in group
   member tables.
+- Optional: `Reconfigure(cfg any) bool` (`protocol.Reconfigurer`) takes an
+  edited config while running (new routes without dropping sessions);
+  return false and the agent restarts the instance instead. Without it
+  every edit restarts.
 
 ## 4. Use the Env
 
@@ -93,6 +102,7 @@ type Session interface {
 | `Device()` | MAC, VLANs, port name, port up/down. |
 | `IP()` | The device's IP stack: `Addresses()`, `Source(dst)`, `ResolveNextHop(ctx, dst)` (ARP/ND through the neighbor cache; off-link destinations resolve the gateway), `ClaimFlow(id)` so a flow's own echoes aren't listed as received (`ipflow` does this), `AddLocal(addr)` for an address answered from anywhere (a router's loopback), and `AddAddress(prefix, gateway)` for an address on the link and a default gateway (a DHCP lease). |
 | `Siblings()` | Other sessions of the same type on the same device (CFM uses this for MD-level demux). |
+| `Attach(device, rx)` | Also receive and send on another device (a router's further interfaces); the attachment closes when that device goes or changes. |
 | `Log()` | Structured logger tagged with the instance name. |
 
 ## 5. Traffic flows
@@ -112,7 +122,9 @@ instead of Protocols, and expects their status to embed
 The tracker computes loss, late and duplicate replies, RTT and jitter, a
 per-second timeline by send time, and outages (runs of consecutive losses,
 settled in sequence order). Flows should offer `start`, `stop` and `clear`
-actions.
+actions, and implement `Convergence(since, now) outage.Flow`
+(`protocol.FlowMeasurer`) to take part in
+[convergence tests](flows.md#convergence-tests).
 
 IP flows can build on `internal/ipflow`. It provides config parts to
 embed (target, run, addressing, IP header, payload), the send loop with
@@ -140,7 +152,10 @@ _ "github.com/ripnet/clabgen/protocols/myproto"
 ```
 
 It then appears in `clabgenctl types`, can be created with
-`clabgenctl proto add`, and can be used in scenario files.
+`clabgenctl proto add`, and can be used in scenario files. Import it in
+`internal/server/fixture_test.go` too and run
+`CLABGEN_WRITE_FIXTURES=1 go test ./internal/server`, so the UI's tests
+see the type.
 
 ## 7. UI (optional)
 

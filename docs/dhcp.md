@@ -92,7 +92,7 @@ installed a route to the prefix and forwards to the client.
 
 | Status | |
 |---|---|
-| `state` | `selecting` or `soliciting`, `requesting`, `bound`, `renewing`, `rebinding`, `released` |
+| `state` | `init`, `selecting` or `soliciting`, `requesting`, `bound`, `renewing`, `rebinding`, `released` |
 | `address`, `addresses`, `prefixes` | the leases, with the time left |
 | `gateway`, `dns`, `domain`, `domains` | what the server (or, for the IPv6 gateway, the router) gave |
 | `ia_na_status`, `ia_pd_status` | why an address or prefix wasn't given, from the server's status code (`NoPrefixAvail …`) |
@@ -104,8 +104,8 @@ client that got an address but not its prefix (or the other way round)
 is a warning too, naming the server's status.
 
 The actions are `renew`, `rebind`, `release` (and stay without a lease),
-`restart` (release, then start over), `solicit` (send a router
-solicitation now) and `clear`. A client releases its
+`restart` (release, then start over) and `clear`; `dhcpv6` also has
+`solicit` (send a router solicitation now). A client releases its
 lease when it stops, unless `release_on_stop: false`.
 
 ### Many clients

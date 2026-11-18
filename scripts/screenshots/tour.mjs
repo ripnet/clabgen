@@ -118,6 +118,21 @@ await sleep(1000);
 await still("capture");
 await page.getByRole("button", { name: "■ Stop" }).click();
 
+// The YAML editor: the scenario with the suggestion list (Ctrl-Space) open
+// in the BGP config: the fields not set yet. Then the edit discarded.
+await go("#/a/clab-demo-gen1/scenario", 2000);
+// Where the config is saved is a path on this host: not for the docs.
+await page.addStyleTag({ content: ".saved-config { display: none !important; }" });
+await page.locator(".cm-line", { hasText: /^\s+local_as:/ }).first().click();
+await page.keyboard.press("End");
+await page.keyboard.press("Enter");
+await page.keyboard.press("Control+Space");
+await page.locator(".cm-tooltip-autocomplete").waitFor();
+await sleep(1200);
+await still("scenario");
+await page.keyboard.press("Escape");
+await page.getByRole("button", { name: "Discard edits" }).click();
+
 // 1. Everything up.
 await go("#/");
 await frame("overview", 3000);

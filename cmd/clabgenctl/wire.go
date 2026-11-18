@@ -34,10 +34,10 @@ direction, the VLAN tags its frames carried inside the service, and those of the
 CFM/Y.1731 frames in the same service. --services lists everything each
 monitor saw instead, flows or not. --clear clears every monitor, for a fresh
 verdict after a change.`,
-		Example: `  clabgenctl --lab cc wire
-  clabgenctl --lab cc wire ping-2101 -o json
-  clabgenctl --lab cc wire --services
-  clabgenctl --lab cc wire --clear`,
+		Example: `  clabgenctl --lab wire wire
+  clabgenctl --lab wire wire ping-2101 -o json
+  clabgenctl --lab wire wire --services
+  clabgenctl --lab wire wire --clear`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			agents, err := convergenceAgents()
 			if err != nil {

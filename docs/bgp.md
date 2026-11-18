@@ -14,7 +14,9 @@ peer from loopbacks too.
                       {prefix: "2001:db8:abc::/48", count: 1000, med: 50}]}
 ```
 
-There is no TCP MD5 authentication (the netstack has none).
+A peer with `passive: true` only accepts the peer's connection;
+`connect_retry` (5 s) is the time between attempts. There is no TCP MD5
+authentication (the netstack has none).
 
 The device answers for the routes it advertises with itself as the next
 hop (ping, [flows](flows.md#flows-to-many-prefixes)), until they're withdrawn,
@@ -63,20 +65,20 @@ any other, such as a loopback. It is off unless enabled.
 - `bfd-fail peer=… seconds=5` silences our side, to test the router's
   reaction.
 
+<!-- tab: UI -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/form-bgp-dark.png">
+  <img alt="The BGP form's BFD section: enabled, with 100 ms transmit and receive intervals and a multiplier of 3" src="images/form-bgp.png">
+</picture>
 <!-- tab: YAML -->
 ```yaml
-- name: bgp
+  - name: bgp
     type: bgp
     device: pe
     config: {local_as: 65001, bfd: {enabled: true, min_tx_ms: 100, min_rx_ms: 100, multiplier: 3},
              peers: [{address: 192.0.2.2, remote_as: 65002}],
              routes: [{prefix: 100.64.0.0/24, count: 5000, communities: ["65001:100"]}]}
 ```
-<!-- tab: UI -->
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/form-bgp-dark.png">
-  <img alt="The BGP form's BFD section: enabled, with 100 ms transmit and receive intervals and a multiplier of 3" src="images/form-bgp.png">
-</picture>
 <!-- /tabs -->
 
 ## VPN families

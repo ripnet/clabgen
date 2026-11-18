@@ -53,7 +53,9 @@ them; bin group 2 counts round trips over 5 ms:
 /configure oam-pm session "stamp-v6" ip twamp-light session-sender-type stamp pad-tlv-size 20
 ```
 
-(and the same loss events forward). The interface measures its link delay
+(and the same loss events forward; these are excerpts:
+[`sr1.partial.txt`](../../examples/twamp/sr1.partial.txt) has the rest,
+such as `admin-state enable` and `session-type proactive` on each). The interface measures its link delay
 with STAMP every second, as it would to a neighbor router for delay-based
 traffic engineering:
 

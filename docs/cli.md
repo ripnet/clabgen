@@ -91,15 +91,16 @@ clabgenctl -s gen2 received
 | `info` | the agent's hostname, version and start time |
 | `nodes` | the lab's agents (with `--lab`) |
 | `ports`, `port down <port>`, `port up <port>` | data ports, and their admin state |
-| `devices`, `device …` | emulated devices: `add`, `set`, `show`, `del`, `resolve`, `clear-neighbors` |
-| `protocols`, `proto …` | protocol instances: `add`, `show`, `set`, `disable`, `enable`, `del`, `run <action>` |
+| `devices`, `device …` | emulated devices (group members with `--all` or `--group NAME`): `add`, `set`, `show`, `del`, `resolve`, `clear-neighbors` |
+| `protocols`, `proto …` | protocol instances (group members with `--all` or `--group NAME`): `add`, `show`, `set`, `disable`, `enable`, `del`, `run <action>` |
 | `types [TYPE]` | protocol types, or one type's config and action schemas |
 | `groups`, `group …` | device groups: `add`, `set`, `show`, `disable`, `enable`, `del`, `run <action>` |
 | `ping` | ping from a device (a temporary icmp flow) |
 | `start`, `stop` | start or stop traffic flows |
-| `received` | flows arriving at the agent's devices (one-way statistics) |
+| `received`, `received clear` | flows arriving at the agent's devices (one-way statistics), and forgetting them |
 | `convergence` | what a failure costs running flows: [loss duration per flow](flows.md#convergence-tests) |
 | `preview` | the packet a config would send (packet type), decoded and as hex |
+| `wire` | VLAN tags of flows and their OAM on monitored links, checked against the flows' expectations (`--services`, `--clear`; see [Monitoring a mirrored link](wire.md)) |
 | `capture` | frames the ports receive and send: live summaries, or pcapng |
 | `events` | stream the agent's events |
 | `scenario get`, `scenario apply` | export or apply the whole config |

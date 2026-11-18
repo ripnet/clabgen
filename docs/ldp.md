@@ -34,7 +34,7 @@ Each of `fecs` is a `prefix` and `count` of consecutive prefixes, with a `mode`:
 
 | `mode` | |
 |---|---|
-| `label` (the default) | a real label each, from `label` or `label_base` up. The peer sends labelled packets |
+| `label` (the default) | a real label each, from `label` or `label_base` (100000) up. The peer sends labelled packets |
 | `implicit-null` | the peer pops the label, and sends plain IP |
 | `explicit-null` | label 0 |
 
@@ -57,8 +57,9 @@ list. `no_link_hellos: true` leaves only targeted sessions.
 - `advertise fecs='[{"prefix":"198.18.0.0/24","count":5}]'` and `withdraw`.
 - `reset peer=192.0.2.1`: a shutdown notification; the session comes back.
 - `flap peer=… seconds=30 mode=silent`: send nothing and listen to nothing, so
-  the peer's timers expire if the flap is longer than them; or `mode=notify`,
-  which ends the session and stays away.
+  the peer's timers expire if the flap is longer than them; or `mode=notify`
+  (the default), which ends the session with a shutdown notification and
+  stays away for `seconds`.
 - `notify code=13` sends a notification with any status code; `fatal=true` sets
   the E bit and ends the session.
 - `bindings peer=192.0.2.1 prefix=… limit=…` lists labels received.

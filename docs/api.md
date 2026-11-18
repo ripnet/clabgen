@@ -2,8 +2,9 @@
 
 Each agent serves `AgentService`
 ([`api/proto/clabgen/v1/agent.proto`](../api/proto/clabgen/v1/agent.proto))
-on port 8080 over Connect, gRPC and gRPC-Web. The UI and `clabgenctl` use
-nothing else, so anything they do can be scripted.
+on port 8080 over Connect, gRPC and gRPC-Web (and `GET /healthz`).
+`clabgenctl` uses nothing else, and the UI only adds the UI server's few
+[routes](#the-ui-servers-routes), so anything they do can be scripted.
 
 ## Calling it
 
@@ -22,6 +23,26 @@ curl -s http://labhost:8090/api/agents        # the agents, with their ids
 curl -s -H 'Content-Type: application/json' -d '{}' \
   http://labhost:8090/agents/clab-b2b-gen1/clabgen.v1.AgentService/GetInfo
 ```
+
+`ListProtocolTypes` returns each type's config and action schemas (JSON
+schema), and `scenario_schema`, the schema of a whole scenario file: a
+protocol's `config` takes the schema of its `type` (marked
+`x-config-of`). The UI's forms and YAML editor are built from them.
+
+## The UI server's routes
+
+`clabgen-ui` adds a few JSON routes of its own:
+
+- `GET /api/info`: its version, a newer release if any, Edgeshark, and
+  whether lab topologies are available.
+- `GET /api/agents`: the agents it knows, with their ids. `POST
+  /api/agents` adds one by address and `DELETE /api/agents/{id}` removes
+  one added that way (where adding is allowed).
+- `GET /api/labs/{lab}/topology`: the lab's nodes and links from
+  containerlab's `topology-data.json` (`nodes` with `name`, `kind`,
+  `image` and `agent`; `links` with `a`, `a_if`, `z`, `z_if`; a `note`
+  when the links can't be read).
+- `/agents/{id}/…`: passed through to that agent.
 
 ## Packet captures over HTTP
 

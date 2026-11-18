@@ -116,7 +116,8 @@ Without it the encrypted frames would pass, but the session never comes up.
 The status shows the frame's layout, the SecY's SCI and transmit SA, its receive
 channels with what each dropped and why (late, not valid, no SA…), and for MKA
 the peers, the key server, and the latest and old keys with whether each end
-receives and sends with them. `clabgenctl protocols` shows one line:
+receives and sends with them. `clabgenctl protocols` shows one line (from
+the [example](examples/macsec.md)):
 
 ```
 epl-macsec   macsec  epl   running  untagged gcm-aes-128 +32B mka=secured key-server sak=1 an=0 peers=1

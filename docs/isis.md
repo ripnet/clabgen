@@ -1,7 +1,7 @@
 # IS-IS
 
-An IS-IS router on a device (point-to-point to the SR in
-`examples/srsim`):
+An IS-IS router on a device, point-to-point to a router (a simpler form of
+the one in `examples/srsim`):
 
 ```yaml
   - name: isis
@@ -11,9 +11,31 @@ An IS-IS router on a device (point-to-point to the SR in
              prefixes: [{prefix: 198.18.0.0/24, count: 1000, metric: 20}]}
 ```
 
+## In the UI
+
+The instance's page, here the [`examples/srsim`](../examples/srsim) lab's
+router against an SR-SIM: its system ID, levels and areas, segment routing
+and SRv6 SIDs, authentication, the interfaces with their adjacencies, and
+further down the emulated network, the link-state database and counters.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/examples/srsim-isis-dark.png">
+  <img alt="The IS-IS instance's page: 3 neighbors on 3/3 interfaces and 25 LSPs; L1L2 point-to-point in area 49.0002; segment routing with the SRGB, node SIDs per algorithm, adjacency SIDs and SRv6 SIDs; HMAC hello and LSP authentication; three point-to-point interfaces and their adjacencies to sr1, one with BFD up" src="images/examples/srsim-isis.png">
+</picture>
+
+Edit config groups the settings into sections (interfaces, authentication,
+segment routing, SRv6, the emulated topology, …):
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/examples/srsim-isis-form-dark.png">
+  <img alt="The IS-IS config form: sections down the left (interfaces, hello auth, lsp auth, summaries, bfd, graceful restart, prefixes, segment routing, flex algos, srv6, topology) and the general settings: system ID, hostname, areas, level, topologies, loopbacks, the first interface's circuit and metric, timers" src="images/examples/srsim-isis-form.png">
+</picture>
+
 ## Actions
 
-- `flap seconds=5`, `overload set=true`, `metric`.
+- `flap seconds=5` (`mode=silent` stops hellos, so the neighbor's hold
+  timer expires; the default `reset` drops the adjacency at once),
+  `overload set=true`, `metric`.
 - `advertise prefixes='[{"prefix":"203.0.113.0/24"}]'` and `withdraw`.
 - `topology-link` and `topology-node`: fail parts of an
   [emulated network](#emulated-network).

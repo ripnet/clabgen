@@ -110,7 +110,8 @@ gen1 = lab["gen1"]
 
 ## Agents
 
-An `Agent` has a method for everything `clabgenctl` does. Results are the
+An `Agent` has a method for most of what `clabgenctl` does, and `call`
+reaches the rest of the API. Results are the
 API's objects as dicts with snake_case keys; protocol configs and statuses
 are as each protocol defines them (`clabgenctl types TYPE` shows them).
 

@@ -132,5 +132,5 @@ Other failures to try, each a `proto run ldp` action:
 | `flap seconds=30 mode=silent` | Longer than the hold time (15 s), so the router's timers end the session |
 | `flap seconds=8 mode=silent` | Shorter than the hold time, so the session survives and nothing is lost |
 
-> **These numbers are SR-SIM's:** they show how the configuration behaves, not
+> **This is SR-SIM's behaviour:** it shows how the configuration behaves, not
 > what a hardware router would do.

@@ -3,6 +3,11 @@
 A down MEP (802.1ag, Y.1731) runs on a [device](configuration.md#devices),
 untagged or on its VLANs:
 
+<!-- tab: UI -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/form-mep-dark.png">
+  <img alt="The MEP form: level 3, MEP ID 1, MD lab, MA vpls-100, remote MEPs 11 to 16, and a 100 ms CCM interval" src="images/form-mep.png">
+</picture>
 <!-- tab: YAML -->
 ```yaml
 protocols:
@@ -12,11 +17,6 @@ protocols:
     config: {level: 3, mep_id: 1, remote_meps: [11, 12, 13, 14, 15, 16], md_format: string, md_name: lab,
              ma_name: vpls-100, ccm_interval: 100ms}
 ```
-<!-- tab: UI -->
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/form-mep-dark.png">
-  <img alt="The MEP form: level 3, MEP ID 1, MD lab, MA vpls-100, remote MEPs 11 to 16, and a 100 ms CCM interval" src="images/form-mep.png">
-</picture>
 <!-- /tabs -->
 
 ## Remote MEPs
@@ -43,13 +43,18 @@ Beyond CCM, these are actions:
   example).
 - `test-signal`: TST with a null or PRBS pattern and an optional CRC. The
   receiver counts loss, reordering and bit errors.
-- `fault`: stops CCMs, forces AIS, locks (LCK) or sends CSF.
+- `fault`: stops CCMs, sets RDI or the status TLVs, skips sequence
+  numbers, sends CCMs with another MEP ID, MA name or level (DefErrorCCM,
+  DefXconCCM, an unexpected level at the peer), forces AIS, locks (LCK) or
+  sends CSF.
+- `clear` resets the counters and forgets failed auto-discovered remote
+  MEPs.
 
 `ais: {enabled: true, client_level: 6}` sends AIS while the MEP has a
 defect. `sessions` measure continuously, kept in bins:
 
 ```yaml
-    config: {…, sender_id: gen1,
+    config: {…,
              sessions: [{name: dm, type: delay, target_mep_id: 1, interval_ms: 1000, bin_s: 60, bins: 10},
                         {name: sl, type: synthetic-loss, target_mep_id: 1, interval_ms: 100}]}
 ```

@@ -84,23 +84,32 @@ reader's theme; the site's hook turns each into Material's
 `make screenshots` regenerates the README's tour and stills from the
 demo lab in `scripts/screenshots` (deployed, driven with Playwright and
 destroyed again; see `run.sh` for what it needs). A new screenshot is a
-still in `tour.mjs`, copied by `run.sh`, so it is regenerated with the
-rest at each release.
+still in `tour.mjs` and a name in `run.sh`'s list of stills, so it is
+regenerated with the rest at each release.
+
+The worked examples have their own: with the example's lab deployed and
+settled, `scripts/screenshots/example.sh NAME` drives `example-NAME.mjs`
+and writes light and dark stills (and `NAME-actions.webp`) to
+`docs/images/examples`; `diagram-NAME.py` draws its topology as
+`NAME-topology.svg` and `-dark.svg`. The screenshot UIs see only their
+lab (`-docker off -lab`), and anything that shows a path on the host
+(where the config is saved, where a topology came from) is hidden, so
+nothing private ends up in the docs.
 
 ### UI and YAML tabs
 
-A config shown both ways is a tab group: GitHub shows the parts one after
-the other, and the site's hook turns them into tabs (picking one picks it
-on every page):
+A config shown both ways is a tab group, the UI first: GitHub shows the
+parts one after the other, and the site's hook turns them into tabs
+(picking one picks it on every page):
 
 ~~~markdown
+<!-- tab: UI -->
+<picture>…the form-device screenshot…</picture>
 <!-- tab: YAML -->
 ```yaml
 devices:
   - {name: v100, port: eth1, vlans: [{vid: 100}], addresses: [10.0.100.1/24]}
 ```
-<!-- tab: UI -->
-<picture>…the form-device screenshot…</picture>
 <!-- /tabs -->
 ~~~
 

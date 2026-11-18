@@ -63,8 +63,8 @@ dot1q port. What makes them carry MACsec:
 ## The customer routers
 
 Each agent has a device per circuit and a `macsec` instance on each:
-`epl-macsec` at the port level (an untagged device), `evpl-macsec` on the VLAN
-100 device, which keeps its tag in front of the SecTAG for the SAP to match. Each
+`epl-macsec` on an untagged device (the default `scope: device`, which on the
+wire is MACsec on the whole port), `evpl-macsec` on the VLAN 100 device, which keeps its tag in front of the SecTAG for the SAP to match. Each
 circuit has its own CAK, and `ce-a` is the key server with the lower priority.
 `ce-a` pings `ce-b` over both, with full-size packets.
 
