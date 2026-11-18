@@ -1,8 +1,9 @@
-# Tests: Go (vet, gofmt, unit tests and the UI schema fixture under -race;
-# the internal/core engine tests, which mostly wait on protocol timers, in
-# parallel shards), the Python package (unit tests, and live tests against
-# the agent in a container), the web UI (typecheck, build, Playwright
-# against a mocked agent) and the documentation site (a strict build).
+# Tests: Go (vet, gofmt, actionlint on the workflows, unit tests and the UI
+# schema fixture under -race; the internal/core engine tests, which mostly
+# wait on protocol timers, in parallel shards), the Python package (unit
+# tests, and live tests against the agent in a container), the web UI
+# (typecheck, build, Playwright against a mocked agent) and the
+# documentation site (a strict build).
 # Runs on pull requests; images.yml runs it before publishing from dev or
 # a release tag. Pushes to main aren't tested again: main only moves to a
 # dev commit that passed.
@@ -26,11 +27,15 @@ jobs:
           go-version-file: go.mod
       - name: gofmt
         run: |
-          out=$(gofmt -l $(git ls-files '*.go'))
+          out=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
           if [ -n "$out" ]; then echo "not gofmt'ed:"; echo "$out"; exit 1; fi
       - run: go vet ./...
+      - name: actionlint (the workflows, their scripts through shellcheck)
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -color
       - name: go test (all but internal/core)
-        run: go test -race -count=1 $(go list ./... | grep -v '/internal/core$')
+        run: |
+          mapfile -t pkgs < <(go list ./... | grep -v '/internal/core$')
+          go test -race -count=1 "${pkgs[@]}"
 
   core:
     name: core (${{ matrix.shard }}/4)
